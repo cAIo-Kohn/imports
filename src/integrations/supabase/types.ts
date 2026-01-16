@@ -35,6 +35,42 @@ export type Database = {
         }
         Relationships: []
       }
+      product_units: {
+        Row: {
+          created_at: string
+          id: string
+          product_id: string
+          unit_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product_id: string
+          unit_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product_id?: string
+          unit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_units_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_units_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           brand: string | null
@@ -64,6 +100,7 @@ export type Database = {
           technical_description: string
           unit_of_measure: Database["public"]["Enums"]["unit_of_measure"]
           updated_at: string
+          warehouse_status: string | null
           weight_per_unit: number | null
         }
         Insert: {
@@ -94,6 +131,7 @@ export type Database = {
           technical_description: string
           unit_of_measure?: Database["public"]["Enums"]["unit_of_measure"]
           updated_at?: string
+          warehouse_status?: string | null
           weight_per_unit?: number | null
         }
         Update: {
@@ -124,6 +162,7 @@ export type Database = {
           technical_description?: string
           unit_of_measure?: Database["public"]["Enums"]["unit_of_measure"]
           updated_at?: string
+          warehouse_status?: string | null
           weight_per_unit?: number | null
         }
         Relationships: [
