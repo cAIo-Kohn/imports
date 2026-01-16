@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Upload, FileSpreadsheet, Loader2, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { Upload, FileSpreadsheet, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   Dialog,
@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
 
 interface ImportProductsModalProps {
   open: boolean;
@@ -34,7 +35,7 @@ interface ImportResult {
   errors?: string[];
 }
 
-type ImportStep = 'upload' | 'preview' | 'importing' | 'complete';
+type ImportStep = 'upload' | 'preview' | 'importing' | 'complete' | 'error';
 
 export function ImportProductsModal({ open, onOpenChange, onSuccess }: ImportProductsModalProps) {
   const [step, setStep] = useState<ImportStep>('upload');
@@ -53,11 +54,11 @@ export function ImportProductsModal({ open, onOpenChange, onSuccess }: ImportPro
   }, []);
 
   const handleClose = useCallback(() => {
-    resetState();
-    onOpenChange(false);
     if (result?.success) {
       onSuccess();
     }
+    resetState();
+    onOpenChange(false);
   }, [resetState, onOpenChange, result, onSuccess]);
 
   const parseExcel = useCallback((file: File) => {
@@ -91,11 +92,32 @@ export function ImportProductsModal({ open, onOpenChange, onSuccess }: ImportPro
           }
         }
 
+        if (parsedProducts.length === 0) {
+          setError('Nenhum produto válido encontrado no arquivo.');
+          toast({
+            title: "Arquivo inválido",
+            description: "Nenhum produto válido encontrado no arquivo.",
+            variant: "destructive"
+          });
+          return;
+        }
+
         setProducts(parsedProducts);
         setStep('preview');
         setError(null);
+        
+        toast({
+          title: "Arquivo carregado",
+          description: `${parsedProducts.length} linhas encontradas no arquivo.`,
+        });
       } catch (err) {
-        setError('Erro ao processar o arquivo. Verifique se é um arquivo Excel válido.');
+        const errorMsg = 'Erro ao processar o arquivo. Verifique se é um arquivo Excel válido.';
+        setError(errorMsg);
+        toast({
+          title: "Erro ao ler arquivo",
+          description: errorMsg,
+          variant: "destructive"
+        });
         console.error('Error parsing Excel:', err);
       }
     };
@@ -106,7 +128,13 @@ export function ImportProductsModal({ open, onOpenChange, onSuccess }: ImportPro
     if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
       parseExcel(file);
     } else {
-      setError('Por favor, selecione um arquivo Excel (.xlsx ou .xls)');
+      const errorMsg = 'Por favor, selecione um arquivo Excel (.xlsx ou .xls)';
+      setError(errorMsg);
+      toast({
+        title: "Formato inválido",
+        description: errorMsg,
+        variant: "destructive"
+      });
     }
   }, [parseExcel]);
 
@@ -132,6 +160,12 @@ export function ImportProductsModal({ open, onOpenChange, onSuccess }: ImportPro
   const handleImport = useCallback(async () => {
     setStep('importing');
     setProgress(10);
+    setError(null);
+
+    toast({
+      title: "Importação iniciada",
+      description: `Processando ${new Set(products.map(p => p.codigo)).size} produtos...`,
+    });
 
     try {
       setProgress(30);
@@ -143,16 +177,42 @@ export function ImportProductsModal({ open, onOpenChange, onSuccess }: ImportPro
       setProgress(90);
 
       if (fnError) {
-        throw fnError;
+        throw new Error(fnError.message || 'Erro na função de importação');
       }
 
-      setResult(data as ImportResult);
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      const importResult = data as ImportResult;
+      setResult(importResult);
       setStep('complete');
       setProgress(100);
+
+      // Show success toast
+      toast({
+        title: "✅ Importação concluída!",
+        description: `${importResult.productsCreated} produtos criados, ${importResult.productsUpdated} atualizados, ${importResult.unitsLinked} vínculos com unidades.`,
+      });
+
+      if (importResult.errors && importResult.errors.length > 0) {
+        toast({
+          title: "⚠️ Alguns erros ocorreram",
+          description: `${importResult.errors.length} erros durante a importação. Verifique os detalhes.`,
+          variant: "destructive"
+        });
+      }
     } catch (err) {
       console.error('Import error:', err);
-      setError(`Erro durante a importação: ${String(err)}`);
-      setStep('upload');
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setError(`Erro durante a importação: ${errorMsg}`);
+      setStep('error');
+      
+      toast({
+        title: "❌ Erro na importação",
+        description: errorMsg,
+        variant: "destructive"
+      });
     }
   }, [products]);
 
@@ -291,9 +351,36 @@ export function ImportProductsModal({ open, onOpenChange, onSuccess }: ImportPro
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
               <p className="text-center text-muted-foreground">
-                Importando produtos, aguarde...
+                Importando {uniqueProducts} produtos, aguarde...
               </p>
               <Progress value={progress} />
+              <p className="text-center text-xs text-muted-foreground">
+                Este processo pode levar alguns segundos
+              </p>
+            </div>
+          )}
+
+          {step === 'error' && (
+            <div className="py-8 space-y-4">
+              <div className="flex items-center justify-center">
+                <div className="h-16 w-16 rounded-full bg-destructive/10 flex items-center justify-center">
+                  <AlertCircle className="h-8 w-8 text-destructive" />
+                </div>
+              </div>
+              <p className="text-center text-lg font-medium text-destructive">
+                Erro na importação
+              </p>
+              {error && (
+                <p className="text-center text-sm text-muted-foreground">
+                  {error}
+                </p>
+              )}
+              <div className="flex justify-center gap-2">
+                <Button variant="outline" onClick={resetState}>
+                  Tentar novamente
+                </Button>
+                <Button onClick={handleClose}>Fechar</Button>
+              </div>
             </div>
           )}
 
