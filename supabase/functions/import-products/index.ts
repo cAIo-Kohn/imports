@@ -164,28 +164,38 @@ serve(async (req) => {
 
     console.log(`Updated ${productsUpdated} products`);
 
-    // Fetch existing product_units in bulk
+    // Fetch existing product_units in batches to avoid URL length limits
     const allProductIds = [
       ...Array.from(existingProductsMap.values()),
       ...Array.from(newProductIds.values())
     ];
 
-    const { data: existingLinks, error: linksError } = await supabase
-      .from('product_units')
-      .select('product_id, unit_id')
-      .in('product_id', allProductIds);
-
-    if (linksError) {
-      console.error('Error fetching existing links:', linksError);
-    }
-
     const existingLinksSet = new Set<string>();
-    for (const link of existingLinks || []) {
-      existingLinksSet.add(`${link.product_id}-${link.unit_id}`);
+    const LINKS_BATCH_SIZE = 50; // Smaller batch to avoid URL limits
+
+    console.log(`Fetching existing links for ${allProductIds.length} products in batches of ${LINKS_BATCH_SIZE}...`);
+
+    for (let i = 0; i < allProductIds.length; i += LINKS_BATCH_SIZE) {
+      const batch = allProductIds.slice(i, i + LINKS_BATCH_SIZE);
+      const { data: links, error: linksError } = await supabase
+        .from('product_units')
+        .select('product_id, unit_id')
+        .in('product_id', batch);
+
+      if (linksError) {
+        console.error(`Error fetching links batch ${i}:`, linksError);
+        // Continue anyway - we'll use upsert to handle duplicates
+      } else {
+        for (const link of links || []) {
+          existingLinksSet.add(`${link.product_id}-${link.unit_id}`);
+        }
+      }
     }
 
-    // Prepare product_units inserts
-    const productUnitsToInsert: { product_id: string; unit_id: string }[] = [];
+    console.log(`Found ${existingLinksSet.size} existing links`);
+
+    // Prepare product_units to upsert
+    const productUnitsToUpsert: { product_id: string; unit_id: string }[] = [];
 
     for (const [code, data] of Object.entries(productsByCode)) {
       const productId = existingProductsMap.get(code) || newProductIds.get(code);
@@ -197,24 +207,30 @@ serve(async (req) => {
 
         const linkKey = `${productId}-${unitId}`;
         if (!existingLinksSet.has(linkKey)) {
-          productUnitsToInsert.push({ product_id: productId, unit_id: unitId });
+          productUnitsToUpsert.push({ product_id: productId, unit_id: unitId });
           existingLinksSet.add(linkKey); // Prevent duplicates in same batch
         }
       }
     }
 
-    console.log(`Inserting ${productUnitsToInsert.length} product-unit links`);
+    console.log(`Upserting ${productUnitsToUpsert.length} product-unit links`);
 
-    // Batch insert product_units
-    for (let i = 0; i < productUnitsToInsert.length; i += BATCH_SIZE) {
-      const batch = productUnitsToInsert.slice(i, i + BATCH_SIZE);
+    // Batch upsert product_units with conflict handling
+    for (let i = 0; i < productUnitsToUpsert.length; i += BATCH_SIZE) {
+      const batch = productUnitsToUpsert.slice(i, i + BATCH_SIZE);
       const { error: linkError } = await supabase
         .from('product_units')
-        .insert(batch);
+        .upsert(batch, { 
+          onConflict: 'product_id,unit_id',
+          ignoreDuplicates: true 
+        });
 
       if (linkError) {
-        console.error(`Error inserting links batch ${i}:`, linkError);
-        errors.push(`Error inserting links: ${linkError.message}`);
+        // Only log if it's not a duplicate error
+        if (!linkError.message.includes('duplicate') && !linkError.message.includes('unique')) {
+          console.error(`Error upserting links batch ${i}:`, linkError);
+          errors.push(`Error inserting links: ${linkError.message}`);
+        }
       } else {
         unitsLinked += batch.length;
       }
