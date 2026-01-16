@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Package, Upload, Filter, ChevronLeft, ChevronRight, FileSpreadsheet, AlertCircle, ExternalLink } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { Plus, Search, Package, Upload, Filter, ChevronLeft, ChevronRight, FileSpreadsheet, AlertCircle, Trash2 } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -13,6 +13,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { ImportProductsModal } from '@/components/products/ImportProductsModal';
 import { ImportProductDetailsModal } from '@/components/products/ImportProductDetailsModal';
 import { ImportCadastralDataModal } from '@/components/products/ImportCadastralDataModal';
+import { CreateProductModal } from '@/components/products/CreateProductModal';
+import { DeleteProductDialog } from '@/components/products/DeleteProductDialog';
 
 interface Product {
   id: string;
@@ -68,11 +70,15 @@ const ITEMS_PER_PAGE = 50;
 
 export default function Products() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importDetailsModalOpen, setImportDetailsModalOpen] = useState(false);
   const [importCadastralModalOpen, setImportCadastralModalOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<{ id: string; code: string; technical_description: string } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Fetch total count for pagination
@@ -223,7 +229,7 @@ export default function Products() {
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Dados Cadastrais
           </Button>
-          <Button>
+          <Button onClick={() => setCreateModalOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Novo Produto
           </Button>
@@ -330,6 +336,7 @@ export default function Products() {
                       <TableHead>Embalagem</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Unidades</TableHead>
+                      <TableHead className="w-16 text-center">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -406,6 +413,33 @@ export default function Products() {
                               ))}
                             </div>
                           </TableCell>
+                          <TableCell className="text-center">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setProductToDelete({
+                                        id: product.id,
+                                        code: product.code,
+                                        technical_description: product.technical_description,
+                                      });
+                                      setDeleteDialogOpen(true);
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Excluir produto</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -448,6 +482,25 @@ export default function Products() {
         open={importCadastralModalOpen}
         onOpenChange={setImportCadastralModalOpen}
         onSuccess={refetch}
+      />
+
+      <CreateProductModal
+        open={createModalOpen}
+        onOpenChange={setCreateModalOpen}
+        onSuccess={() => {
+          refetch();
+          queryClient.invalidateQueries({ queryKey: ['dashboard-products-count'] });
+        }}
+      />
+
+      <DeleteProductDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        product={productToDelete}
+        onSuccess={() => {
+          refetch();
+          queryClient.invalidateQueries({ queryKey: ['dashboard-products-count'] });
+        }}
       />
     </div>
   );
