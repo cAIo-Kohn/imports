@@ -31,6 +31,15 @@ interface CadastralData {
   product_height?: number;
 }
 
+// Normalize code by padding with leading zeros if numeric and less than 6 digits
+const normalizeCode = (code: string): string => {
+  const cleaned = String(code || '').trim();
+  if (/^\d+$/.test(cleaned) && cleaned.length < 6) {
+    return cleaned.padStart(6, '0');
+  }
+  return cleaned;
+};
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -53,8 +62,14 @@ serve(async (req) => {
 
     console.log(`[import-cadastral-data] Processing ${products.length} products from Excel`);
 
-    // Get all product codes from the request
-    const codes = products.map(p => p.code).filter(Boolean);
+    // Normalize codes from the request
+    const normalizedProducts = products.map(p => ({
+      ...p,
+      code: normalizeCode(p.code)
+    }));
+
+    // Get all product codes from the normalized request
+    const codes = normalizedProducts.map(p => p.code).filter(Boolean);
     
     // Fetch existing products from database
     const { data: existingProducts, error: fetchError } = await supabase
@@ -79,7 +94,7 @@ serve(async (req) => {
     const productsToUpdate: (CadastralData & { id: string })[] = [];
     const ignoredProducts: string[] = [];
 
-    for (const product of products) {
+    for (const product of normalizedProducts) {
       const existingId = existingProductMap.get(product.code);
       if (existingId) {
         productsToUpdate.push({ ...product, id: existingId });
