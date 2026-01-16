@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { supabase } from '@/integrations/supabase/client';
 import { ImportProductsModal } from '@/components/products/ImportProductsModal';
 import { ImportProductDetailsModal } from '@/components/products/ImportProductDetailsModal';
+import { ImportCadastralDataModal } from '@/components/products/ImportCadastralDataModal';
 
 interface Product {
   id: string;
@@ -51,6 +52,7 @@ export default function Products() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importDetailsModalOpen, setImportDetailsModalOpen] = useState(false);
+  const [importCadastralModalOpen, setImportCadastralModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Fetch total count for pagination
@@ -188,6 +190,10 @@ export default function Products() {
           <Button variant="outline" onClick={() => setImportDetailsModalOpen(true)}>
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Importar Detalhes
+          </Button>
+          <Button variant="outline" onClick={() => setImportCadastralModalOpen(true)}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            Dados Cadastrais
           </Button>
           <Button>
             <Plus className="mr-2 h-4 w-4" />
@@ -357,6 +363,12 @@ export default function Products() {
       <ImportProductDetailsModal
         open={importDetailsModalOpen}
         onOpenChange={setImportDetailsModalOpen}
+        onSuccess={refetch}
+      />
+
+      <ImportCadastralDataModal
+        open={importCadastralModalOpen}
+        onOpenChange={setImportCadastralModalOpen}
         onSuccess={refetch}
       />
     </div>
