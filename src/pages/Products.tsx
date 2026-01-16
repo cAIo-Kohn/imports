@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Search, Package, Upload, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, Package, Upload, Filter, ChevronLeft, ChevronRight, FileSpreadsheet, AlertCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,8 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { ImportProductsModal } from '@/components/products/ImportProductsModal';
+import { ImportProductDetailsModal } from '@/components/products/ImportProductDetailsModal';
 
 interface Product {
   id: string;
@@ -17,6 +19,14 @@ interface Product {
   warehouse_status: string | null;
   is_active: boolean;
   created_at: string;
+  // New columns
+  ean_13: string | null;
+  dun_14: string | null;
+  ncm: string | null;
+  item_type: string | null;
+  master_box_volume: number | null;
+  gross_weight: number | null;
+  weight_per_unit: number | null;
 }
 
 interface ProductUnit {
@@ -27,12 +37,18 @@ interface ProductUnit {
   } | null;
 }
 
+// Check if product has missing Partner data
+const hasIncompletePartnerData = (product: Product) => {
+  return !product.ean_13 && !product.ncm && !product.gross_weight;
+};
+
 const ITEMS_PER_PAGE = 50;
 
 export default function Products() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importDetailsModalOpen, setImportDetailsModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Fetch total count for pagination
@@ -67,7 +83,7 @@ export default function Products() {
 
       let query = supabase
         .from('products')
-        .select('id, code, technical_description, warehouse_status, is_active, created_at')
+        .select('id, code, technical_description, warehouse_status, is_active, created_at, ean_13, dun_14, ncm, item_type, master_box_volume, gross_weight, weight_per_unit')
         .order('code', { ascending: true })
         .range(from, to);
 
@@ -165,7 +181,11 @@ export default function Products() {
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setImportModalOpen(true)}>
             <Upload className="mr-2 h-4 w-4" />
-            Importar
+            Importar Produtos
+          </Button>
+          <Button variant="outline" onClick={() => setImportDetailsModalOpen(true)}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            Importar Detalhes
           </Button>
           <Button>
             <Plus className="mr-2 h-4 w-4" />
@@ -216,35 +236,61 @@ export default function Products() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-8"></TableHead>
                       <TableHead>Código</TableHead>
                       <TableHead>Descrição</TableHead>
+                      <TableHead>NCM</TableHead>
+                      <TableHead>EAN-13</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Unidades</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {products.map((product) => (
-                      <TableRow key={product.id}>
-                        <TableCell className="font-mono font-medium">{product.code}</TableCell>
-                        <TableCell className="max-w-[300px] truncate">{product.technical_description}</TableCell>
-                        <TableCell>
-                          {product.warehouse_status && (
-                            <Badge variant="secondary" className={getStatusColor(product.warehouse_status)}>
-                              {product.warehouse_status}
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1 flex-wrap">
-                            {productUnits?.[product.id]?.map((unitName) => (
-                              <Badge key={unitName} variant="outline" className={getUnitBadgeColor(unitName)}>
-                                {unitName.replace('Filial ', '')}
+                    {products.map((product) => {
+                      const isIncomplete = hasIncompletePartnerData(product);
+                      return (
+                        <TableRow key={product.id} className={isIncomplete ? 'bg-destructive/5' : ''}>
+                          <TableCell className="w-8">
+                            {isIncomplete && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <AlertCircle className="h-4 w-4 text-destructive" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Dados Partner incompletos</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </TableCell>
+                          <TableCell className="font-mono font-medium">{product.code}</TableCell>
+                          <TableCell className="max-w-[250px] truncate">{product.technical_description}</TableCell>
+                          <TableCell className={!product.ncm ? 'text-destructive bg-destructive/10' : ''}>
+                            {product.ncm || <span className="text-xs italic">Vazio</span>}
+                          </TableCell>
+                          <TableCell className={!product.ean_13 ? 'text-destructive bg-destructive/10' : ''}>
+                            {product.ean_13 || <span className="text-xs italic">Vazio</span>}
+                          </TableCell>
+                          <TableCell>
+                            {product.warehouse_status && (
+                              <Badge variant="secondary" className={getStatusColor(product.warehouse_status)}>
+                                {product.warehouse_status}
                               </Badge>
-                            ))}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1 flex-wrap">
+                              {productUnits?.[product.id]?.map((unitName) => (
+                                <Badge key={unitName} variant="outline" className={getUnitBadgeColor(unitName)}>
+                                  {unitName.replace('Filial ', '')}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -299,6 +345,12 @@ export default function Products() {
       <ImportProductsModal 
         open={importModalOpen} 
         onOpenChange={setImportModalOpen}
+        onSuccess={refetch}
+      />
+
+      <ImportProductDetailsModal
+        open={importDetailsModalOpen}
+        onOpenChange={setImportDetailsModalOpen}
         onSuccess={refetch}
       />
     </div>

@@ -78,16 +78,30 @@ export type Database = {
           code: string
           created_at: string
           customs_value: number | null
+          dun_14: string | null
+          ean_13: string | null
           fob_price_usd: number | null
+          gross_weight: number | null
           id: string
           image_url: string | null
+          individual_height: number | null
+          individual_length: number | null
+          individual_weight: number | null
+          individual_width: number | null
           is_active: boolean
+          item_type: string | null
           lead_time_days: number | null
           master_box_height: number | null
           master_box_length: number | null
+          master_box_volume: number | null
           master_box_width: number | null
           moq: number | null
           ncm: string | null
+          origin_description: string | null
+          packaging_type: string | null
+          product_height: number | null
+          product_length: number | null
+          product_width: number | null
           qty_inner: number | null
           qty_master_box: number | null
           subcategory_id: string | null
@@ -109,16 +123,30 @@ export type Database = {
           code: string
           created_at?: string
           customs_value?: number | null
+          dun_14?: string | null
+          ean_13?: string | null
           fob_price_usd?: number | null
+          gross_weight?: number | null
           id?: string
           image_url?: string | null
+          individual_height?: number | null
+          individual_length?: number | null
+          individual_weight?: number | null
+          individual_width?: number | null
           is_active?: boolean
+          item_type?: string | null
           lead_time_days?: number | null
           master_box_height?: number | null
           master_box_length?: number | null
+          master_box_volume?: number | null
           master_box_width?: number | null
           moq?: number | null
           ncm?: string | null
+          origin_description?: string | null
+          packaging_type?: string | null
+          product_height?: number | null
+          product_length?: number | null
+          product_width?: number | null
           qty_inner?: number | null
           qty_master_box?: number | null
           subcategory_id?: string | null
@@ -140,16 +168,30 @@ export type Database = {
           code?: string
           created_at?: string
           customs_value?: number | null
+          dun_14?: string | null
+          ean_13?: string | null
           fob_price_usd?: number | null
+          gross_weight?: number | null
           id?: string
           image_url?: string | null
+          individual_height?: number | null
+          individual_length?: number | null
+          individual_weight?: number | null
+          individual_width?: number | null
           is_active?: boolean
+          item_type?: string | null
           lead_time_days?: number | null
           master_box_height?: number | null
           master_box_length?: number | null
+          master_box_volume?: number | null
           master_box_width?: number | null
           moq?: number | null
           ncm?: string | null
+          origin_description?: string | null
+          packaging_type?: string | null
+          product_height?: number | null
+          product_length?: number | null
+          product_width?: number | null
           qty_inner?: number | null
           qty_master_box?: number | null
           subcategory_id?: string | null
