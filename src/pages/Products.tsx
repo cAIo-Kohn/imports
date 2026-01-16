@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Plus, Search, Package, Upload, Filter, ChevronLeft, ChevronRight, FileSpreadsheet, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Search, Package, Upload, Filter, ChevronLeft, ChevronRight, FileSpreadsheet, AlertCircle, ExternalLink } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,6 +46,7 @@ const hasIncompletePartnerData = (product: Product) => {
 const ITEMS_PER_PAGE = 50;
 
 export default function Products() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -249,7 +251,11 @@ export default function Products() {
                     {products.map((product) => {
                       const isIncomplete = hasIncompletePartnerData(product);
                       return (
-                        <TableRow key={product.id} className={isIncomplete ? 'bg-destructive/5' : ''}>
+                        <TableRow 
+                          key={product.id} 
+                          className={`cursor-pointer hover:bg-muted/50 transition-colors ${isIncomplete ? 'bg-destructive/5' : ''}`}
+                          onClick={() => navigate(`/products/${product.id}`)}
+                        >
                           <TableCell className="w-8">
                             {isIncomplete && (
                               <TooltipProvider>
