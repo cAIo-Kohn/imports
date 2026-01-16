@@ -80,6 +80,16 @@ export function ImportCadastralDataModal({ open, onOpenChange, onSuccess }: Impo
     return isNaN(num) ? undefined : num;
   };
 
+  // Normalize code by padding with leading zeros if numeric and less than 6 digits
+  const normalizeCode = (code: string): string => {
+    const cleaned = String(code || '').trim();
+    // If purely numeric and less than 6 digits, pad with leading zeros
+    if (/^\d+$/.test(cleaned) && cleaned.length < 6) {
+      return cleaned.padStart(6, '0');
+    }
+    return cleaned;
+  };
+
   const parseExcel = useCallback(async (file: File): Promise<CadastralData[]> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -294,23 +304,41 @@ export function ImportCadastralDataModal({ open, onOpenChange, onSuccess }: Impo
     setProgress(0);
 
     try {
-      // Get all product codes from uploaded data
-      const codes = products.map(p => p.code);
-      
-      // Fetch existing products from database
+      // Fetch ALL product codes from database to compare with normalized versions
       const { data: existingProducts, error } = await supabase
         .from('products')
-        .select('code')
-        .in('code', codes);
+        .select('code');
 
       if (error) throw error;
 
       setProgress(50);
 
-      const existingCodes = new Set(existingProducts?.map(p => p.code) || []);
-      
-      const toUpdate = products.filter(p => existingCodes.has(p.code));
-      const toIgnore = products.filter(p => !existingCodes.has(p.code));
+      // Create a map of normalized code -> original code from database
+      const dbCodeMap = new Map<string, string>();
+      existingProducts?.forEach(p => {
+        const normalized = normalizeCode(p.code);
+        dbCodeMap.set(normalized, p.code);
+      });
+
+      console.log('Sample DB codes:', existingProducts?.slice(0, 5).map(p => p.code));
+      console.log('Sample Excel codes:', products.slice(0, 5).map(p => p.code));
+      console.log('Sample normalized Excel codes:', products.slice(0, 5).map(p => normalizeCode(p.code)));
+
+      // Compare using normalized codes
+      const toUpdate: CadastralData[] = [];
+      const toIgnore: CadastralData[] = [];
+
+      products.forEach(p => {
+        const normalizedCode = normalizeCode(p.code);
+        if (dbCodeMap.has(normalizedCode)) {
+          // Use the original code from DB for the update
+          toUpdate.push({ ...p, code: dbCodeMap.get(normalizedCode)! });
+        } else {
+          toIgnore.push(p);
+        }
+      });
+
+      console.log(`Compare result: ${toUpdate.length} to update, ${toIgnore.length} to ignore`);
 
       setCompareResult({ toUpdate, toIgnore });
       setProgress(100);
