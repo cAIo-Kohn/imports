@@ -73,115 +73,162 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Grouped into ${Object.keys(productsByCode).length} unique products`);
+    const uniqueCodes = Object.keys(productsByCode);
+    console.log(`Grouped into ${uniqueCodes.length} unique products`);
+
+    // Fetch existing products in bulk
+    const { data: existingProducts, error: fetchError } = await supabase
+      .from('products')
+      .select('id, code')
+      .in('code', uniqueCodes);
+
+    if (fetchError) {
+      console.error('Error fetching existing products:', fetchError);
+      throw fetchError;
+    }
+
+    const existingProductsMap = new Map<string, string>();
+    for (const p of existingProducts || []) {
+      existingProductsMap.set(p.code, p.id);
+    }
+
+    console.log(`Found ${existingProductsMap.size} existing products`);
+
+    // Separate new products from existing ones
+    const newProducts: { code: string; technical_description: string; warehouse_status: string }[] = [];
+    const productsToUpdate: { id: string; technical_description: string; warehouse_status: string }[] = [];
+
+    for (const [code, data] of Object.entries(productsByCode)) {
+      if (existingProductsMap.has(code)) {
+        productsToUpdate.push({
+          id: existingProductsMap.get(code)!,
+          technical_description: data.descricao,
+          warehouse_status: data.statusDeposito
+        });
+      } else {
+        newProducts.push({
+          code,
+          technical_description: data.descricao,
+          warehouse_status: data.statusDeposito
+        });
+      }
+    }
+
+    console.log(`Creating ${newProducts.length} new products, updating ${productsToUpdate.length} existing products`);
 
     let productsCreated = 0;
     let productsUpdated = 0;
     let unitsLinked = 0;
     const errors: string[] = [];
 
-    for (const [code, data] of Object.entries(productsByCode)) {
-      try {
-        // Check if product already exists
-        const { data: existingProduct, error: selectError } = await supabase
-          .from('products')
-          .select('id')
-          .eq('code', code)
-          .maybeSingle();
+    // Batch insert new products (in chunks of 100)
+    const BATCH_SIZE = 100;
+    const newProductIds: Map<string, string> = new Map();
 
-        if (selectError) {
-          console.error(`Error checking product ${code}:`, selectError);
-          errors.push(`Error checking product ${code}: ${selectError.message}`);
-          continue;
+    for (let i = 0; i < newProducts.length; i += BATCH_SIZE) {
+      const batch = newProducts.slice(i, i + BATCH_SIZE);
+      const { data: insertedProducts, error: insertError } = await supabase
+        .from('products')
+        .insert(batch)
+        .select('id, code');
+
+      if (insertError) {
+        console.error(`Error inserting batch ${i}:`, insertError);
+        errors.push(`Error inserting batch: ${insertError.message}`);
+      } else {
+        for (const p of insertedProducts || []) {
+          newProductIds.set(p.code, p.id);
         }
-
-        let productId: string;
-
-        if (existingProduct) {
-          // Update existing product
-          const { error: updateError } = await supabase
-            .from('products')
-            .update({
-              technical_description: data.descricao,
-              warehouse_status: data.statusDeposito
-            })
-            .eq('id', existingProduct.id);
-
-          if (updateError) {
-            console.error(`Error updating product ${code}:`, updateError);
-            errors.push(`Error updating product ${code}: ${updateError.message}`);
-            continue;
-          }
-
-          productId = existingProduct.id;
-          productsUpdated++;
-        } else {
-          // Create new product
-          const { data: newProduct, error: insertError } = await supabase
-            .from('products')
-            .insert({
-              code: code,
-              technical_description: data.descricao,
-              warehouse_status: data.statusDeposito
-            })
-            .select('id')
-            .single();
-
-          if (insertError) {
-            console.error(`Error creating product ${code}:`, insertError);
-            errors.push(`Error creating product ${code}: ${insertError.message}`);
-            continue;
-          }
-
-          productId = newProduct.id;
-          productsCreated++;
-        }
-
-        // Link product to units
-        for (const estabelecimento of data.estabelecimentos) {
-          const unitId = unitMapping[estabelecimento];
-          if (!unitId) {
-            console.warn(`No unit found for estabelecimento ${estabelecimento}`);
-            continue;
-          }
-
-          // Check if link already exists
-          const { data: existingLink } = await supabase
-            .from('product_units')
-            .select('id')
-            .eq('product_id', productId)
-            .eq('unit_id', unitId)
-            .maybeSingle();
-
-          if (!existingLink) {
-            const { error: linkError } = await supabase
-              .from('product_units')
-              .insert({
-                product_id: productId,
-                unit_id: unitId
-              });
-
-            if (linkError) {
-              console.error(`Error linking product ${code} to unit ${estabelecimento}:`, linkError);
-              errors.push(`Error linking product ${code} to unit ${estabelecimento}: ${linkError.message}`);
-            } else {
-              unitsLinked++;
-            }
-          }
-        }
-      } catch (err) {
-        console.error(`Unexpected error processing product ${code}:`, err);
-        errors.push(`Unexpected error processing product ${code}: ${String(err)}`);
+        productsCreated += (insertedProducts?.length || 0);
       }
     }
+
+    console.log(`Inserted ${productsCreated} new products`);
+
+    // Batch update existing products (one by one, but faster with prepared data)
+    for (const product of productsToUpdate) {
+      const { error: updateError } = await supabase
+        .from('products')
+        .update({
+          technical_description: product.technical_description,
+          warehouse_status: product.warehouse_status
+        })
+        .eq('id', product.id);
+
+      if (updateError) {
+        errors.push(`Error updating product: ${updateError.message}`);
+      } else {
+        productsUpdated++;
+      }
+    }
+
+    console.log(`Updated ${productsUpdated} products`);
+
+    // Fetch existing product_units in bulk
+    const allProductIds = [
+      ...Array.from(existingProductsMap.values()),
+      ...Array.from(newProductIds.values())
+    ];
+
+    const { data: existingLinks, error: linksError } = await supabase
+      .from('product_units')
+      .select('product_id, unit_id')
+      .in('product_id', allProductIds);
+
+    if (linksError) {
+      console.error('Error fetching existing links:', linksError);
+    }
+
+    const existingLinksSet = new Set<string>();
+    for (const link of existingLinks || []) {
+      existingLinksSet.add(`${link.product_id}-${link.unit_id}`);
+    }
+
+    // Prepare product_units inserts
+    const productUnitsToInsert: { product_id: string; unit_id: string }[] = [];
+
+    for (const [code, data] of Object.entries(productsByCode)) {
+      const productId = existingProductsMap.get(code) || newProductIds.get(code);
+      if (!productId) continue;
+
+      for (const estabelecimento of data.estabelecimentos) {
+        const unitId = unitMapping[estabelecimento];
+        if (!unitId) continue;
+
+        const linkKey = `${productId}-${unitId}`;
+        if (!existingLinksSet.has(linkKey)) {
+          productUnitsToInsert.push({ product_id: productId, unit_id: unitId });
+          existingLinksSet.add(linkKey); // Prevent duplicates in same batch
+        }
+      }
+    }
+
+    console.log(`Inserting ${productUnitsToInsert.length} product-unit links`);
+
+    // Batch insert product_units
+    for (let i = 0; i < productUnitsToInsert.length; i += BATCH_SIZE) {
+      const batch = productUnitsToInsert.slice(i, i + BATCH_SIZE);
+      const { error: linkError } = await supabase
+        .from('product_units')
+        .insert(batch);
+
+      if (linkError) {
+        console.error(`Error inserting links batch ${i}:`, linkError);
+        errors.push(`Error inserting links: ${linkError.message}`);
+      } else {
+        unitsLinked += batch.length;
+      }
+    }
+
+    console.log(`Linked ${unitsLinked} product-units`);
 
     const result = {
       success: true,
       productsCreated,
       productsUpdated,
       unitsLinked,
-      totalProcessed: Object.keys(productsByCode).length,
-      errors: errors.length > 0 ? errors.slice(0, 10) : undefined // Limit errors shown
+      totalProcessed: uniqueCodes.length,
+      errors: errors.length > 0 ? errors.slice(0, 10) : undefined
     };
 
     console.log('Import completed:', result);
