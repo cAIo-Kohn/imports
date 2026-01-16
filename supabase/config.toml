@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.compare-products]
 verify_jwt = false
+
+[functions.import-product-details]
+verify_jwt = false
+
+[functions.import-cadastral-data]
+verify_jwt = false
