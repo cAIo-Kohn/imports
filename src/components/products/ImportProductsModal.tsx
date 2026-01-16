@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Upload, FileSpreadsheet, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, FileSpreadsheet, Loader2, CheckCircle, AlertCircle, Plus, RefreshCw, Minus, ChevronDown, ChevronUp } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   Dialog,
@@ -35,22 +35,37 @@ interface ImportResult {
   errors?: string[];
 }
 
-type ImportStep = 'upload' | 'preview' | 'importing' | 'complete' | 'error';
+interface CompareResult {
+  newProducts: string[];
+  existingProducts: { code: string; description: string }[];
+  removedProducts: { code: string; description: string }[];
+  summary: {
+    newCount: number;
+    existingCount: number;
+    removedCount: number;
+  };
+}
+
+type ImportStep = 'upload' | 'preview' | 'comparing' | 'compare' | 'importing' | 'complete' | 'error';
 
 export function ImportProductsModal({ open, onOpenChange, onSuccess }: ImportProductsModalProps) {
   const [step, setStep] = useState<ImportStep>('upload');
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [compareResult, setCompareResult] = useState<CompareResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [expandedSection, setExpandedSection] = useState<'new' | 'existing' | 'removed' | null>(null);
 
   const resetState = useCallback(() => {
     setStep('upload');
     setProducts([]);
     setProgress(0);
     setResult(null);
+    setCompareResult(null);
     setError(null);
+    setExpandedSection(null);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -157,6 +172,55 @@ export function ImportProductsModal({ open, onOpenChange, onSuccess }: ImportPro
     setIsDragging(false);
   }, []);
 
+  const handleCompare = useCallback(async () => {
+    setStep('comparing');
+    setProgress(20);
+
+    try {
+      // Get unique codes from uploaded products
+      const uniqueCodes = [...new Set(products.map(p => p.codigo))];
+
+      toast({
+        title: "Analisando arquivo",
+        description: `Comparando ${uniqueCodes.length} produtos com o banco de dados...`,
+      });
+
+      const { data, error: fnError } = await supabase.functions.invoke('compare-products', {
+        body: { codes: uniqueCodes }
+      });
+
+      if (fnError) {
+        throw new Error(fnError.message || 'Erro ao comparar produtos');
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      const comparison = data as CompareResult;
+      setCompareResult(comparison);
+      setStep('compare');
+      setProgress(100);
+
+      toast({
+        title: "Comparativo concluído",
+        description: `${comparison.summary.newCount} novos, ${comparison.summary.existingCount} existentes, ${comparison.summary.removedCount} não estão no arquivo.`,
+      });
+
+    } catch (err) {
+      console.error('Compare error:', err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setError(`Erro ao comparar: ${errorMsg}`);
+      setStep('error');
+      
+      toast({
+        title: "❌ Erro no comparativo",
+        description: errorMsg,
+        variant: "destructive"
+      });
+    }
+  }, [products]);
+
   const handleImport = useCallback(async () => {
     setStep('importing');
     setProgress(10);
@@ -189,7 +253,6 @@ export function ImportProductsModal({ open, onOpenChange, onSuccess }: ImportPro
       setStep('complete');
       setProgress(100);
 
-      // Show success toast
       toast({
         title: "✅ Importação concluída!",
         description: `${importResult.productsCreated} produtos criados, ${importResult.productsUpdated} atualizados, ${importResult.unitsLinked} vínculos com unidades.`,
@@ -223,6 +286,10 @@ export function ImportProductsModal({ open, onOpenChange, onSuccess }: ImportPro
       case 10: return 'Filial RJ';
       default: return `Est. ${num}`;
     }
+  };
+
+  const toggleSection = (section: 'new' | 'existing' | 'removed') => {
+    setExpandedSection(prev => prev === section ? null : section);
   };
 
   // Count unique products
@@ -333,6 +400,145 @@ export function ImportProductsModal({ open, onOpenChange, onSuccess }: ImportPro
                   </div>
                 )}
               </div>
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={resetState}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleCompare}>
+                  Continuar e Comparar
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {step === 'comparing' && (
+            <div className="py-8 space-y-4">
+              <div className="flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+              <p className="text-center text-muted-foreground">
+                Comparando {uniqueProducts} produtos com o banco de dados...
+              </p>
+              <Progress value={progress} />
+            </div>
+          )}
+
+          {step === 'compare' && compareResult && (
+            <div className="space-y-4">
+              {/* Summary cards */}
+              <div className="grid grid-cols-3 gap-3">
+                <button
+                  onClick={() => toggleSection('new')}
+                  className={`p-4 rounded-lg text-left transition-colors ${
+                    expandedSection === 'new' ? 'ring-2 ring-green-500' : ''
+                  } bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30`}
+                >
+                  <div className="flex items-center justify-between">
+                    <Plus className="h-5 w-5 text-green-600" />
+                    {expandedSection === 'new' ? (
+                      <ChevronUp className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-green-600" />
+                    )}
+                  </div>
+                  <p className="text-2xl font-bold text-green-600 mt-2">{compareResult.summary.newCount}</p>
+                  <p className="text-sm text-green-700 dark:text-green-400">Produtos novos</p>
+                </button>
+
+                <button
+                  onClick={() => toggleSection('existing')}
+                  className={`p-4 rounded-lg text-left transition-colors ${
+                    expandedSection === 'existing' ? 'ring-2 ring-blue-500' : ''
+                  } bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30`}
+                >
+                  <div className="flex items-center justify-between">
+                    <RefreshCw className="h-5 w-5 text-blue-600" />
+                    {expandedSection === 'existing' ? (
+                      <ChevronUp className="h-4 w-4 text-blue-600" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-blue-600" />
+                    )}
+                  </div>
+                  <p className="text-2xl font-bold text-blue-600 mt-2">{compareResult.summary.existingCount}</p>
+                  <p className="text-sm text-blue-700 dark:text-blue-400">Serão atualizados</p>
+                </button>
+
+                <button
+                  onClick={() => toggleSection('removed')}
+                  className={`p-4 rounded-lg text-left transition-colors ${
+                    expandedSection === 'removed' ? 'ring-2 ring-amber-500' : ''
+                  } bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30`}
+                >
+                  <div className="flex items-center justify-between">
+                    <Minus className="h-5 w-5 text-amber-600" />
+                    {expandedSection === 'removed' ? (
+                      <ChevronUp className="h-4 w-4 text-amber-600" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-amber-600" />
+                    )}
+                  </div>
+                  <p className="text-2xl font-bold text-amber-600 mt-2">{compareResult.summary.removedCount}</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-400">Não estão no arquivo</p>
+                </button>
+              </div>
+
+              {/* Expanded section content */}
+              {expandedSection && (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="max-h-48 overflow-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted sticky top-0">
+                        <tr>
+                          <th className="text-left p-2">Código</th>
+                          <th className="text-left p-2">Descrição</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {expandedSection === 'new' && compareResult.newProducts.slice(0, 50).map((code, i) => {
+                          const product = products.find(p => p.codigo === code);
+                          return (
+                            <tr key={i} className="border-t">
+                              <td className="p-2 font-mono text-green-600">{code}</td>
+                              <td className="p-2 truncate max-w-[300px]">{product?.descricao || '-'}</td>
+                            </tr>
+                          );
+                        })}
+                        {expandedSection === 'existing' && compareResult.existingProducts.slice(0, 50).map((p, i) => (
+                          <tr key={i} className="border-t">
+                            <td className="p-2 font-mono text-blue-600">{p.code}</td>
+                            <td className="p-2 truncate max-w-[300px]">{p.description}</td>
+                          </tr>
+                        ))}
+                        {expandedSection === 'removed' && compareResult.removedProducts.slice(0, 50).map((p, i) => (
+                          <tr key={i} className="border-t">
+                            <td className="p-2 font-mono text-amber-600">{p.code}</td>
+                            <td className="p-2 truncate max-w-[300px]">{p.description}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {((expandedSection === 'new' && compareResult.newProducts.length > 50) ||
+                    (expandedSection === 'existing' && compareResult.existingProducts.length > 50) ||
+                    (expandedSection === 'removed' && compareResult.removedProducts.length > 50)) && (
+                    <div className="p-2 text-center text-sm text-muted-foreground bg-muted">
+                      Mostrando 50 primeiros itens
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Info message about removed products */}
+              {compareResult.summary.removedCount > 0 && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-sm">
+                  <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-amber-800 dark:text-amber-200">
+                    <strong>{compareResult.summary.removedCount} produtos</strong> existem no banco mas não estão no arquivo. 
+                    Eles não serão removidos automaticamente.
+                  </p>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={resetState}>
