@@ -21,14 +21,34 @@ interface Product {
   warehouse_status: string | null;
   is_active: boolean;
   created_at: string;
-  // New columns
+  // Identification
   ean_13: string | null;
   dun_14: string | null;
   ncm: string | null;
   item_type: string | null;
+  origin_description: string | null;
+  brand: string | null;
+  // Master Box
+  qty_master_box: number | null;
+  qty_inner: number | null;
+  master_box_length: number | null;
+  master_box_width: number | null;
+  master_box_height: number | null;
   master_box_volume: number | null;
+  // Weights
   gross_weight: number | null;
   weight_per_unit: number | null;
+  individual_weight: number | null;
+  // Individual Dimensions
+  individual_length: number | null;
+  individual_width: number | null;
+  individual_height: number | null;
+  // Product Dimensions
+  product_length: number | null;
+  product_width: number | null;
+  product_height: number | null;
+  // Other
+  packaging_type: string | null;
 }
 
 interface ProductUnit {
@@ -87,7 +107,15 @@ export default function Products() {
 
       let query = supabase
         .from('products')
-        .select('id, code, technical_description, warehouse_status, is_active, created_at, ean_13, dun_14, ncm, item_type, master_box_volume, gross_weight, weight_per_unit')
+        .select(`
+          id, code, technical_description, warehouse_status, is_active, created_at,
+          ean_13, dun_14, ncm, item_type, origin_description, brand,
+          qty_master_box, qty_inner, master_box_length, master_box_width, master_box_height, master_box_volume,
+          gross_weight, weight_per_unit, individual_weight,
+          individual_length, individual_width, individual_height,
+          product_length, product_width, product_height,
+          packaging_type
+        `)
         .order('code', { ascending: true })
         .range(from, to);
 
@@ -240,15 +268,35 @@ export default function Products() {
             </div>
           ) : products && products.length > 0 ? (
             <>
-              <div className="rounded-md border">
-                <Table>
+              <div className="rounded-md border overflow-x-auto">
+                <Table className="min-w-[2400px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-8"></TableHead>
-                      <TableHead>Código</TableHead>
-                      <TableHead>Descrição</TableHead>
+                      <TableHead className="w-8 sticky left-0 bg-background z-10"></TableHead>
+                      <TableHead className="sticky left-8 bg-background z-10 min-w-[100px]">Código</TableHead>
+                      <TableHead className="min-w-[250px]">Descrição</TableHead>
                       <TableHead>NCM</TableHead>
                       <TableHead>EAN-13</TableHead>
+                      <TableHead>DUN-14</TableHead>
+                      <TableHead>Tipo Item</TableHead>
+                      <TableHead>Origem</TableHead>
+                      <TableHead>Marca</TableHead>
+                      <TableHead className="text-right">Qt. Master</TableHead>
+                      <TableHead className="text-right">Qt. Inner</TableHead>
+                      <TableHead className="text-right">C. Master (m)</TableHead>
+                      <TableHead className="text-right">L. Master (m)</TableHead>
+                      <TableHead className="text-right">A. Master (m)</TableHead>
+                      <TableHead className="text-right">Volume (m³)</TableHead>
+                      <TableHead className="text-right">Peso Bruto (kg)</TableHead>
+                      <TableHead className="text-right">Peso Líquido (kg)</TableHead>
+                      <TableHead className="text-right">P. Individual (kg)</TableHead>
+                      <TableHead className="text-right">C. Individual (m)</TableHead>
+                      <TableHead className="text-right">L. Individual (m)</TableHead>
+                      <TableHead className="text-right">A. Individual (m)</TableHead>
+                      <TableHead className="text-right">C. Produto (m)</TableHead>
+                      <TableHead className="text-right">L. Produto (m)</TableHead>
+                      <TableHead className="text-right">A. Produto (m)</TableHead>
+                      <TableHead>Embalagem</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Unidades</TableHead>
                     </TableRow>
@@ -256,13 +304,20 @@ export default function Products() {
                   <TableBody>
                     {products.map((product) => {
                       const isIncomplete = hasIncompletePartnerData(product);
+                      const formatNum = (val: number | null, decimals = 2) => 
+                        val != null ? val.toFixed(decimals) : <span className="text-muted-foreground text-xs">-</span>;
+                      const formatInt = (val: number | null) => 
+                        val != null ? val : <span className="text-muted-foreground text-xs">-</span>;
+                      const formatText = (val: string | null) => 
+                        val || <span className="text-muted-foreground text-xs">-</span>;
+                      
                       return (
                         <TableRow 
                           key={product.id} 
                           className={`cursor-pointer hover:bg-muted/50 transition-colors ${isIncomplete ? 'bg-destructive/5' : ''}`}
                           onClick={() => navigate(`/products/${product.id}`)}
                         >
-                          <TableCell className="w-8">
+                          <TableCell className="w-8 sticky left-0 bg-background z-10">
                             {isIncomplete && (
                               <TooltipProvider>
                                 <Tooltip>
@@ -276,7 +331,7 @@ export default function Products() {
                               </TooltipProvider>
                             )}
                           </TableCell>
-                          <TableCell className="font-mono font-medium">{product.code}</TableCell>
+                          <TableCell className="font-mono font-medium sticky left-8 bg-background z-10">{product.code}</TableCell>
                           <TableCell className="max-w-[250px] truncate">{product.technical_description}</TableCell>
                           <TableCell className={!product.ncm ? 'text-destructive bg-destructive/10' : ''}>
                             {product.ncm || <span className="text-xs italic">Vazio</span>}
@@ -284,6 +339,26 @@ export default function Products() {
                           <TableCell className={!product.ean_13 ? 'text-destructive bg-destructive/10' : ''}>
                             {product.ean_13 || <span className="text-xs italic">Vazio</span>}
                           </TableCell>
+                          <TableCell>{formatText(product.dun_14)}</TableCell>
+                          <TableCell>{formatText(product.item_type)}</TableCell>
+                          <TableCell>{formatText(product.origin_description)}</TableCell>
+                          <TableCell>{formatText(product.brand)}</TableCell>
+                          <TableCell className="text-right">{formatInt(product.qty_master_box)}</TableCell>
+                          <TableCell className="text-right">{formatInt(product.qty_inner)}</TableCell>
+                          <TableCell className="text-right">{formatNum(product.master_box_length)}</TableCell>
+                          <TableCell className="text-right">{formatNum(product.master_box_width)}</TableCell>
+                          <TableCell className="text-right">{formatNum(product.master_box_height)}</TableCell>
+                          <TableCell className="text-right">{formatNum(product.master_box_volume, 4)}</TableCell>
+                          <TableCell className="text-right">{formatNum(product.gross_weight)}</TableCell>
+                          <TableCell className="text-right">{formatNum(product.weight_per_unit)}</TableCell>
+                          <TableCell className="text-right">{formatNum(product.individual_weight)}</TableCell>
+                          <TableCell className="text-right">{formatNum(product.individual_length)}</TableCell>
+                          <TableCell className="text-right">{formatNum(product.individual_width)}</TableCell>
+                          <TableCell className="text-right">{formatNum(product.individual_height)}</TableCell>
+                          <TableCell className="text-right">{formatNum(product.product_length)}</TableCell>
+                          <TableCell className="text-right">{formatNum(product.product_width)}</TableCell>
+                          <TableCell className="text-right">{formatNum(product.product_height)}</TableCell>
+                          <TableCell>{formatText(product.packaging_type)}</TableCell>
                           <TableCell>
                             {product.warehouse_status && (
                               <Badge variant="secondary" className={getStatusColor(product.warehouse_status)}>
