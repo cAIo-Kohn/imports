@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Search, Package, Upload, Filter } from 'lucide-react';
+import { Plus, Search, Package, Upload, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,18 +27,21 @@ interface ProductUnit {
   } | null;
 }
 
+const ITEMS_PER_PAGE = 50;
+
 export default function Products() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const { data: products, isLoading, refetch } = useQuery({
-    queryKey: ['products', search, statusFilter],
+  // Fetch total count for pagination
+  const { data: totalCount } = useQuery({
+    queryKey: ['products-count', search, statusFilter],
     queryFn: async () => {
       let query = supabase
         .from('products')
-        .select('id, code, technical_description, warehouse_status, is_active, created_at')
-        .order('code', { ascending: true });
+        .select('id', { count: 'exact', head: true });
 
       if (search) {
         query = query.or(`code.ilike.%${search}%,technical_description.ilike.%${search}%`);
@@ -48,12 +51,51 @@ export default function Products() {
         query = query.eq('warehouse_status', statusFilter);
       }
 
-      const { data, error } = await query.limit(100);
+      const { count, error } = await query;
+      if (error) throw error;
+      return count ?? 0;
+    }
+  });
+
+  const totalPages = Math.ceil((totalCount ?? 0) / ITEMS_PER_PAGE);
+
+  const { data: products, isLoading, refetch } = useQuery({
+    queryKey: ['products', search, statusFilter, currentPage],
+    queryFn: async () => {
+      const from = (currentPage - 1) * ITEMS_PER_PAGE;
+      const to = from + ITEMS_PER_PAGE - 1;
+
+      let query = supabase
+        .from('products')
+        .select('id, code, technical_description, warehouse_status, is_active, created_at')
+        .order('code', { ascending: true })
+        .range(from, to);
+
+      if (search) {
+        query = query.or(`code.ilike.%${search}%,technical_description.ilike.%${search}%`);
+      }
+
+      if (statusFilter && statusFilter !== 'all') {
+        query = query.eq('warehouse_status', statusFilter);
+      }
+
+      const { data, error } = await query;
       
       if (error) throw error;
       return data as Product[];
     }
   });
+
+  // Reset to page 1 when filters change
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setCurrentPage(1);
+  };
+
+  const handleStatusChange = (value: string) => {
+    setStatusFilter(value);
+    setCurrentPage(1);
+  };
 
   const { data: productUnits } = useQuery({
     queryKey: ['product-units'],
@@ -138,11 +180,11 @@ export default function Products() {
           <Input
             placeholder="Buscar por código ou descrição..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-10"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={handleStatusChange}>
           <SelectTrigger className="w-[180px]">
             <Filter className="mr-2 h-4 w-4" />
             <SelectValue placeholder="Status Depósito" />
@@ -160,7 +202,7 @@ export default function Products() {
         <CardHeader>
           <CardTitle>Lista de Produtos</CardTitle>
           <CardDescription>
-            {products?.length ? `${products.length} produtos encontrados` : 'Nenhum produto cadastrado ainda'}
+            {totalCount !== undefined ? `${totalCount} produtos encontrados` : 'Carregando...'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -169,42 +211,73 @@ export default function Products() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : products && products.length > 0 ? (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Código</TableHead>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Unidades</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {products.map((product) => (
-                    <TableRow key={product.id}>
-                      <TableCell className="font-mono font-medium">{product.code}</TableCell>
-                      <TableCell className="max-w-[300px] truncate">{product.technical_description}</TableCell>
-                      <TableCell>
-                        {product.warehouse_status && (
-                          <Badge variant="secondary" className={getStatusColor(product.warehouse_status)}>
-                            {product.warehouse_status}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1 flex-wrap">
-                          {productUnits?.[product.id]?.map((unitName) => (
-                            <Badge key={unitName} variant="outline" className={getUnitBadgeColor(unitName)}>
-                              {unitName.replace('Filial ', '')}
-                            </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
+            <>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Código</TableHead>
+                      <TableHead>Descrição</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Unidades</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {products.map((product) => (
+                      <TableRow key={product.id}>
+                        <TableCell className="font-mono font-medium">{product.code}</TableCell>
+                        <TableCell className="max-w-[300px] truncate">{product.technical_description}</TableCell>
+                        <TableCell>
+                          {product.warehouse_status && (
+                            <Badge variant="secondary" className={getStatusColor(product.warehouse_status)}>
+                              {product.warehouse_status}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1 flex-wrap">
+                            {productUnits?.[product.id]?.map((unitName) => (
+                              <Badge key={unitName} variant="outline" className={getUnitBadgeColor(unitName)}>
+                                {unitName.replace('Filial ', '')}
+                              </Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Página {currentPage} de {totalPages}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Anterior
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Próxima
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <div className="p-4 rounded-full bg-muted mb-4">

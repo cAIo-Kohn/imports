@@ -145,20 +145,22 @@ serve(async (req) => {
 
     console.log(`Inserted ${productsCreated} new products`);
 
-    // Batch update existing products (one by one, but faster with prepared data)
-    for (const product of productsToUpdate) {
+    // Batch update existing products using upsert
+    for (let i = 0; i < productsToUpdate.length; i += BATCH_SIZE) {
+      const batch = productsToUpdate.slice(i, i + BATCH_SIZE);
       const { error: updateError } = await supabase
         .from('products')
-        .update({
-          technical_description: product.technical_description,
-          warehouse_status: product.warehouse_status
-        })
-        .eq('id', product.id);
+        .upsert(batch.map(p => ({
+          id: p.id,
+          technical_description: p.technical_description,
+          warehouse_status: p.warehouse_status
+        })), { onConflict: 'id' });
 
       if (updateError) {
-        errors.push(`Error updating product: ${updateError.message}`);
+        console.error(`Error updating batch ${i}:`, updateError);
+        errors.push(`Error updating products: ${updateError.message}`);
       } else {
-        productsUpdated++;
+        productsUpdated += batch.length;
       }
     }
 
