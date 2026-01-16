@@ -91,41 +91,129 @@ export function ImportCadastralDataModal({ open, onOpenChange, onSuccess }: Impo
           const worksheet = workbook.Sheets[sheetName];
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
 
-          // Find header row (should be first row)
-          const headers = jsonData[0] as string[];
+          // Find header row - search in first 10 rows
+          let headerRowIndex = 0;
+          for (let i = 0; i < Math.min(10, jsonData.length); i++) {
+            const row = jsonData[i] as string[];
+            if (row && row.some(cell => {
+              const norm = String(cell || '').trim().toLowerCase();
+              return norm.includes('códi') || norm.includes('codi') || norm === 'ean' || 
+                     norm.includes('ean') || norm === 'ncm' || norm.includes('descrição') || 
+                     norm.includes('descricao');
+            })) {
+              headerRowIndex = i;
+              break;
+            }
+          }
+
+          const headers = jsonData[headerRowIndex] as string[];
+          console.log('Found headers at row:', headerRowIndex, headers);
           
-          // Map column indices
+          // Map column indices with flexible matching
           const colMap: Record<string, number> = {};
           headers.forEach((header, index) => {
             const normalized = String(header || '').trim().toLowerCase();
-            if (normalized.includes('código') || normalized === 'codigo') colMap['code'] = index;
-            if (normalized.includes('descrição') || normalized === 'descricao') colMap['description'] = index;
-            if (normalized === 'ean 13' || normalized === 'ean13') colMap['ean_13'] = index;
-            if (normalized === 'dun 14' || normalized === 'dun14') colMap['dun_14'] = index;
-            if (normalized === 'ncm') colMap['ncm'] = index;
-            if (normalized.includes('tipo item')) colMap['item_type'] = index;
-            if (normalized.includes('desc. origem') || normalized.includes('origem')) colMap['origin_description'] = index;
-            if (normalized === 'qt' || normalized === 'quantidade') colMap['qty_master_box'] = index;
-            if (normalized.includes('c. (m)') && normalized.includes('master')) colMap['master_box_length'] = index;
-            if (normalized.includes('l. (m)') && normalized.includes('master')) colMap['master_box_width'] = index;
-            if (normalized.includes('a. (m)') && normalized.includes('master')) colMap['master_box_height'] = index;
-            if (normalized.includes('vol') || normalized === 'vol (m³)') colMap['master_box_volume'] = index;
-            if (normalized.includes('peso bruto')) colMap['gross_weight'] = index;
-            if (normalized.includes('peso líquido') || normalized.includes('peso liquido')) colMap['weight_per_unit'] = index;
-            if (normalized.includes('c. individual') || normalized === 'c.individual') colMap['individual_length'] = index;
-            if (normalized.includes('l. individual') || normalized === 'l.individual') colMap['individual_width'] = index;
-            if (normalized.includes('a. individual') || normalized === 'a.individual') colMap['individual_height'] = index;
-            if (normalized.includes('p. individual') || normalized === 'p.individual') colMap['individual_weight'] = index;
-            if (normalized.includes('tipo emb')) colMap['packaging_type'] = index;
-            if (normalized.includes('c. produto') || normalized === 'c.produto') colMap['product_length'] = index;
-            if (normalized.includes('l. produto') || normalized === 'l.produto') colMap['product_width'] = index;
-            if (normalized.includes('a. produto') || normalized === 'a.produto') colMap['product_height'] = index;
+            
+            // Code - accept multiple variations
+            if (!colMap['code'] && (
+              normalized.includes('códi') || normalized.includes('codi') || 
+              normalized === 'cod' || normalized === 'code' || normalized === 'cod.'
+            )) colMap['code'] = index;
+            
+            // Description
+            if (!colMap['description'] && (
+              normalized.includes('descrição') || normalized.includes('descricao') || 
+              normalized.includes('desc') || normalized === 'nome'
+            )) colMap['description'] = index;
+            
+            // EAN 13 - any variation with "ean"
+            if (!colMap['ean_13'] && normalized.includes('ean')) colMap['ean_13'] = index;
+            
+            // DUN 14 - any variation with "dun"
+            if (!colMap['dun_14'] && normalized.includes('dun')) colMap['dun_14'] = index;
+            
+            // NCM
+            if (!colMap['ncm'] && normalized === 'ncm') colMap['ncm'] = index;
+            
+            // Item Type
+            if (!colMap['item_type'] && (
+              normalized.includes('tipo item') || normalized.includes('tipo de item') ||
+              normalized === 'tipo'
+            )) colMap['item_type'] = index;
+            
+            // Origin Description
+            if (!colMap['origin_description'] && (
+              normalized.includes('desc. origem') || normalized.includes('origem') ||
+              normalized.includes('desc origem')
+            )) colMap['origin_description'] = index;
+            
+            // Quantity master box
+            if (!colMap['qty_master_box'] && (
+              normalized === 'qt' || normalized === 'quantidade' || normalized === 'qtd' ||
+              normalized.includes('qt ') || normalized.includes('qtd ')
+            )) colMap['qty_master_box'] = index;
+            
+            // Master box dimensions - detect by "master" or "cx master"
+            if (normalized.includes('master') || normalized.includes('cx master')) {
+              if (!colMap['master_box_length'] && (normalized.includes('c.') || normalized.includes('comp') || normalized.startsWith('c '))) 
+                colMap['master_box_length'] = index;
+              if (!colMap['master_box_width'] && (normalized.includes('l.') || normalized.includes('larg') || normalized.startsWith('l '))) 
+                colMap['master_box_width'] = index;
+              if (!colMap['master_box_height'] && (normalized.includes('a.') || normalized.includes('alt') || normalized.startsWith('a '))) 
+                colMap['master_box_height'] = index;
+            }
+            
+            // Volume
+            if (!colMap['master_box_volume'] && (
+              normalized.includes('vol') || normalized === 'm³' || normalized.includes('m3')
+            )) colMap['master_box_volume'] = index;
+            
+            // Gross weight
+            if (!colMap['gross_weight'] && (
+              normalized.includes('peso bruto') || normalized === 'bruto' || 
+              normalized.includes('p. bruto') || normalized.includes('p.bruto')
+            )) colMap['gross_weight'] = index;
+            
+            // Net weight / weight per unit
+            if (!colMap['weight_per_unit'] && (
+              normalized.includes('peso líquido') || normalized.includes('peso liquido') ||
+              normalized.includes('líquido') || normalized.includes('liquido') ||
+              normalized.includes('p. liq') || normalized.includes('p.liq')
+            )) colMap['weight_per_unit'] = index;
+            
+            // Individual dimensions
+            if (normalized.includes('individual') || normalized.includes('indiv') || normalized.includes('unit')) {
+              if (!colMap['individual_length'] && (normalized.includes('c.') || normalized.includes('c ') || normalized.includes('comp'))) 
+                colMap['individual_length'] = index;
+              if (!colMap['individual_width'] && (normalized.includes('l.') || normalized.includes('l ') || normalized.includes('larg'))) 
+                colMap['individual_width'] = index;
+              if (!colMap['individual_height'] && (normalized.includes('a.') || normalized.includes('a ') || normalized.includes('alt'))) 
+                colMap['individual_height'] = index;
+              if (!colMap['individual_weight'] && (normalized.includes('p.') || normalized.includes('p ') || normalized.includes('peso'))) 
+                colMap['individual_weight'] = index;
+            }
+            
+            // Packaging type
+            if (!colMap['packaging_type'] && (
+              normalized.includes('tipo emb') || normalized.includes('embalagem') ||
+              normalized.includes('tipo de emb')
+            )) colMap['packaging_type'] = index;
+            
+            // Product dimensions
+            if (normalized.includes('produto') || normalized.includes('prod')) {
+              if (!colMap['product_length'] && (normalized.includes('c.') || normalized.includes('c ') || normalized.includes('comp'))) 
+                colMap['product_length'] = index;
+              if (!colMap['product_width'] && (normalized.includes('l.') || normalized.includes('l ') || normalized.includes('larg'))) 
+                colMap['product_width'] = index;
+              if (!colMap['product_height'] && (normalized.includes('a.') || normalized.includes('a ') || normalized.includes('alt'))) 
+                colMap['product_height'] = index;
+            }
           });
 
           console.log('Column mapping:', colMap);
 
           const products: CadastralData[] = [];
-          for (let i = 1; i < jsonData.length; i++) {
+          for (let i = headerRowIndex + 1; i < jsonData.length; i++) {
             const row = jsonData[i];
             if (!row || row.length === 0) continue;
 
