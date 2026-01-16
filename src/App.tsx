@@ -8,6 +8,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
+import ProductDetails from "./pages/ProductDetails";
 import Suppliers from "./pages/Suppliers";
 import Units from "./pages/Units";
 import Categories from "./pages/Categories";
@@ -57,7 +58,7 @@ const AppRoutes = () => (
     <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
     <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
     <Route path="/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
-    <Route path="/suppliers" element={<ProtectedRoute><Suppliers /></ProtectedRoute>} />
+    <Route path="/products/:id" element={<ProtectedRoute><ProductDetails /></ProtectedRoute>} />
     <Route path="/units" element={<ProtectedRoute><Units /></ProtectedRoute>} />
     <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
