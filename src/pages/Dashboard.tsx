@@ -1,14 +1,91 @@
 import { Package, Factory, Building2, FolderTree, TrendingUp, ShoppingCart } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-
-const stats = [
-  { title: 'Produtos', value: '0', description: 'cadastrados', icon: Package, color: 'text-primary' },
-  { title: 'Fornecedores', value: '0', description: 'ativos', icon: Factory, color: 'text-green-600' },
-  { title: 'Unidades', value: '0', description: 'configuradas', icon: Building2, color: 'text-orange-600' },
-  { title: 'Categorias', value: '0', description: 'criadas', icon: FolderTree, color: 'text-purple-600' },
-];
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function Dashboard() {
+  const { data: productCount, isLoading: loadingProducts } = useQuery({
+    queryKey: ['dashboard-products-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('products')
+        .select('id', { count: 'exact', head: true });
+      if (error) throw error;
+      return count ?? 0;
+    }
+  });
+
+  const { data: supplierCount, isLoading: loadingSuppliers } = useQuery({
+    queryKey: ['dashboard-suppliers-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('suppliers')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_active', true);
+      if (error) throw error;
+      return count ?? 0;
+    }
+  });
+
+  const { data: unitCount, isLoading: loadingUnits } = useQuery({
+    queryKey: ['dashboard-units-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('units')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_active', true);
+      if (error) throw error;
+      return count ?? 0;
+    }
+  });
+
+  const { data: categoryCount, isLoading: loadingCategories } = useQuery({
+    queryKey: ['dashboard-categories-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('categories')
+        .select('id', { count: 'exact', head: true });
+      if (error) throw error;
+      return count ?? 0;
+    }
+  });
+
+  const stats = [
+    { 
+      title: 'Produtos', 
+      value: productCount, 
+      loading: loadingProducts,
+      description: 'cadastrados', 
+      icon: Package, 
+      color: 'text-primary' 
+    },
+    { 
+      title: 'Fornecedores', 
+      value: supplierCount, 
+      loading: loadingSuppliers,
+      description: 'ativos', 
+      icon: Factory, 
+      color: 'text-green-600' 
+    },
+    { 
+      title: 'Unidades', 
+      value: unitCount, 
+      loading: loadingUnits,
+      description: 'configuradas', 
+      icon: Building2, 
+      color: 'text-orange-600' 
+    },
+    { 
+      title: 'Categorias', 
+      value: categoryCount, 
+      loading: loadingCategories,
+      description: 'criadas', 
+      icon: FolderTree, 
+      color: 'text-purple-600' 
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -24,7 +101,11 @@ export default function Dashboard() {
               <stat.icon className={`h-5 w-5 ${stat.color}`} />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
+              {stat.loading ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <div className="text-2xl font-bold">{stat.value}</div>
+              )}
               <p className="text-xs text-muted-foreground">{stat.description}</p>
             </CardContent>
           </Card>
@@ -43,19 +124,19 @@ export default function Dashboard() {
           <CardContent>
             <ul className="space-y-3 text-sm">
               <li className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-primary" />
+                <div className={`h-2 w-2 rounded-full ${unitCount && unitCount > 0 ? 'bg-green-500' : 'bg-muted'}`} />
                 Cadastre suas unidades de destino
               </li>
               <li className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-muted" />
+                <div className={`h-2 w-2 rounded-full ${supplierCount && supplierCount > 0 ? 'bg-green-500' : 'bg-muted'}`} />
                 Adicione seus fornecedores
               </li>
               <li className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-muted" />
+                <div className={`h-2 w-2 rounded-full ${categoryCount && categoryCount > 0 ? 'bg-green-500' : 'bg-muted'}`} />
                 Crie categorias para organizar produtos
               </li>
               <li className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-muted" />
+                <div className={`h-2 w-2 rounded-full ${productCount && productCount > 0 ? 'bg-green-500' : 'bg-muted'}`} />
                 Cadastre seus produtos importados
               </li>
             </ul>
