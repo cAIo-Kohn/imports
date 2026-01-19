@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import ProductDetails from "./pages/ProductDetails";
 import Suppliers from "./pages/Suppliers";
+import SupplierDetails from "./pages/SupplierDetails";
 import Units from "./pages/Units";
 import Categories from "./pages/Categories";
 import Settings from "./pages/Settings";
@@ -61,6 +62,7 @@ const AppRoutes = () => (
     <Route path="/products/:id" element={<ProtectedRoute><ProductDetails /></ProtectedRoute>} />
     <Route path="/units" element={<ProtectedRoute><Units /></ProtectedRoute>} />
     <Route path="/suppliers" element={<ProtectedRoute><Suppliers /></ProtectedRoute>} />
+    <Route path="/suppliers/:id" element={<ProtectedRoute><SupplierDetails /></ProtectedRoute>} />
     <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
