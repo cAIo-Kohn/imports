@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Package, AlertCircle, CheckCircle, Box, Scale, Ruler, Barcode, FileText, Building2 } from 'lucide-react';
+import { ArrowLeft, Package, AlertCircle, CheckCircle, Box, Scale, Ruler, Barcode, FileText, Building2, Factory } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ interface Product {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  supplier_id: string | null;
   // Identification
   ean_13: string | null;
   dun_14: string | null;
@@ -57,6 +58,13 @@ interface Product {
   tax_icms: number | null;
 }
 
+interface Supplier {
+  id: string;
+  company_name: string;
+  trade_name: string | null;
+  country: string;
+}
+
 export default function ProductDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -93,6 +101,22 @@ export default function ProductDetails() {
       }).filter(Boolean) as string[];
     },
     enabled: !!id,
+  });
+
+  const { data: supplier } = useQuery({
+    queryKey: ['product-supplier', product?.supplier_id],
+    queryFn: async () => {
+      if (!product?.supplier_id) return null;
+      const { data, error } = await supabase
+        .from('suppliers')
+        .select('id, company_name, trade_name, country')
+        .eq('id', product.supplier_id)
+        .maybeSingle();
+      
+      if (error) throw error;
+      return data as Supplier | null;
+    },
+    enabled: !!product?.supplier_id,
   });
 
   const getStatusColor = (status: string | null) => {
@@ -222,6 +246,29 @@ export default function ProductDetails() {
             <DataItem label="Marca" value={product.brand || 'Não informada'} isEmpty={!product.brand} />
             <DataItem label="Tipo Item" value={product.item_type || 'Não informado'} isEmpty={!product.item_type} />
             <DataItem label="Origem" value={product.origin_description || 'Não informada'} isEmpty={!product.origin_description} className="col-span-2" />
+          </CardContent>
+        </Card>
+
+        {/* Supplier */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Factory className="h-5 w-5" />
+              Fornecedor
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {supplier ? (
+              <div className="space-y-2">
+                <p className="font-medium">{supplier.trade_name || supplier.company_name}</p>
+                {supplier.trade_name && (
+                  <p className="text-sm text-muted-foreground">{supplier.company_name}</p>
+                )}
+                <Badge variant="outline">{supplier.country}</Badge>
+              </div>
+            ) : (
+              <p className="text-muted-foreground italic">Nenhum fornecedor vinculado</p>
+            )}
           </CardContent>
         </Card>
 

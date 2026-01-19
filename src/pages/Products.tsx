@@ -23,6 +23,7 @@ interface Product {
   warehouse_status: string | null;
   is_active: boolean;
   created_at: string;
+  supplier_id: string | null;
   // Identification
   ean_13: string | null;
   dun_14: string | null;
@@ -51,6 +52,12 @@ interface Product {
   product_height: number | null;
   // Other
   packaging_type: string | null;
+}
+
+interface Supplier {
+  id: string;
+  company_name: string;
+  trade_name: string | null;
 }
 
 interface ProductUnit {
@@ -114,7 +121,7 @@ export default function Products() {
       let query = supabase
         .from('products')
         .select(`
-          id, code, technical_description, warehouse_status, is_active, created_at,
+          id, code, technical_description, warehouse_status, is_active, created_at, supplier_id,
           ean_13, dun_14, ncm, item_type, origin_description, brand,
           qty_master_box, qty_inner, master_box_length, master_box_width, master_box_height, master_box_volume,
           gross_weight, weight_per_unit, individual_weight,
@@ -186,6 +193,23 @@ export default function Products() {
       
       const statuses = [...new Set(data.map(p => p.warehouse_status))].filter(Boolean).sort();
       return statuses as string[];
+    }
+  });
+
+  const { data: suppliers } = useQuery({
+    queryKey: ['suppliers-map'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('suppliers')
+        .select('id, company_name, trade_name');
+      
+      if (error) throw error;
+      
+      const map: Record<string, Supplier> = {};
+      for (const s of data || []) {
+        map[s.id] = s;
+      }
+      return map;
     }
   });
 
@@ -318,6 +342,7 @@ export default function Products() {
                       <TableHead>Tipo Item</TableHead>
                       <TableHead>Origem</TableHead>
                       <TableHead>Marca</TableHead>
+                      <TableHead>Fornecedor</TableHead>
                       <TableHead className="text-right">Qt. Master</TableHead>
                       <TableHead className="text-right">Qt. Inner</TableHead>
                       <TableHead className="text-right">C. Master (m)</TableHead>
@@ -381,6 +406,13 @@ export default function Products() {
                           <TableCell>{formatText(product.item_type)}</TableCell>
                           <TableCell>{formatText(product.origin_description)}</TableCell>
                           <TableCell>{formatText(product.brand)}</TableCell>
+                          <TableCell>
+                            {product.supplier_id && suppliers?.[product.supplier_id] ? (
+                              <span className="text-sm">{suppliers[product.supplier_id].trade_name || suppliers[product.supplier_id].company_name}</span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">{formatInt(product.qty_master_box)}</TableCell>
                           <TableCell className="text-right">{formatInt(product.qty_inner)}</TableCell>
                           <TableCell className="text-right">{formatNum(product.master_box_length)}</TableCell>
