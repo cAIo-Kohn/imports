@@ -41,9 +41,10 @@ interface CreateProductModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  defaultSupplierId?: string;
 }
 
-export function CreateProductModal({ open, onOpenChange, onSuccess }: CreateProductModalProps) {
+export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSupplierId }: CreateProductModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: suppliers } = useQuery({
@@ -72,7 +73,7 @@ export function CreateProductModal({ open, onOpenChange, onSuccess }: CreateProd
       warehouse_status: '',
       qty_master_box: '',
       fob_price_usd: '',
-      supplier_id: '',
+      supplier_id: defaultSupplierId || '',
     },
   });
 

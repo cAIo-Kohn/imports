@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Factory, Trash2, Globe, Mail, Phone, Package } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,7 @@ interface Supplier {
 }
 
 export default function Suppliers() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -137,7 +139,11 @@ export default function Suppliers() {
                 </TableHeader>
                 <TableBody>
                   {suppliers.map((supplier) => (
-                    <TableRow key={supplier.id}>
+                    <TableRow 
+                      key={supplier.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(`/suppliers/${supplier.id}`)}
+                    >
                       <TableCell>
                         <div className="space-y-1">
                           <p className="font-medium">{supplier.trade_name || supplier.company_name}</p>
@@ -202,7 +208,7 @@ export default function Suppliers() {
                           {supplier.is_active ? 'Ativo' : 'Inativo'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
