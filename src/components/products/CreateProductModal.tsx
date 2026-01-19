@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,7 +26,14 @@ const formSchema = z.object({
   warehouse_status: z.string().max(10, 'Status muito longo').optional().or(z.literal('')),
   qty_master_box: z.coerce.number().int().positive().optional().or(z.literal('')),
   fob_price_usd: z.coerce.number().positive().optional().or(z.literal('')),
+  supplier_id: z.string().optional().or(z.literal('')),
 });
+
+interface Supplier {
+  id: string;
+  company_name: string;
+  trade_name: string | null;
+}
 
 type FormData = z.infer<typeof formSchema>;
 
@@ -37,6 +45,20 @@ interface CreateProductModalProps {
 
 export function CreateProductModal({ open, onOpenChange, onSuccess }: CreateProductModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { data: suppliers } = useQuery({
+    queryKey: ['suppliers-list'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('suppliers')
+        .select('id, company_name, trade_name')
+        .eq('is_active', true)
+        .order('company_name');
+      
+      if (error) throw error;
+      return data as Supplier[];
+    }
+  });
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -50,6 +72,7 @@ export function CreateProductModal({ open, onOpenChange, onSuccess }: CreateProd
       warehouse_status: '',
       qty_master_box: '',
       fob_price_usd: '',
+      supplier_id: '',
     },
   });
 
@@ -66,6 +89,7 @@ export function CreateProductModal({ open, onOpenChange, onSuccess }: CreateProd
         warehouse_status: data.warehouse_status?.trim() || null,
         qty_master_box: data.qty_master_box ? Number(data.qty_master_box) : null,
         fob_price_usd: data.fob_price_usd ? Number(data.fob_price_usd) : null,
+        supplier_id: data.supplier_id || null,
       });
 
       if (error) {
@@ -250,6 +274,31 @@ export function CreateProductModal({ open, onOpenChange, onSuccess }: CreateProd
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="supplier_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Fornecedor</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value || ''}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um fornecedor" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {suppliers?.map((supplier) => (
+                        <SelectItem key={supplier.id} value={supplier.id}>
+                          {supplier.trade_name || supplier.company_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
