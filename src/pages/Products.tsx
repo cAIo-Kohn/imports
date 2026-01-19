@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Package, Upload, Filter, ChevronLeft, ChevronRight, FileSpreadsheet, AlertCircle, Trash2 } from 'lucide-react';
+import { Plus, Search, Package, Upload, Filter, ChevronLeft, ChevronRight, FileSpreadsheet, AlertCircle, Trash2, ArrowUp, ArrowDown, ArrowUpDown, X, SlidersHorizontal } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,9 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { ImportProductsModal } from '@/components/products/ImportProductsModal';
 import { ImportProductDetailsModal } from '@/components/products/ImportProductDetailsModal';
@@ -75,11 +78,20 @@ const hasIncompletePartnerData = (product: Product) => {
 
 const ITEMS_PER_PAGE = 50;
 
+type SortColumn = 'code' | 'technical_description' | 'ncm' | 'brand' | 'qty_master_box' | 'gross_weight' | 'warehouse_status' | 'created_at';
+type SortDirection = 'asc' | 'desc';
+
 export default function Products() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [supplierFilter, setSupplierFilter] = useState<string>('all');
+  const [sortColumn, setSortColumn] = useState<SortColumn>('code');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [incompleteOnly, setIncompleteOnly] = useState(false);
+  const [brandFilter, setBrandFilter] = useState<string>('all');
+  const [ncmPrefixFilter, setNcmPrefixFilter] = useState('');
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importDetailsModalOpen, setImportDetailsModalOpen] = useState(false);
   const [importCadastralModalOpen, setImportCadastralModalOpen] = useState(false);
@@ -88,13 +100,57 @@ export default function Products() {
   const [productToDelete, setProductToDelete] = useState<{ id: string; code: string; technical_description: string } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Check if any filters are active
+  const hasActiveFilters = search || statusFilter !== 'all' || supplierFilter !== 'all' || incompleteOnly || brandFilter !== 'all' || ncmPrefixFilter;
+
+  const clearAllFilters = () => {
+    setSearch('');
+    setStatusFilter('all');
+    setSupplierFilter('all');
+    setIncompleteOnly(false);
+    setBrandFilter('all');
+    setNcmPrefixFilter('');
+    setCurrentPage(1);
+  };
+
+  // Fetch suppliers for filter
+  const { data: suppliersForFilter } = useQuery({
+    queryKey: ['suppliers-for-filter'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('suppliers')
+        .select('id, company_name, trade_name')
+        .eq('is_active', true)
+        .order('company_name');
+      
+      if (error) throw error;
+      return data as Supplier[];
+    }
+  });
+
+  // Fetch unique brands for filter
+  const { data: brandsForFilter } = useQuery({
+    queryKey: ['brands-for-filter'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('brand')
+        .not('brand', 'is', null);
+      
+      if (error) throw error;
+      
+      const brands = [...new Set(data.map(p => p.brand))].filter(Boolean).sort();
+      return brands as string[];
+    }
+  });
+
   // Fetch total count for pagination
   const { data: totalCount } = useQuery({
-    queryKey: ['products-count', search, statusFilter],
+    queryKey: ['products-count', search, statusFilter, supplierFilter, incompleteOnly, brandFilter, ncmPrefixFilter],
     queryFn: async () => {
       let query = supabase
         .from('products')
-        .select('id', { count: 'exact', head: true });
+        .select('id, ean_13, ncm, gross_weight', { count: 'exact' });
 
       if (search) {
         query = query.or(`code.ilike.%${search}%,technical_description.ilike.%${search}%`);
@@ -104,8 +160,29 @@ export default function Products() {
         query = query.eq('warehouse_status', statusFilter);
       }
 
-      const { count, error } = await query;
+      if (supplierFilter === 'none') {
+        query = query.is('supplier_id', null);
+      } else if (supplierFilter !== 'all') {
+        query = query.eq('supplier_id', supplierFilter);
+      }
+
+      if (brandFilter !== 'all') {
+        query = query.eq('brand', brandFilter);
+      }
+
+      if (ncmPrefixFilter) {
+        query = query.ilike('ncm', `${ncmPrefixFilter}%`);
+      }
+
+      const { data, count, error } = await query;
       if (error) throw error;
+      
+      // Filter incomplete data client-side if needed
+      if (incompleteOnly && data) {
+        const incompleteProducts = data.filter(p => !p.ean_13 && !p.ncm && !p.gross_weight);
+        return incompleteProducts.length;
+      }
+      
       return count ?? 0;
     }
   });
@@ -113,7 +190,7 @@ export default function Products() {
   const totalPages = Math.ceil((totalCount ?? 0) / ITEMS_PER_PAGE);
 
   const { data: products, isLoading, refetch } = useQuery({
-    queryKey: ['products', search, statusFilter, currentPage],
+    queryKey: ['products', search, statusFilter, supplierFilter, sortColumn, sortDirection, incompleteOnly, brandFilter, ncmPrefixFilter, currentPage],
     queryFn: async () => {
       const from = (currentPage - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
@@ -129,8 +206,7 @@ export default function Products() {
           product_length, product_width, product_height,
           packaging_type
         `)
-        .order('code', { ascending: true })
-        .range(from, to);
+        .order(sortColumn, { ascending: sortDirection === 'asc', nullsFirst: false });
 
       if (search) {
         query = query.or(`code.ilike.%${search}%,technical_description.ilike.%${search}%`);
@@ -139,6 +215,31 @@ export default function Products() {
       if (statusFilter && statusFilter !== 'all') {
         query = query.eq('warehouse_status', statusFilter);
       }
+
+      if (supplierFilter === 'none') {
+        query = query.is('supplier_id', null);
+      } else if (supplierFilter !== 'all') {
+        query = query.eq('supplier_id', supplierFilter);
+      }
+
+      if (brandFilter !== 'all') {
+        query = query.eq('brand', brandFilter);
+      }
+
+      if (ncmPrefixFilter) {
+        query = query.ilike('ncm', `${ncmPrefixFilter}%`);
+      }
+
+      // For incomplete filter, we need to fetch more and filter client-side
+      if (incompleteOnly) {
+        const { data, error } = await query;
+        if (error) throw error;
+        
+        const filteredData = (data as Product[]).filter(hasIncompletePartnerData);
+        return filteredData.slice(from, to + 1);
+      }
+
+      query = query.range(from, to);
 
       const { data, error } = await query;
       
@@ -155,6 +256,21 @@ export default function Products() {
 
   const handleStatusChange = (value: string) => {
     setStatusFilter(value);
+    setCurrentPage(1);
+  };
+
+  const handleSupplierChange = (value: string) => {
+    setSupplierFilter(value);
+    setCurrentPage(1);
+  };
+
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
     setCurrentPage(1);
   };
 
@@ -233,6 +349,33 @@ export default function Products() {
     return 'bg-muted text-muted-foreground';
   };
 
+  // Sortable header component
+  const SortableHeader = ({ column, label, className = '' }: { column: SortColumn; label: string; className?: string }) => {
+    const isActive = sortColumn === column;
+    return (
+      <TableHead 
+        className={`cursor-pointer hover:bg-muted/50 select-none transition-colors ${className}`}
+        onClick={() => handleSort(column)}
+      >
+        <div className="flex items-center gap-1">
+          {label}
+          {isActive ? (
+            sortDirection === 'asc' ? (
+              <ArrowUp className="h-3 w-3 text-primary" />
+            ) : (
+              <ArrowDown className="h-3 w-3 text-primary" />
+            )
+          ) : (
+            <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
+          )}
+        </div>
+      </TableHead>
+    );
+  };
+
+  // Count active advanced filters
+  const advancedFilterCount = [incompleteOnly, brandFilter !== 'all', ncmPrefixFilter].filter(Boolean).length;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -263,20 +406,21 @@ export default function Products() {
       {/* Control Bar: Filters + Pagination - Always visible */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-background py-2 border-b sticky top-0 z-20">
         {/* Left side: Filters */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Buscar por código ou descrição..."
               value={search}
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="pl-10 w-[280px]"
+              className="pl-10 w-[260px]"
             />
           </div>
+          
           <Select value={statusFilter} onValueChange={handleStatusChange}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-[160px]">
               <Filter className="mr-2 h-4 w-4" />
-              <SelectValue placeholder="Status Depósito" />
+              <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os status</SelectItem>
@@ -285,6 +429,93 @@ export default function Products() {
               ))}
             </SelectContent>
           </Select>
+
+          <Select value={supplierFilter} onValueChange={handleSupplierChange}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Fornecedor" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os fornecedores</SelectItem>
+              <SelectItem value="none">Sem fornecedor</SelectItem>
+              {suppliersForFilter?.map((supplier) => (
+                <SelectItem key={supplier.id} value={supplier.id}>
+                  {supplier.trade_name || supplier.company_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Advanced Filters Popover */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <SlidersHorizontal className="h-4 w-4" />
+                Mais filtros
+                {advancedFilterCount > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                    {advancedFilterCount}
+                  </Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80" align="start">
+              <div className="space-y-4">
+                <h4 className="font-medium text-sm">Filtros Avançados</h4>
+                
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="incomplete" 
+                    checked={incompleteOnly}
+                    onCheckedChange={(checked) => {
+                      setIncompleteOnly(checked as boolean);
+                      setCurrentPage(1);
+                    }}
+                  />
+                  <Label htmlFor="incomplete" className="text-sm cursor-pointer">
+                    Apenas dados incompletos
+                  </Label>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm">Marca</Label>
+                  <Select value={brandFilter} onValueChange={(value) => {
+                    setBrandFilter(value);
+                    setCurrentPage(1);
+                  }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas as marcas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as marcas</SelectItem>
+                      {brandsForFilter?.map((brand) => (
+                        <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm">Prefixo NCM</Label>
+                  <Input
+                    placeholder="Ex: 9503, 8471..."
+                    value={ncmPrefixFilter}
+                    onChange={(e) => {
+                      setNcmPrefixFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="h-9"
+                  />
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearAllFilters} className="gap-1 text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+              Limpar filtros
+            </Button>
+          )}
         </div>
         
         {/* Right side: Count + Pagination */}
@@ -334,22 +565,22 @@ export default function Products() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-8 sticky left-0 bg-background z-10"></TableHead>
-                      <TableHead className="sticky left-8 bg-background z-10 min-w-[100px]">Código</TableHead>
-                      <TableHead className="min-w-[250px]">Descrição</TableHead>
-                      <TableHead>NCM</TableHead>
+                      <SortableHeader column="code" label="Código" className="sticky left-8 bg-background z-10 min-w-[100px]" />
+                      <SortableHeader column="technical_description" label="Descrição" className="min-w-[250px]" />
+                      <SortableHeader column="ncm" label="NCM" />
                       <TableHead>EAN-13</TableHead>
                       <TableHead>DUN-14</TableHead>
                       <TableHead>Tipo Item</TableHead>
                       <TableHead>Origem</TableHead>
-                      <TableHead>Marca</TableHead>
+                      <SortableHeader column="brand" label="Marca" />
                       <TableHead>Fornecedor</TableHead>
-                      <TableHead className="text-right">Qt. Master</TableHead>
+                      <SortableHeader column="qty_master_box" label="Qt. Master" className="text-right" />
                       <TableHead className="text-right">Qt. Inner</TableHead>
                       <TableHead className="text-right">C. Master (m)</TableHead>
                       <TableHead className="text-right">L. Master (m)</TableHead>
                       <TableHead className="text-right">A. Master (m)</TableHead>
                       <TableHead className="text-right">Volume (m³)</TableHead>
-                      <TableHead className="text-right">Peso Bruto (kg)</TableHead>
+                      <SortableHeader column="gross_weight" label="Peso Bruto (kg)" className="text-right" />
                       <TableHead className="text-right">Peso Líquido (kg)</TableHead>
                       <TableHead className="text-right">P. Individual (kg)</TableHead>
                       <TableHead className="text-right">C. Individual (m)</TableHead>
@@ -359,7 +590,7 @@ export default function Products() {
                       <TableHead className="text-right">L. Produto (m)</TableHead>
                       <TableHead className="text-right">A. Produto (m)</TableHead>
                       <TableHead>Embalagem</TableHead>
-                      <TableHead>Status</TableHead>
+                      <SortableHeader column="warehouse_status" label="Status" />
                       <TableHead>Unidades</TableHead>
                       <TableHead className="w-16 text-center">Ações</TableHead>
                     </TableRow>
@@ -487,12 +718,21 @@ export default function Products() {
               </div>
               <h3 className="font-semibold mb-1">Nenhum produto encontrado</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Comece importando seus produtos de um arquivo Excel
+                {hasActiveFilters 
+                  ? 'Tente ajustar os filtros para encontrar produtos'
+                  : 'Comece importando seus produtos de um arquivo Excel'}
               </p>
-              <Button onClick={() => setImportModalOpen(true)}>
-                <Upload className="mr-2 h-4 w-4" />
-                Importar Produtos
-              </Button>
+              {hasActiveFilters ? (
+                <Button variant="outline" onClick={clearAllFilters}>
+                  <X className="mr-2 h-4 w-4" />
+                  Limpar filtros
+                </Button>
+              ) : (
+                <Button onClick={() => setImportModalOpen(true)}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Importar Produtos
+                </Button>
+              )}
             </div>
           )}
         </CardContent>
