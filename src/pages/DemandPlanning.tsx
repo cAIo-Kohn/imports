@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { format, addMonths, startOfMonth, parseISO } from 'date-fns';
+import { format, addMonths, startOfMonth, parseISO, subYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { TrendingUp, TrendingDown, AlertTriangle, Package, Search, Filter, Upload, FileSpreadsheet } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle, Package, Search, Filter, Upload, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import { ImportForecastModal } from '@/components/planning/ImportForecastModal';
 import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal';
 import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
@@ -34,6 +34,7 @@ interface MonthProjection {
   monthLabel: string;
   initialStock: number;
   forecast: number;
+  historyLastYear: number;
   purchases: number;
   finalBalance: number;
   status: 'ok' | 'warning' | 'rupture';
@@ -41,6 +42,7 @@ interface MonthProjection {
 
 interface ProductProjection {
   product: Product;
+  currentStock: number;
   projections: MonthProjection[];
   hasRupture: boolean;
   firstRuptureMonth: Date | null;
@@ -92,6 +94,25 @@ export default function DemandPlanning() {
       let query = supabase
         .from('sales_forecasts')
         .select('product_id, unit_id, year_month, quantity, version')
+        .order('year_month');
+      
+      if (selectedUnit !== 'all') {
+        query = query.eq('unit_id', selectedUnit);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch sales history (previous year)
+  const { data: salesHistory = [], refetch: refetchHistory } = useQuery({
+    queryKey: ['sales-history', selectedUnit],
+    queryFn: async () => {
+      let query = supabase
+        .from('sales_history')
+        .select('product_id, unit_id, year_month, quantity')
         .order('year_month');
       
       if (selectedUnit !== 'all') {
@@ -161,7 +182,7 @@ export default function DemandPlanning() {
       months.push(addMonths(startMonth, i));
     }
 
-    // Group data by product
+    // Group forecasts by product
     const forecastsByProduct = new Map<string, Map<string, number>>();
     forecasts.forEach(f => {
       const key = f.product_id;
@@ -172,6 +193,17 @@ export default function DemandPlanning() {
       forecastsByProduct.get(key)!.set(monthKey, f.quantity);
     });
 
+    // Group history by product (year_month as key)
+    const historyByProduct = new Map<string, Map<string, number>>();
+    salesHistory.forEach(h => {
+      const key = h.product_id;
+      if (!historyByProduct.has(key)) {
+        historyByProduct.set(key, new Map());
+      }
+      historyByProduct.get(key)!.set(h.year_month, h.quantity);
+    });
+
+    // Get latest inventory per product
     const inventoryByProduct = new Map<string, number>();
     const processedProducts = new Set<string>();
     inventorySnapshots.forEach(inv => {
@@ -183,6 +215,7 @@ export default function DemandPlanning() {
       }
     });
 
+    // Group purchases by product and month
     const purchasesByProductMonth = new Map<string, Map<string, number>>();
     purchaseItems.forEach(item => {
       if (!item.expected_arrival) return;
@@ -207,8 +240,10 @@ export default function DemandPlanning() {
       })
       .map(product => {
         const productForecasts = forecastsByProduct.get(product.id) || new Map();
+        const productHistory = historyByProduct.get(product.id) || new Map();
         const productPurchases = purchasesByProductMonth.get(product.id) || new Map();
-        let runningBalance = inventoryByProduct.get(product.id) || 0;
+        const currentStock = inventoryByProduct.get(product.id) || 0;
+        let runningBalance = currentStock;
         
         let hasRupture = false;
         let firstRuptureMonth: Date | null = null;
@@ -218,7 +253,12 @@ export default function DemandPlanning() {
           const forecast = productForecasts.get(monthKey) || 0;
           const purchases = productPurchases.get(monthKey) || 0;
           
-          const initialStock = index === 0 ? (inventoryByProduct.get(product.id) || 0) : runningBalance;
+          // Get history from same month previous year
+          const historyMonth = subYears(month, 1);
+          const historyKey = format(historyMonth, 'yyyy-MM-dd');
+          const historyLastYear = productHistory.get(historyKey) || 0;
+          
+          const initialStock = index === 0 ? currentStock : runningBalance;
           const finalBalance = initialStock - forecast + purchases;
           
           runningBalance = finalBalance;
@@ -239,6 +279,7 @@ export default function DemandPlanning() {
             monthLabel: format(month, 'MMM/yy', { locale: ptBR }),
             initialStock,
             forecast,
+            historyLastYear,
             purchases,
             finalBalance,
             status,
@@ -247,6 +288,7 @@ export default function DemandPlanning() {
 
         return {
           product,
+          currentStock,
           projections: monthProjections,
           hasRupture,
           firstRuptureMonth,
@@ -260,7 +302,7 @@ export default function DemandPlanning() {
       if (!a.hasRupture && b.hasRupture) return 1;
       return a.product.code.localeCompare(b.product.code);
     });
-  }, [products, forecasts, inventorySnapshots, purchaseItems, searchQuery, showOnlyRuptures, monthsAhead, selectedUnit]);
+  }, [products, forecasts, salesHistory, inventorySnapshots, purchaseItems, searchQuery, showOnlyRuptures, monthsAhead, selectedUnit]);
 
   const stats = useMemo(() => {
     const total = productProjections.length;
@@ -279,6 +321,7 @@ export default function DemandPlanning() {
   const handleRefreshData = () => {
     refetchForecasts();
     refetchInventory();
+    refetchHistory();
   };
 
   if (productsLoading) {
@@ -304,6 +347,9 @@ export default function DemandPlanning() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="icon" onClick={handleRefreshData} title="Atualizar dados">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
           <Button variant="outline" onClick={() => setImportInventoryOpen(true)}>
             <Upload className="mr-2 h-4 w-4" />
             Importar Estoque
@@ -429,12 +475,12 @@ export default function DemandPlanning() {
         </Card>
       )}
 
-      {/* Projection Table */}
+      {/* Projection Table - Expanded View */}
       <Card>
         <CardHeader>
           <CardTitle>Projeção de Estoque</CardTitle>
           <CardDescription>
-            Clique em um produto para ver o gráfico detalhado
+            Clique em um produto para ver o gráfico detalhado. Cada produto mostra: PV (previsão), Histórico do ano anterior, e Projeção de saldo.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -442,9 +488,10 @@ export default function DemandPlanning() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="sticky left-0 bg-background z-10 min-w-[300px]">Produto</TableHead>
+                  <TableHead className="sticky left-0 bg-background z-10 min-w-[280px]">Produto</TableHead>
+                  <TableHead className="text-center min-w-[90px] bg-muted/50">Estoque</TableHead>
                   {productProjections[0]?.projections.map((m, i) => (
-                    <TableHead key={i} className="text-center min-w-[100px]">
+                    <TableHead key={i} className="text-center min-w-[85px]">
                       {m.monthLabel}
                     </TableHead>
                   ))}
@@ -453,58 +500,110 @@ export default function DemandPlanning() {
               <TableBody>
                 {productProjections.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={monthsAhead + 1} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={monthsAhead + 2} className="text-center py-8 text-muted-foreground">
                       Nenhum produto encontrado. Importe previsões e estoque para começar.
                     </TableCell>
                   </TableRow>
                 ) : (
                   productProjections.map((productProj) => (
-                    <TableRow 
-                      key={productProj.product.id}
-                      className={`cursor-pointer transition-colors ${
-                        selectedProduct === productProj.product.id ? 'bg-muted' : 'hover:bg-muted/50'
-                      }`}
-                      onClick={() => setSelectedProduct(
-                        selectedProduct === productProj.product.id ? null : productProj.product.id
-                      )}
-                    >
-                      <TableCell className="sticky left-0 bg-background z-10">
-                        <div className="flex items-center gap-2">
-                          {productProj.hasRupture && (
-                            <Badge variant="destructive" className="shrink-0">RUPTURA</Badge>
-                          )}
-                          <div className="min-w-0">
-                            <div className="font-medium">{productProj.product.code}</div>
-                            <div className="text-sm text-muted-foreground truncate max-w-[200px]">
-                              {productProj.product.technical_description}
+                    <>
+                      {/* Main product row with code and description */}
+                      <TableRow 
+                        key={`${productProj.product.id}-header`}
+                        className={`cursor-pointer transition-colors border-t-2 ${
+                          selectedProduct === productProj.product.id ? 'bg-muted' : 'hover:bg-muted/50'
+                        }`}
+                        onClick={() => setSelectedProduct(
+                          selectedProduct === productProj.product.id ? null : productProj.product.id
+                        )}
+                      >
+                        <TableCell className="sticky left-0 bg-background z-10 font-medium" rowSpan={4}>
+                          <div className="flex items-center gap-2">
+                            {productProj.hasRupture && (
+                              <Badge variant="destructive" className="shrink-0">RUPTURA</Badge>
+                            )}
+                            <div className="min-w-0">
+                              <div className="font-semibold text-base">{productProj.product.code}</div>
+                              <div className="text-sm text-muted-foreground truncate max-w-[180px]">
+                                {productProj.product.technical_description}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      {productProj.projections.map((proj, i) => (
-                        <TableCell key={i} className="text-center">
-                          <div 
-                            className={`inline-flex flex-col items-center px-2 py-1 rounded ${
-                              proj.status === 'rupture' 
-                                ? 'bg-destructive/10 text-destructive' 
-                                : proj.status === 'warning'
-                                ? 'bg-yellow-500/10 text-yellow-600'
-                                : ''
-                            }`}
-                          >
-                            <span className="font-medium">
-                              {proj.finalBalance.toLocaleString('pt-BR')}
-                            </span>
-                            {(proj.forecast > 0 || proj.purchases > 0) && (
-                              <span className="text-xs text-muted-foreground">
-                                {proj.forecast > 0 && `-${proj.forecast}`}
-                                {proj.purchases > 0 && ` +${proj.purchases}`}
-                              </span>
-                            )}
-                          </div>
                         </TableCell>
-                      ))}
-                    </TableRow>
+                        <TableCell className="text-center bg-muted/50 font-bold text-lg" rowSpan={4}>
+                          {productProj.currentStock.toLocaleString('pt-BR')}
+                        </TableCell>
+                        {/* PV row values */}
+                        {productProj.projections.map((proj, i) => (
+                          <TableCell key={i} className="text-center p-1">
+                            <div className="flex items-center justify-center gap-1">
+                              <span className="text-sm text-muted-foreground">
+                                {proj.forecast > 0 ? proj.forecast.toLocaleString('pt-BR') : '-'}
+                              </span>
+                              {proj.forecast > 0 && proj.historyLastYear > 0 && (
+                                proj.forecast > proj.historyLastYear ? (
+                                  <TrendingUp className="h-3 w-3 text-orange-500" />
+                                ) : proj.forecast < proj.historyLastYear ? (
+                                  <TrendingDown className="h-3 w-3 text-green-500" />
+                                ) : null
+                              )}
+                            </div>
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                      
+                      {/* PV Label Row */}
+                      <TableRow 
+                        key={`${productProj.product.id}-pv-label`}
+                        className={selectedProduct === productProj.product.id ? 'bg-muted' : ''}
+                      >
+                        {productProj.projections.map((proj, i) => (
+                          <TableCell key={i} className="text-center p-0 pt-0">
+                            <span className="text-[10px] text-muted-foreground font-medium">PV</span>
+                          </TableCell>
+                        ))}
+                      </TableRow>
+
+                      {/* History row */}
+                      <TableRow 
+                        key={`${productProj.product.id}-history`}
+                        className={selectedProduct === productProj.product.id ? 'bg-muted' : ''}
+                      >
+                        {productProj.projections.map((proj, i) => (
+                          <TableCell key={i} className="text-center p-1">
+                            <div className="text-xs text-blue-600 dark:text-blue-400">
+                              {proj.historyLastYear > 0 ? proj.historyLastYear.toLocaleString('pt-BR') : '-'}
+                            </div>
+                            <span className="text-[10px] text-muted-foreground">Hist.</span>
+                          </TableCell>
+                        ))}
+                      </TableRow>
+
+                      {/* Projection row (balance) */}
+                      <TableRow 
+                        key={`${productProj.product.id}-projection`}
+                        className={`border-b-2 ${selectedProduct === productProj.product.id ? 'bg-muted' : ''}`}
+                      >
+                        {productProj.projections.map((proj, i) => (
+                          <TableCell key={i} className="text-center p-1">
+                            <div 
+                              className={`inline-flex flex-col items-center px-2 py-0.5 rounded text-sm font-semibold ${
+                                proj.status === 'rupture' 
+                                  ? 'bg-destructive/10 text-destructive' 
+                                  : proj.status === 'warning'
+                                  ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-500'
+                                  : 'text-foreground'
+                              }`}
+                            >
+                              {proj.finalBalance.toLocaleString('pt-BR')}
+                            </div>
+                            {proj.purchases > 0 && (
+                              <div className="text-[10px] text-green-600">+{proj.purchases.toLocaleString('pt-BR')}</div>
+                            )}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    </>
                   ))
                 )}
               </TableBody>
