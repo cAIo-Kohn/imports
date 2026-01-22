@@ -46,6 +46,9 @@ interface ProductProjection {
   projections: MonthProjection[];
   hasRupture: boolean;
   firstRuptureMonth: Date | null;
+  totalForecast: number;
+  totalHistory: number;
+  totalPurchases: number;
 }
 
 export default function DemandPlanning() {
@@ -286,12 +289,20 @@ export default function DemandPlanning() {
           };
         });
 
+        // Calculate totals
+        const totalForecast = monthProjections.reduce((sum, m) => sum + m.forecast, 0);
+        const totalHistory = monthProjections.reduce((sum, m) => sum + m.historyLastYear, 0);
+        const totalPurchases = monthProjections.reduce((sum, m) => sum + m.purchases, 0);
+
         return {
           product,
           currentStock,
           projections: monthProjections,
           hasRupture,
           firstRuptureMonth,
+          totalForecast,
+          totalHistory,
+          totalPurchases,
         };
       })
       .filter(p => !showOnlyRuptures || p.hasRupture);
@@ -495,22 +506,23 @@ export default function DemandPlanning() {
                       {m.monthLabel}
                     </TableHead>
                   ))}
+                  <TableHead className="text-center min-w-[90px] bg-muted/30 font-bold">TOTAL</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {productProjections.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={monthsAhead + 2} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={monthsAhead + 3} className="text-center py-8 text-muted-foreground">
                       Nenhum produto encontrado. Importe previsões e estoque para começar.
                     </TableCell>
                   </TableRow>
                 ) : (
                   productProjections.map((productProj) => (
                     <>
-                      {/* Main product row with code and description */}
+                      {/* Row 1: PV (Sales Forecast) */}
                       <TableRow 
-                        key={`${productProj.product.id}-header`}
-                        className={`cursor-pointer transition-colors border-t-2 ${
+                        key={`${productProj.product.id}-pv`}
+                        className={`cursor-pointer transition-colors border-t-2 bg-muted/30 ${
                           selectedProduct === productProj.product.id ? 'bg-muted' : 'hover:bg-muted/50'
                         }`}
                         onClick={() => setSelectedProduct(
@@ -533,9 +545,8 @@ export default function DemandPlanning() {
                         <TableCell className="text-center bg-muted/50 font-bold text-lg" rowSpan={4}>
                           {productProj.currentStock.toLocaleString('pt-BR')}
                         </TableCell>
-                        {/* PV row values */}
                         {productProj.projections.map((proj, i) => (
-                          <TableCell key={i} className="text-center p-1">
+                          <TableCell key={i} className="text-center p-1 bg-muted/20">
                             <div className="flex items-center justify-center gap-1">
                               <span className="text-sm text-muted-foreground">
                                 {proj.forecast > 0 ? proj.forecast.toLocaleString('pt-BR') : '-'}
@@ -548,60 +559,93 @@ export default function DemandPlanning() {
                                 ) : null
                               )}
                             </div>
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      
-                      {/* PV Label Row */}
-                      <TableRow 
-                        key={`${productProj.product.id}-pv-label`}
-                        className={selectedProduct === productProj.product.id ? 'bg-muted' : ''}
-                      >
-                        {productProj.projections.map((proj, i) => (
-                          <TableCell key={i} className="text-center p-0 pt-0">
                             <span className="text-[10px] text-muted-foreground font-medium">PV</span>
                           </TableCell>
                         ))}
+                        <TableCell className="text-center p-1 bg-muted/30 font-semibold">
+                          {productProj.totalForecast.toLocaleString('pt-BR')}
+                        </TableCell>
                       </TableRow>
-
-                      {/* History row */}
+                      
+                      {/* Row 2: History (Previous Year Sales) */}
                       <TableRow 
                         key={`${productProj.product.id}-history`}
-                        className={selectedProduct === productProj.product.id ? 'bg-muted' : ''}
+                        className={`bg-blue-500/5 ${selectedProduct === productProj.product.id ? 'bg-muted' : ''}`}
                       >
                         {productProj.projections.map((proj, i) => (
-                          <TableCell key={i} className="text-center p-1">
-                            <div className="text-xs text-blue-600 dark:text-blue-400">
+                          <TableCell key={i} className="text-center p-1 bg-blue-500/5">
+                            <div className="text-sm text-blue-600 dark:text-blue-400">
                               {proj.historyLastYear > 0 ? proj.historyLastYear.toLocaleString('pt-BR') : '-'}
                             </div>
-                            <span className="text-[10px] text-muted-foreground">Hist.</span>
+                            <span className="text-[10px] text-blue-500/70">Hist.</span>
                           </TableCell>
                         ))}
+                        <TableCell className="text-center p-1 bg-blue-500/10 font-semibold text-blue-600 dark:text-blue-400">
+                          {productProj.totalHistory.toLocaleString('pt-BR')}
+                        </TableCell>
                       </TableRow>
 
-                      {/* Projection row (balance) */}
+                      {/* Row 3: Arrivals (Scheduled Purchases) */}
                       <TableRow 
-                        key={`${productProj.product.id}-projection`}
+                        key={`${productProj.product.id}-arrivals`}
+                        className={`bg-green-500/5 ${selectedProduct === productProj.product.id ? 'bg-muted' : ''}`}
+                      >
+                        {productProj.projections.map((proj, i) => (
+                          <TableCell key={i} className="text-center p-1 bg-green-500/5">
+                            {proj.purchases > 0 ? (
+                              <>
+                                <div className="text-sm font-medium text-green-600 dark:text-green-400">
+                                  {proj.purchases.toLocaleString('pt-BR')}
+                                </div>
+                                <span className="text-[10px] text-green-500/70">Chegada</span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="text-sm text-muted-foreground">-</div>
+                                <span className="text-[10px] text-green-500/70">Chegada</span>
+                              </>
+                            )}
+                          </TableCell>
+                        ))}
+                        <TableCell className="text-center p-1 bg-green-500/10 font-semibold text-green-600 dark:text-green-400">
+                          {productProj.totalPurchases.toLocaleString('pt-BR')}
+                        </TableCell>
+                      </TableRow>
+
+                      {/* Row 4: Balance Projection */}
+                      <TableRow 
+                        key={`${productProj.product.id}-balance`}
                         className={`border-b-2 ${selectedProduct === productProj.product.id ? 'bg-muted' : ''}`}
                       >
                         {productProj.projections.map((proj, i) => (
                           <TableCell key={i} className="text-center p-1">
                             <div 
-                              className={`inline-flex flex-col items-center px-2 py-0.5 rounded text-sm font-semibold ${
+                              className={`inline-block px-2 py-0.5 rounded text-sm font-bold ${
                                 proj.status === 'rupture' 
-                                  ? 'bg-destructive/10 text-destructive' 
+                                  ? 'bg-destructive/15 text-destructive' 
                                   : proj.status === 'warning'
-                                  ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-500'
+                                  ? 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-500'
                                   : 'text-foreground'
                               }`}
                             >
                               {proj.finalBalance.toLocaleString('pt-BR')}
                             </div>
-                            {proj.purchases > 0 && (
-                              <div className="text-[10px] text-green-600">+{proj.purchases.toLocaleString('pt-BR')}</div>
-                            )}
+                            <div className="text-[10px] text-muted-foreground">Saldo</div>
                           </TableCell>
                         ))}
+                        <TableCell className="text-center p-1 bg-muted/30">
+                          <div 
+                            className={`inline-block px-2 py-0.5 rounded text-sm font-bold ${
+                              productProj.projections[productProj.projections.length - 1]?.status === 'rupture' 
+                                ? 'bg-destructive/15 text-destructive' 
+                                : productProj.projections[productProj.projections.length - 1]?.status === 'warning'
+                                ? 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-500'
+                                : 'text-foreground'
+                            }`}
+                          >
+                            {productProj.projections[productProj.projections.length - 1]?.finalBalance.toLocaleString('pt-BR')}
+                          </div>
+                        </TableCell>
                       </TableRow>
                     </>
                   ))
