@@ -1,4 +1,4 @@
-import { Package, Factory, Building2, FolderTree, LayoutDashboard, LogOut, Settings } from 'lucide-react';
+import { Package, Factory, Building2, FolderTree, LayoutDashboard, LogOut, Settings, TrendingUp, ShoppingCart } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,6 +24,11 @@ const menuItems = [
   { title: 'Categorias', url: '/categories', icon: FolderTree },
 ];
 
+const planningItems = [
+  { title: 'Planejamento', url: '/demand-planning', icon: TrendingUp },
+  { title: 'Pedidos de Compra', url: '/purchase-orders', icon: ShoppingCart },
+];
+
 export function AppSidebar() {
   const location = useLocation();
   const { signOut, user } = useAuth();
@@ -46,6 +51,24 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={location.pathname === item.url}>
+                    <NavLink to={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Planejamento</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {planningItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={location.pathname === item.url}>
                     <NavLink to={item.url}>

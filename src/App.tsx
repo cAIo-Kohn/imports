@@ -14,6 +14,9 @@ import SupplierDetails from "./pages/SupplierDetails";
 import Units from "./pages/Units";
 import Categories from "./pages/Categories";
 import Settings from "./pages/Settings";
+import DemandPlanning from "./pages/DemandPlanning";
+import PurchaseOrders from "./pages/PurchaseOrders";
+import PurchaseOrderDetails from "./pages/PurchaseOrderDetails";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -65,6 +68,9 @@ const AppRoutes = () => (
     <Route path="/suppliers/:id" element={<ProtectedRoute><SupplierDetails /></ProtectedRoute>} />
     <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+    <Route path="/demand-planning" element={<ProtectedRoute><DemandPlanning /></ProtectedRoute>} />
+    <Route path="/purchase-orders" element={<ProtectedRoute><PurchaseOrders /></ProtectedRoute>} />
+    <Route path="/purchase-orders/:id" element={<ProtectedRoute><PurchaseOrderDetails /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );
