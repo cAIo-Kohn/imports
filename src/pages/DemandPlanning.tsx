@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format, addMonths, startOfMonth, parseISO, subYears } from 'date-fns';
@@ -10,11 +10,12 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { TrendingUp, TrendingDown, AlertTriangle, Package, Search, Filter, Upload, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle, Package, Search, Filter, Upload, FileSpreadsheet, RefreshCw, Ship } from 'lucide-react';
 import { ImportForecastModal } from '@/components/planning/ImportForecastModal';
 import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal';
 import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
 import { ProjectionChart } from '@/components/planning/ProjectionChart';
+import { OrderSimulationPanel } from '@/components/planning/OrderSimulationPanel';
 
 interface Product {
   id: string;
@@ -22,6 +23,11 @@ interface Product {
   technical_description: string;
   lead_time_days: number | null;
   moq: number | null;
+  supplier_id: string | null;
+  qty_master_box: number | null;
+  master_box_volume: number | null;
+  gross_weight: number | null;
+  fob_price_usd: number | null;
 }
 
 interface Unit {
@@ -29,13 +35,20 @@ interface Unit {
   name: string;
 }
 
+interface Supplier {
+  id: string;
+  company_name: string;
+}
+
 interface MonthProjection {
   month: Date;
+  monthKey: string;
   monthLabel: string;
   initialStock: number;
   forecast: number;
   historyLastYear: number;
   purchases: number;
+  pendingArrival: number;
   finalBalance: number;
   status: 'ok' | 'warning' | 'rupture';
 }
@@ -49,10 +62,12 @@ interface ProductProjection {
   totalForecast: number;
   totalHistory: number;
   totalPurchases: number;
+  totalPendingArrivals: number;
 }
 
 export default function DemandPlanning() {
   const [selectedUnit, setSelectedUnit] = useState<string>('all');
+  const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showOnlyRuptures, setShowOnlyRuptures] = useState(false);
   const [monthsAhead, setMonthsAhead] = useState(12);
@@ -61,6 +76,10 @@ export default function DemandPlanning() {
   const [importForecastOpen, setImportForecastOpen] = useState(false);
   const [importInventoryOpen, setImportInventoryOpen] = useState(false);
   const [importHistoryOpen, setImportHistoryOpen] = useState(false);
+  const [orderPanelOpen, setOrderPanelOpen] = useState(false);
+
+  // Pending arrivals: key = "productId-yyyy-MM-dd", value = quantity
+  const [pendingArrivals, setPendingArrivals] = useState<Record<string, number>>({});
 
   // Fetch units
   const { data: units = [] } = useQuery({
@@ -76,13 +95,27 @@ export default function DemandPlanning() {
     },
   });
 
-  // Fetch products
+  // Fetch suppliers
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers-for-planning'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('suppliers')
+        .select('id, company_name')
+        .eq('is_active', true)
+        .order('company_name');
+      if (error) throw error;
+      return data as Supplier[];
+    },
+  });
+
+  // Fetch products with additional fields for order simulation
   const { data: products = [], isLoading: productsLoading } = useQuery({
     queryKey: ['products-for-planning'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('products')
-        .select('id, code, technical_description, lead_time_days, moq')
+        .select('id, code, technical_description, lead_time_days, moq, supplier_id, qty_master_box, master_box_volume, gross_weight, fob_price_usd')
         .eq('is_active', true)
         .order('code');
       if (error) throw error;
@@ -148,7 +181,7 @@ export default function DemandPlanning() {
   });
 
   // Fetch purchase order items with expected arrivals
-  const { data: purchaseItems = [] } = useQuery({
+  const { data: purchaseItems = [], refetch: refetchPurchaseItems } = useQuery({
     queryKey: ['purchase-order-items', selectedUnit],
     queryFn: async () => {
       let query = supabase
@@ -175,7 +208,26 @@ export default function DemandPlanning() {
     },
   });
 
-  // Calculate projections
+  // Handle pending arrival change
+  const handleArrivalChange = useCallback((productId: string, monthKey: string, value: string) => {
+    const key = `${productId}-${monthKey}`;
+    const numValue = parseInt(value) || 0;
+    
+    setPendingArrivals(prev => {
+      if (numValue <= 0) {
+        const { [key]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [key]: numValue };
+    });
+  }, []);
+
+  // Clear pending arrivals
+  const clearPendingArrivals = useCallback(() => {
+    setPendingArrivals({});
+  }, []);
+
+  // Calculate projections with pending arrivals
   const productProjections = useMemo(() => {
     const now = new Date();
     const startMonth = startOfMonth(now);
@@ -234,6 +286,11 @@ export default function DemandPlanning() {
     // Calculate projections for each product
     const projections: ProductProjection[] = products
       .filter(p => {
+        // Filter by supplier
+        if (selectedSupplier !== 'all' && p.supplier_id !== selectedSupplier) {
+          return false;
+        }
+        // Filter by search
         if (searchQuery) {
           const query = searchQuery.toLowerCase();
           return p.code.toLowerCase().includes(query) || 
@@ -254,7 +311,14 @@ export default function DemandPlanning() {
         const monthProjections: MonthProjection[] = months.map((month, index) => {
           const monthKey = format(month, 'yyyy-MM-dd');
           const forecast = productForecasts.get(monthKey) || 0;
-          const purchases = productPurchases.get(monthKey) || 0;
+          const existingPurchases = productPurchases.get(monthKey) || 0;
+          
+          // Get pending arrival for this product/month
+          const pendingArrivalKey = `${product.id}-${monthKey}`;
+          const pendingArrival = pendingArrivals[pendingArrivalKey] || 0;
+          
+          // Total arrivals = existing purchases + pending arrivals
+          const totalArrivals = existingPurchases + pendingArrival;
           
           // Get history from same month previous year
           const historyMonth = subYears(month, 1);
@@ -262,7 +326,7 @@ export default function DemandPlanning() {
           const historyLastYear = productHistory.get(historyKey) || 0;
           
           const initialStock = index === 0 ? currentStock : runningBalance;
-          const finalBalance = initialStock - forecast + purchases;
+          const finalBalance = initialStock - forecast + totalArrivals;
           
           runningBalance = finalBalance;
 
@@ -279,11 +343,13 @@ export default function DemandPlanning() {
 
           return {
             month,
+            monthKey,
             monthLabel: format(month, 'MMM/yy', { locale: ptBR }),
             initialStock,
             forecast,
             historyLastYear,
-            purchases,
+            purchases: existingPurchases,
+            pendingArrival,
             finalBalance,
             status,
           };
@@ -293,6 +359,7 @@ export default function DemandPlanning() {
         const totalForecast = monthProjections.reduce((sum, m) => sum + m.forecast, 0);
         const totalHistory = monthProjections.reduce((sum, m) => sum + m.historyLastYear, 0);
         const totalPurchases = monthProjections.reduce((sum, m) => sum + m.purchases, 0);
+        const totalPendingArrivals = monthProjections.reduce((sum, m) => sum + m.pendingArrival, 0);
 
         return {
           product,
@@ -303,6 +370,7 @@ export default function DemandPlanning() {
           totalForecast,
           totalHistory,
           totalPurchases,
+          totalPendingArrivals,
         };
       })
       .filter(p => !showOnlyRuptures || p.hasRupture);
@@ -313,7 +381,7 @@ export default function DemandPlanning() {
       if (!a.hasRupture && b.hasRupture) return 1;
       return a.product.code.localeCompare(b.product.code);
     });
-  }, [products, forecasts, salesHistory, inventorySnapshots, purchaseItems, searchQuery, showOnlyRuptures, monthsAhead, selectedUnit]);
+  }, [products, forecasts, salesHistory, inventorySnapshots, purchaseItems, searchQuery, showOnlyRuptures, monthsAhead, selectedUnit, selectedSupplier, pendingArrivals]);
 
   const stats = useMemo(() => {
     const total = productProjections.length;
@@ -329,10 +397,15 @@ export default function DemandPlanning() {
     ? productProjections.find(p => p.product.id === selectedProduct)
     : null;
 
+  const selectedSupplierName = suppliers.find(s => s.id === selectedSupplier)?.company_name || '';
+
+  const hasPendingArrivals = Object.keys(pendingArrivals).length > 0;
+
   const handleRefreshData = () => {
     refetchForecasts();
     refetchInventory();
     refetchHistory();
+    refetchPurchaseItems();
   };
 
   if (productsLoading) {
@@ -354,7 +427,7 @@ export default function DemandPlanning() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Planejamento de Demanda</h1>
           <p className="text-muted-foreground">
-            Projeção de estoque e identificação de rupturas
+            Projeção de estoque e simulação de compras
           </p>
         </div>
         <div className="flex gap-2">
@@ -435,6 +508,17 @@ export default function DemandPlanning() {
                 />
               </div>
             </div>
+            <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Fornecedor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os Fornecedores</SelectItem>
+                {suppliers.map(supplier => (
+                  <SelectItem key={supplier.id} value={supplier.id}>{supplier.company_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={selectedUnit} onValueChange={setSelectedUnit}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Unidade" />
@@ -462,6 +546,19 @@ export default function DemandPlanning() {
             >
               <Filter className="mr-2 h-4 w-4" />
               Apenas Rupturas
+            </Button>
+            <Button
+              variant={hasPendingArrivals ? "default" : "outline"}
+              onClick={() => setOrderPanelOpen(true)}
+              className="relative"
+            >
+              <Ship className="mr-2 h-4 w-4" />
+              Simular Compra
+              {hasPendingArrivals && (
+                <Badge variant="secondary" className="ml-2 h-5 min-w-[20px] px-1.5">
+                  {Object.keys(pendingArrivals).length}
+                </Badge>
+              )}
             </Button>
           </div>
         </CardContent>
@@ -491,7 +588,7 @@ export default function DemandPlanning() {
         <CardHeader>
           <CardTitle>Projeção de Estoque</CardTitle>
           <CardDescription>
-            Clique em um produto para ver o gráfico detalhado. Cada produto mostra: PV (previsão), Histórico do ano anterior, e Projeção de saldo.
+            Clique em um produto para ver o gráfico. Digite valores na linha "Chegada" para simular compras.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -585,30 +682,40 @@ export default function DemandPlanning() {
                         </TableCell>
                       </TableRow>
 
-                      {/* Row 3: Arrivals (Scheduled Purchases) */}
+                      {/* Row 3: Arrivals (Existing + Pending) */}
                       <TableRow 
                         key={`${productProj.product.id}-arrivals`}
                         className={`bg-green-500/5 ${selectedProduct === productProj.product.id ? 'bg-muted' : ''}`}
                       >
                         {productProj.projections.map((proj, i) => (
-                          <TableCell key={i} className="text-center p-1 bg-green-500/5">
-                            {proj.purchases > 0 ? (
-                              <>
-                                <div className="text-sm font-medium text-green-600 dark:text-green-400">
-                                  {proj.purchases.toLocaleString('pt-BR')}
-                                </div>
-                                <span className="text-[10px] text-green-500/70">Chegada</span>
-                              </>
-                            ) : (
-                              <>
-                                <div className="text-sm text-muted-foreground">-</div>
-                                <span className="text-[10px] text-green-500/70">Chegada</span>
-                              </>
-                            )}
+                          <TableCell key={i} className="text-center p-1 bg-green-500/5" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-col items-center">
+                              {proj.purchases > 0 && (
+                                <span className="text-xs text-green-600 dark:text-green-400">
+                                  +{proj.purchases.toLocaleString('pt-BR')}
+                                </span>
+                              )}
+                              <Input
+                                type="number"
+                                min="0"
+                                placeholder="0"
+                                className="w-16 h-6 text-center text-xs px-1 bg-green-500/10 border-green-500/30 focus:border-green-500"
+                                value={pendingArrivals[`${productProj.product.id}-${proj.monthKey}`] || ''}
+                                onChange={(e) => handleArrivalChange(productProj.product.id, proj.monthKey, e.target.value)}
+                              />
+                              <span className="text-[10px] text-green-500/70">Chegada</span>
+                            </div>
                           </TableCell>
                         ))}
-                        <TableCell className="text-center p-1 bg-green-500/10 font-semibold text-green-600 dark:text-green-400">
-                          {productProj.totalPurchases.toLocaleString('pt-BR')}
+                        <TableCell className="text-center p-1 bg-green-500/10">
+                          <div className="font-semibold text-green-600 dark:text-green-400">
+                            {(productProj.totalPurchases + productProj.totalPendingArrivals).toLocaleString('pt-BR')}
+                          </div>
+                          {productProj.totalPendingArrivals > 0 && (
+                            <span className="text-[10px] text-green-500/70">
+                              (+{productProj.totalPendingArrivals.toLocaleString('pt-BR')} novo)
+                            </span>
+                          )}
                         </TableCell>
                       </TableRow>
 
@@ -670,6 +777,19 @@ export default function DemandPlanning() {
       <ImportSalesHistoryModal 
         open={importHistoryOpen} 
         onOpenChange={setImportHistoryOpen}
+        onSuccess={handleRefreshData}
+      />
+
+      {/* Order Simulation Panel */}
+      <OrderSimulationPanel
+        open={orderPanelOpen}
+        onOpenChange={setOrderPanelOpen}
+        pendingArrivals={pendingArrivals}
+        products={products}
+        selectedSupplier={selectedSupplier}
+        supplierName={selectedSupplierName}
+        selectedUnit={selectedUnit}
+        onClear={clearPendingArrivals}
         onSuccess={handleRefreshData}
       />
     </div>
