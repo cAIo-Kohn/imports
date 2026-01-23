@@ -142,13 +142,18 @@ export default function SupplierPlanning() {
     enabled: !!supplierId,
   });
 
-  // Fetch forecasts
+  // Fetch forecasts - filtered by supplier's products to avoid 1000 record limit
+  const productIds = useMemo(() => products.map(p => p.id), [products]);
+  
   const { data: forecasts = [], refetch: refetchForecasts } = useQuery({
-    queryKey: ['sales-forecasts', selectedUnit],
+    queryKey: ['sales-forecasts', selectedUnit, supplierId, productIds],
     queryFn: async () => {
+      if (productIds.length === 0) return [];
+      
       let query = supabase
         .from('sales_forecasts')
         .select('product_id, unit_id, year_month, quantity, version')
+        .in('product_id', productIds)
         .order('year_month');
       
       if (selectedUnit !== 'all') {
@@ -159,15 +164,19 @@ export default function SupplierPlanning() {
       if (error) throw error;
       return data;
     },
+    enabled: productIds.length > 0,
   });
 
-  // Fetch sales history
+  // Fetch sales history - filtered by supplier's products
   const { data: salesHistory = [], refetch: refetchHistory } = useQuery({
-    queryKey: ['sales-history', selectedUnit],
+    queryKey: ['sales-history', selectedUnit, supplierId, productIds],
     queryFn: async () => {
+      if (productIds.length === 0) return [];
+      
       let query = supabase
         .from('sales_history')
         .select('product_id, unit_id, year_month, quantity')
+        .in('product_id', productIds)
         .order('year_month');
       
       if (selectedUnit !== 'all') {
@@ -178,15 +187,19 @@ export default function SupplierPlanning() {
       if (error) throw error;
       return data;
     },
+    enabled: productIds.length > 0,
   });
 
-  // Fetch latest inventory snapshots
+  // Fetch latest inventory snapshots - filtered by supplier's products
   const { data: inventorySnapshots = [], refetch: refetchInventory } = useQuery({
-    queryKey: ['inventory-snapshots', selectedUnit],
+    queryKey: ['inventory-snapshots', selectedUnit, supplierId, productIds],
     queryFn: async () => {
+      if (productIds.length === 0) return [];
+      
       let query = supabase
         .from('inventory_snapshots')
         .select('product_id, unit_id, snapshot_date, quantity')
+        .in('product_id', productIds)
         .order('snapshot_date', { ascending: false });
       
       if (selectedUnit !== 'all') {
@@ -197,12 +210,15 @@ export default function SupplierPlanning() {
       if (error) throw error;
       return data;
     },
+    enabled: productIds.length > 0,
   });
 
-  // Fetch purchase order items
+  // Fetch purchase order items - filtered by supplier's products
   const { data: purchaseItems = [], refetch: refetchPurchaseItems } = useQuery({
-    queryKey: ['purchase-order-items', selectedUnit],
+    queryKey: ['purchase-order-items', selectedUnit, supplierId, productIds],
     queryFn: async () => {
+      if (productIds.length === 0) return [];
+      
       let query = supabase
         .from('purchase_order_items')
         .select(`
@@ -212,6 +228,7 @@ export default function SupplierPlanning() {
           expected_arrival,
           purchase_orders!inner (status)
         `)
+        .in('product_id', productIds)
         .not('expected_arrival', 'is', null);
       
       if (selectedUnit !== 'all') {
@@ -225,6 +242,7 @@ export default function SupplierPlanning() {
         (item.purchase_orders as any)?.status !== 'received'
       ) || [];
     },
+    enabled: productIds.length > 0,
   });
 
   const handleArrivalChange = useCallback((productId: string, monthKey: string, value: string) => {
