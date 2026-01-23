@@ -15,6 +15,7 @@ import Units from "./pages/Units";
 import Categories from "./pages/Categories";
 import Settings from "./pages/Settings";
 import DemandPlanning from "./pages/DemandPlanning";
+import SupplierPlanning from "./pages/SupplierPlanning";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import PurchaseOrderDetails from "./pages/PurchaseOrderDetails";
 import NotFound from "./pages/NotFound";
@@ -69,6 +70,7 @@ const AppRoutes = () => (
     <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
     <Route path="/demand-planning" element={<ProtectedRoute><DemandPlanning /></ProtectedRoute>} />
+    <Route path="/demand-planning/:id" element={<ProtectedRoute><SupplierPlanning /></ProtectedRoute>} />
     <Route path="/purchase-orders" element={<ProtectedRoute><PurchaseOrders /></ProtectedRoute>} />
     <Route path="/purchase-orders/:id" element={<ProtectedRoute><PurchaseOrderDetails /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
