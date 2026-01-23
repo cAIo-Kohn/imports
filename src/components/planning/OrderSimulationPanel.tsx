@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { format, subDays, isBefore, startOfDay } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -11,7 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Package, DollarSign, Scale, Box, Trash2, Ship } from 'lucide-react';
+import { Package, DollarSign, Scale, Box, Trash2, Ship, CalendarClock, AlertTriangle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface ProductWithDetails {
@@ -43,12 +44,25 @@ interface OrderSimulationPanelProps {
   onClear: () => void;
   onSuccess: () => void;
 }
-
 const CONTAINER_SPECS = {
   '20dry': { name: "20' Dry", volume: 33, maxWeight: 28000 },
   '40dry': { name: "40' Dry", volume: 67, maxWeight: 28000 },
   '40hq': { name: "40' HQ", volume: 76, maxWeight: 28000 },
 };
+
+const DEFAULT_LEAD_TIME = 60; // Default 60 days if not specified
+
+// Helper function to parse date string safely (avoiding timezone issues)
+function parseDateString(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day || 1);
+}
+
+// Calculate required ETD based on arrival date and lead time
+function calculateRequiredETD(arrivalMonthKey: string, leadTimeDays: number): Date {
+  const arrivalDate = parseDateString(arrivalMonthKey);
+  return subDays(arrivalDate, leadTimeDays);
+}
 
 export function OrderSimulationPanel({
   open,
@@ -79,6 +93,9 @@ export function OrderSimulationPanel({
       price: number;
       weight: number;
       monthKey: string;
+      leadTime: number;
+      etdDate: Date;
+      isEtdCritical: boolean;
     }[] = [];
     
     let totalVolume = 0;
@@ -117,6 +134,11 @@ export function OrderSimulationPanel({
       totalWeight += itemWeight;
       totalQuantity += quantity;
 
+      // Calculate ETD
+      const leadTime = product.lead_time_days || DEFAULT_LEAD_TIME;
+      const etdDate = calculateRequiredETD(monthKey, leadTime);
+      const isEtdCritical = isBefore(etdDate, startOfDay(new Date()));
+
       items.push({
         productId,
         code: product.code,
@@ -127,12 +149,33 @@ export function OrderSimulationPanel({
         price: itemValue,
         weight: itemWeight,
         monthKey,
+        leadTime,
+        etdDate,
+        isEtdCritical,
       });
     });
 
     // Container utilization
     const volumeUtilization = (totalVolume / container.volume) * 100;
     const weightUtilization = (totalWeight / container.maxWeight) * 100;
+
+    // Group items by ETD month for summary
+    const etdGroups: Record<string, { items: typeof items; hasCritical: boolean }> = {};
+    items.forEach(item => {
+      const etdKey = format(item.etdDate, 'yyyy-MM');
+      if (!etdGroups[etdKey]) {
+        etdGroups[etdKey] = { items: [], hasCritical: false };
+      }
+      etdGroups[etdKey].items.push(item);
+      if (item.isEtdCritical) {
+        etdGroups[etdKey].hasCritical = true;
+      }
+    });
+
+    // Find earliest ETD for order date
+    const earliestETD = items.length > 0 
+      ? items.reduce((min, item) => isBefore(item.etdDate, min) ? item.etdDate : min, items[0].etdDate)
+      : null;
 
     return {
       items,
@@ -144,6 +187,8 @@ export function OrderSimulationPanel({
       weightUtilization: Math.min(weightUtilization, 100),
       isOverVolume: volumeUtilization > 100,
       isOverWeight: weightUtilization > 100,
+      etdGroups,
+      earliestETD,
     };
   }, [pendingArrivals, products, selectedSupplier, container]);
 
@@ -165,17 +210,21 @@ export function OrderSimulationPanel({
         return item.monthKey < min ? item.monthKey : min;
       }, orderSummary.items[0].monthKey);
 
-      // Create purchase order
+      // Create purchase order with earliest ETD as order_date
+      const orderDate = orderSummary.earliestETD 
+        ? format(orderSummary.earliestETD, 'yyyy-MM-dd')
+        : format(new Date(), 'yyyy-MM-dd');
+
       const { data: order, error: orderError } = await supabase
         .from('purchase_orders')
         .insert({
           order_number: orderNumber,
           supplier_id: selectedSupplier,
-          order_date: format(new Date(), 'yyyy-MM-dd'),
+          order_date: orderDate,
           status: 'draft',
           created_by: user.id,
           total_value_usd: orderSummary.totalValue,
-          notes: `Container: ${container.name} | Volume: ${orderSummary.totalVolume.toFixed(2)}m³ (${orderSummary.volumeUtilization.toFixed(1)}%)`,
+          notes: `Container: ${container.name} | Volume: ${orderSummary.totalVolume.toFixed(2)}m³ (${orderSummary.volumeUtilization.toFixed(1)}%) | ETD: ${format(orderSummary.earliestETD || new Date(), 'dd/MM/yyyy')}`,
         })
         .select('id')
         .single();
@@ -229,6 +278,41 @@ export function OrderSimulationPanel({
         </SheetHeader>
 
         <div className="flex-1 overflow-hidden flex flex-col gap-4 mt-4">
+          {/* ETD Summary by Month */}
+          {hasItems && Object.keys(orderSummary.etdGroups).length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <CalendarClock className="h-4 w-4" />
+                Datas de Pedido Necessárias (ETD)
+              </div>
+              <div className="space-y-1">
+                {Object.entries(orderSummary.etdGroups)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([etdKey, { items, hasCritical }]) => {
+                    const etdDate = parseDateString(`${etdKey}-01`);
+                    const totalValue = items.reduce((sum, i) => sum + i.price, 0);
+                    return (
+                      <div key={etdKey} className="flex items-center gap-2 text-sm">
+                        <Badge variant={hasCritical ? "destructive" : "outline"}>
+                          {format(etdDate, "MMM/yy", { locale: ptBR })}
+                        </Badge>
+                        <span>{items.length} produto{items.length > 1 ? 's' : ''}</span>
+                        <span className="text-muted-foreground">
+                          (${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                        </span>
+                        {hasCritical && (
+                          <Badge variant="destructive" className="ml-auto flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" />
+                            Crítico
+                          </Badge>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
           {/* Container selector */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Container:</span>
@@ -324,9 +408,10 @@ export function OrderSimulationPanel({
                   <TableHeader>
                     <TableRow>
                       <TableHead>Produto</TableHead>
+                      <TableHead className="text-center">Chegada</TableHead>
+                      <TableHead className="text-center">ETD</TableHead>
                       <TableHead className="text-right">Qtd</TableHead>
                       <TableHead className="text-right">Valor</TableHead>
-                      <TableHead className="text-right">m³</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -334,18 +419,26 @@ export function OrderSimulationPanel({
                       <TableRow key={idx}>
                         <TableCell>
                           <div className="font-medium">{item.code}</div>
-                          <div className="text-xs text-muted-foreground truncate max-w-[150px]">
+                          <div className="text-xs text-muted-foreground truncate max-w-[120px]">
                             {item.description}
                           </div>
+                        </TableCell>
+                        <TableCell className="text-center text-xs">
+                          {format(parseDateString(item.monthKey), "MMM/yy", { locale: ptBR })}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className={`text-xs ${item.isEtdCritical ? 'text-destructive font-medium' : ''}`}>
+                            {format(item.etdDate, "MMM/yy", { locale: ptBR })}
+                          </div>
+                          {item.isEtdCritical && (
+                            <AlertTriangle className="h-3 w-3 text-destructive mx-auto mt-0.5" />
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           {item.quantity.toLocaleString('pt-BR')}
                         </TableCell>
                         <TableCell className="text-right">
                           ${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.volume.toFixed(2)}
                         </TableCell>
                       </TableRow>
                     ))}
