@@ -1,114 +1,32 @@
-import { useState, useMemo, useCallback, memo, useRef } from 'react';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { supabase } from '@/integrations/supabase/client';
-import { format, addMonths, startOfMonth, parseISO, subYears } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { TrendingUp, TrendingDown, AlertTriangle, Package, Search, Filter, Upload, FileSpreadsheet, RefreshCw, Ship } from 'lucide-react';
-import { ImportForecastModal } from '@/components/planning/ImportForecastModal';
-import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal';
-import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
-import { ProjectionChart } from '@/components/planning/ProjectionChart';
-import { OrderSimulationPanel } from '@/components/planning/OrderSimulationPanel';
-import { ProductProjectionRow } from '@/components/planning/ProductProjectionRow';
-import { Input } from '@/components/ui/input';
-
-interface Product {
-  id: string;
-  code: string;
-  technical_description: string;
-  lead_time_days: number | null;
-  moq: number | null;
-  supplier_id: string | null;
-  qty_master_box: number | null;
-  master_box_volume: number | null;
-  gross_weight: number | null;
-  fob_price_usd: number | null;
-}
-
-interface Unit {
-  id: string;
-  name: string;
-}
+import { Package, TrendingDown, AlertTriangle, TrendingUp, Building2 } from 'lucide-react';
+import { SupplierHealthCard, type SupplierHealthData } from '@/components/planning/SupplierHealthCard';
+import { HealthBar } from '@/components/planning/HealthBar';
+import { format, addMonths, startOfMonth, parseISO } from 'date-fns';
 
 interface Supplier {
   id: string;
   company_name: string;
+  country: string;
 }
 
-interface MonthProjection {
-  month: Date;
-  monthKey: string;
-  monthLabel: string;
-  initialStock: number;
-  forecast: number;
-  historyLastYear: number;
-  purchases: number;
-  pendingArrival: number;
-  finalBalance: number;
-  status: 'ok' | 'warning' | 'rupture';
-}
-
-interface ProductProjection {
-  product: Product;
-  currentStock: number;
-  projections: MonthProjection[];
-  hasRupture: boolean;
-  firstRuptureMonth: Date | null;
-  totalForecast: number;
-  totalHistory: number;
-  totalPurchases: number;
-  totalPendingArrivals: number;
+interface Product {
+  id: string;
+  supplier_id: string | null;
 }
 
 export default function DemandPlanning() {
-  const [selectedUnit, setSelectedUnit] = useState<string>('all');
-  const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showOnlyRuptures, setShowOnlyRuptures] = useState(false);
-  const [monthsAhead, setMonthsAhead] = useState(12);
-  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
-  
-  const [importForecastOpen, setImportForecastOpen] = useState(false);
-  const [importInventoryOpen, setImportInventoryOpen] = useState(false);
-  const [importHistoryOpen, setImportHistoryOpen] = useState(false);
-  const [orderPanelOpen, setOrderPanelOpen] = useState(false);
-
-  // Pending arrivals: key = "productId-yyyy-MM-dd", value = quantity
-  const [pendingArrivals, setPendingArrivals] = useState<Record<string, number>>({});
-  // String version for inputs (debounced sync from ArrivalInput)
-  const [pendingArrivalsInput, setPendingArrivalsInput] = useState<Record<string, string>>({});
-  
-  // Ref for virtualized table container
-  const tableContainerRef = useRef<HTMLDivElement>(null);
-
-  // Fetch units
-  const { data: units = [] } = useQuery({
-    queryKey: ['units'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('units')
-        .select('id, name')
-        .eq('is_active', true)
-        .order('name');
-      if (error) throw error;
-      return data as Unit[];
-    },
-  });
-
   // Fetch suppliers
-  const { data: suppliers = [] } = useQuery({
+  const { data: suppliers = [], isLoading: suppliersLoading } = useQuery({
     queryKey: ['suppliers-for-planning'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('suppliers')
-        .select('id, company_name')
+        .select('id, company_name, country')
         .eq('is_active', true)
         .order('company_name');
       if (error) throw error;
@@ -116,97 +34,64 @@ export default function DemandPlanning() {
     },
   });
 
-  // Fetch products with additional fields for order simulation
-  const { data: products = [], isLoading: productsLoading } = useQuery({
+  // Fetch products
+  const { data: products = [] } = useQuery({
     queryKey: ['products-for-planning'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('products')
-        .select('id, code, technical_description, lead_time_days, moq, supplier_id, qty_master_box, master_box_volume, gross_weight, fob_price_usd')
-        .eq('is_active', true)
-        .order('code');
+        .select('id, supplier_id')
+        .eq('is_active', true);
       if (error) throw error;
       return data as Product[];
     },
   });
 
-  // Fetch forecasts
-  const { data: forecasts = [], refetch: refetchForecasts } = useQuery({
-    queryKey: ['sales-forecasts', selectedUnit],
+  // Fetch forecasts (next 6 months)
+  const { data: forecasts = [] } = useQuery({
+    queryKey: ['sales-forecasts-summary'],
     queryFn: async () => {
-      let query = supabase
+      const now = new Date();
+      const startMonth = format(startOfMonth(now), 'yyyy-MM-dd');
+      const endMonth = format(addMonths(startOfMonth(now), 6), 'yyyy-MM-dd');
+      
+      const { data, error } = await supabase
         .from('sales_forecasts')
-        .select('product_id, unit_id, year_month, quantity, version')
-        .order('year_month');
-      
-      if (selectedUnit !== 'all') {
-        query = query.eq('unit_id', selectedUnit);
-      }
-      
-      const { data, error } = await query;
+        .select('product_id, quantity')
+        .gte('year_month', startMonth)
+        .lt('year_month', endMonth);
       if (error) throw error;
       return data;
     },
   });
 
-  // Fetch sales history (previous year)
-  const { data: salesHistory = [], refetch: refetchHistory } = useQuery({
-    queryKey: ['sales-history', selectedUnit],
+  // Fetch latest inventory
+  const { data: inventorySnapshots = [] } = useQuery({
+    queryKey: ['inventory-snapshots-summary'],
     queryFn: async () => {
-      let query = supabase
-        .from('sales_history')
-        .select('product_id, unit_id, year_month, quantity')
-        .order('year_month');
-      
-      if (selectedUnit !== 'all') {
-        query = query.eq('unit_id', selectedUnit);
-      }
-      
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  // Fetch latest inventory snapshots
-  const { data: inventorySnapshots = [], refetch: refetchInventory } = useQuery({
-    queryKey: ['inventory-snapshots', selectedUnit],
-    queryFn: async () => {
-      let query = supabase
+      const { data, error } = await supabase
         .from('inventory_snapshots')
-        .select('product_id, unit_id, snapshot_date, quantity')
+        .select('product_id, quantity, snapshot_date')
         .order('snapshot_date', { ascending: false });
-      
-      if (selectedUnit !== 'all') {
-        query = query.eq('unit_id', selectedUnit);
-      }
-      
-      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
   });
 
-  // Fetch purchase order items with expected arrivals
-  const { data: purchaseItems = [], refetch: refetchPurchaseItems } = useQuery({
-    queryKey: ['purchase-order-items', selectedUnit],
+  // Fetch pending purchase orders
+  const { data: purchaseItems = [] } = useQuery({
+    queryKey: ['purchase-items-summary'],
     queryFn: async () => {
-      let query = supabase
+      const { data, error } = await supabase
         .from('purchase_order_items')
         .select(`
           product_id,
-          unit_id,
           quantity,
+          unit_price_usd,
           expected_arrival,
-          purchase_orders!inner (status)
+          purchase_orders!inner (status, supplier_id)
         `)
         .not('expected_arrival', 'is', null);
-      
-      if (selectedUnit !== 'all') {
-        query = query.eq('unit_id', selectedUnit);
-      }
-      
-      const { data, error } = await query;
       if (error) throw error;
       return data?.filter(item => 
         (item.purchase_orders as any)?.status !== 'cancelled' && 
@@ -215,225 +100,125 @@ export default function DemandPlanning() {
     },
   });
 
-  // Handle pending arrival change (called after debounce from ArrivalInput)
-  const handleArrivalChange = useCallback((productId: string, monthKey: string, value: string) => {
-    const key = `${productId}-${monthKey}`;
-    const numValue = parseInt(value) || 0;
-    
-    // Update string version for inputs
-    setPendingArrivalsInput(prev => {
-      if (value === '' || value === '0') {
-        const { [key]: _, ...rest } = prev;
-        return rest;
-      }
-      return { ...prev, [key]: value };
-    });
-    
-    // Update numeric version for calculations
-    setPendingArrivals(prev => {
-      if (numValue <= 0) {
-        const { [key]: _, ...rest } = prev;
-        return rest;
-      }
-      return { ...prev, [key]: numValue };
-    });
-  }, []);
-
-  // Clear pending arrivals
-  const clearPendingArrivals = useCallback(() => {
-    setPendingArrivals({});
-    setPendingArrivalsInput({});
-  }, []);
-
-  // Calculate projections with pending arrivals
-  const productProjections = useMemo(() => {
-    const now = new Date();
-    const startMonth = startOfMonth(now);
-    const months: Date[] = [];
-    
-    for (let i = 0; i < monthsAhead; i++) {
-      months.push(addMonths(startMonth, i));
-    }
-
-    // Group forecasts by product
-    const forecastsByProduct = new Map<string, Map<string, number>>();
+  // Calculate supplier health data
+  const supplierHealthData = useMemo((): SupplierHealthData[] => {
+    // Group forecasts by product (sum of 6 months)
+    const forecastByProduct = new Map<string, number>();
     forecasts.forEach(f => {
-      const key = f.product_id;
-      if (!forecastsByProduct.has(key)) {
-        forecastsByProduct.set(key, new Map());
-      }
-      const monthKey = f.year_month;
-      forecastsByProduct.get(key)!.set(monthKey, f.quantity);
-    });
-
-    // Group history by product (year_month as key)
-    const historyByProduct = new Map<string, Map<string, number>>();
-    salesHistory.forEach(h => {
-      const key = h.product_id;
-      if (!historyByProduct.has(key)) {
-        historyByProduct.set(key, new Map());
-      }
-      historyByProduct.get(key)!.set(h.year_month, h.quantity);
+      const current = forecastByProduct.get(f.product_id) || 0;
+      forecastByProduct.set(f.product_id, current + f.quantity);
     });
 
     // Get latest inventory per product
     const inventoryByProduct = new Map<string, number>();
     const processedProducts = new Set<string>();
     inventorySnapshots.forEach(inv => {
-      const key = selectedUnit === 'all' ? inv.product_id : `${inv.product_id}-${inv.unit_id}`;
-      if (!processedProducts.has(key)) {
-        const currentQty = inventoryByProduct.get(inv.product_id) || 0;
-        inventoryByProduct.set(inv.product_id, currentQty + inv.quantity);
-        processedProducts.add(key);
+      if (!processedProducts.has(inv.product_id)) {
+        inventoryByProduct.set(inv.product_id, inv.quantity);
+        processedProducts.add(inv.product_id);
       }
     });
 
-    // Group purchases by product and month
-    const purchasesByProductMonth = new Map<string, Map<string, number>>();
+    // Group pending orders by supplier
+    const pendingBySupplier = new Map<string, { value: number; nextArrival: string | null }>();
     purchaseItems.forEach(item => {
-      if (!item.expected_arrival) return;
-      const key = item.product_id;
-      if (!purchasesByProductMonth.has(key)) {
-        purchasesByProductMonth.set(key, new Map());
+      const supplierId = (item.purchase_orders as any)?.supplier_id;
+      if (!supplierId) return;
+      
+      const current = pendingBySupplier.get(supplierId) || { value: 0, nextArrival: null };
+      const itemValue = item.quantity * (item.unit_price_usd || 0);
+      
+      let nextArrival = current.nextArrival;
+      if (item.expected_arrival) {
+        if (!nextArrival || item.expected_arrival < nextArrival) {
+          nextArrival = item.expected_arrival;
+        }
       }
-      const monthKey = format(startOfMonth(parseISO(item.expected_arrival)), 'yyyy-MM-dd');
-      const current = purchasesByProductMonth.get(key)!.get(monthKey) || 0;
-      purchasesByProductMonth.get(key)!.set(monthKey, current + item.quantity);
+      
+      pendingBySupplier.set(supplierId, {
+        value: current.value + itemValue,
+        nextArrival,
+      });
     });
 
-    // Calculate projections for each product
-    const projections: ProductProjection[] = products
-      .filter(p => {
-        // Filter by supplier
-        if (selectedSupplier !== 'all' && p.supplier_id !== selectedSupplier) {
-          return false;
-        }
-        // Filter by search
-        if (searchQuery) {
-          const query = searchQuery.toLowerCase();
-          return p.code.toLowerCase().includes(query) || 
-                 p.technical_description.toLowerCase().includes(query);
-        }
-        return true;
-      })
-      .map(product => {
-        const productForecasts = forecastsByProduct.get(product.id) || new Map();
-        const productHistory = historyByProduct.get(product.id) || new Map();
-        const productPurchases = purchasesByProductMonth.get(product.id) || new Map();
-        const currentStock = inventoryByProduct.get(product.id) || 0;
-        let runningBalance = currentStock;
+    // Calculate health for each supplier
+    return suppliers.map(supplier => {
+      const supplierProducts = products.filter(p => p.supplier_id === supplier.id);
+      
+      let criticalCount = 0;
+      let warningCount = 0;
+      let healthyCount = 0;
+
+      supplierProducts.forEach(product => {
+        const stock = inventoryByProduct.get(product.id) || 0;
+        const forecast = forecastByProduct.get(product.id) || 0;
         
-        let hasRupture = false;
-        let firstRuptureMonth: Date | null = null;
+        if (forecast === 0) {
+          // No forecast = consider healthy
+          healthyCount++;
+        } else if (stock < forecast * 0.3) {
+          // Less than 30% of needed = critical
+          criticalCount++;
+        } else if (stock < forecast) {
+          // Between 30% and 100% = warning
+          warningCount++;
+        } else {
+          // More than forecast = healthy
+          healthyCount++;
+        }
+      });
 
-        const monthProjections: MonthProjection[] = months.map((month, index) => {
-          const monthKey = format(month, 'yyyy-MM-dd');
-          const forecast = productForecasts.get(monthKey) || 0;
-          const existingPurchases = productPurchases.get(monthKey) || 0;
-          
-          // Get pending arrival for this product/month
-          const pendingArrivalKey = `${product.id}-${monthKey}`;
-          const pendingArrival = pendingArrivals[pendingArrivalKey] || 0;
-          
-          // Total arrivals = existing purchases + pending arrivals
-          const totalArrivals = existingPurchases + pendingArrival;
-          
-          // Get history from same month previous year
-          const historyMonth = subYears(month, 1);
-          const historyKey = format(historyMonth, 'yyyy-MM-dd');
-          const historyLastYear = productHistory.get(historyKey) || 0;
-          
-          const initialStock = index === 0 ? currentStock : runningBalance;
-          const finalBalance = initialStock - forecast + totalArrivals;
-          
-          runningBalance = finalBalance;
+      const pending = pendingBySupplier.get(supplier.id) || { value: 0, nextArrival: null };
 
-          let status: 'ok' | 'warning' | 'rupture' = 'ok';
-          if (finalBalance < 0) {
-            status = 'rupture';
-            if (!hasRupture) {
-              hasRupture = true;
-              firstRuptureMonth = month;
-            }
-          } else if (forecast > 0 && finalBalance < forecast * 0.3) {
-            status = 'warning';
-          }
+      return {
+        supplier: {
+          id: supplier.id,
+          company_name: supplier.company_name,
+          country: supplier.country,
+        },
+        stats: {
+          totalProducts: supplierProducts.length,
+          criticalCount,
+          warningCount,
+          healthyCount,
+        },
+        pendingOrders: {
+          totalValue: pending.value,
+          nextArrival: pending.nextArrival,
+        },
+      };
+    }).filter(s => s.stats.totalProducts > 0) // Only show suppliers with products
+      .sort((a, b) => {
+        // Sort by urgency: critical first, then warning
+        if (a.stats.criticalCount !== b.stats.criticalCount) {
+          return b.stats.criticalCount - a.stats.criticalCount;
+        }
+        if (a.stats.warningCount !== b.stats.warningCount) {
+          return b.stats.warningCount - a.stats.warningCount;
+        }
+        return a.supplier.company_name.localeCompare(b.supplier.company_name);
+      });
+  }, [suppliers, products, forecasts, inventorySnapshots, purchaseItems]);
 
-          return {
-            month,
-            monthKey,
-            monthLabel: format(month, 'MMM/yy', { locale: ptBR }),
-            initialStock,
-            forecast,
-            historyLastYear,
-            purchases: existingPurchases,
-            pendingArrival,
-            finalBalance,
-            status,
-          };
-        });
+  // Overall stats
+  const overallStats = useMemo(() => {
+    const totalProducts = supplierHealthData.reduce((sum, s) => sum + s.stats.totalProducts, 0);
+    const totalCritical = supplierHealthData.reduce((sum, s) => sum + s.stats.criticalCount, 0);
+    const totalWarning = supplierHealthData.reduce((sum, s) => sum + s.stats.warningCount, 0);
+    const totalHealthy = supplierHealthData.reduce((sum, s) => sum + s.stats.healthyCount, 0);
+    return { totalProducts, totalCritical, totalWarning, totalHealthy };
+  }, [supplierHealthData]);
 
-        // Calculate totals
-        const totalForecast = monthProjections.reduce((sum, m) => sum + m.forecast, 0);
-        const totalHistory = monthProjections.reduce((sum, m) => sum + m.historyLastYear, 0);
-        const totalPurchases = monthProjections.reduce((sum, m) => sum + m.purchases, 0);
-        const totalPendingArrivals = monthProjections.reduce((sum, m) => sum + m.pendingArrival, 0);
-
-        return {
-          product,
-          currentStock,
-          projections: monthProjections,
-          hasRupture,
-          firstRuptureMonth,
-          totalForecast,
-          totalHistory,
-          totalPurchases,
-          totalPendingArrivals,
-        };
-      })
-      .filter(p => !showOnlyRuptures || p.hasRupture);
-
-    // Sort: products with rupture first
-    return projections.sort((a, b) => {
-      if (a.hasRupture && !b.hasRupture) return -1;
-      if (!a.hasRupture && b.hasRupture) return 1;
-      return a.product.code.localeCompare(b.product.code);
-    });
-  }, [products, forecasts, salesHistory, inventorySnapshots, purchaseItems, searchQuery, showOnlyRuptures, monthsAhead, selectedUnit, selectedSupplier, pendingArrivals]);
-
-  const stats = useMemo(() => {
-    const total = productProjections.length;
-    const withRupture = productProjections.filter(p => p.hasRupture).length;
-    const withWarning = productProjections.filter(p => 
-      !p.hasRupture && p.projections.some(m => m.status === 'warning')
-    ).length;
-    const ok = total - withRupture - withWarning;
-    return { total, withRupture, withWarning, ok };
-  }, [productProjections]);
-
-  const selectedProductData = selectedProduct 
-    ? productProjections.find(p => p.product.id === selectedProduct)
-    : null;
-
-  const selectedSupplierName = suppliers.find(s => s.id === selectedSupplier)?.company_name || '';
-
-  const hasPendingArrivals = Object.keys(pendingArrivals).length > 0;
-
-  const handleRefreshData = () => {
-    refetchForecasts();
-    refetchInventory();
-    refetchHistory();
-    refetchPurchaseItems();
-  };
-
-  if (productsLoading) {
+  if (suppliersLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-64" />
         <div className="grid grid-cols-4 gap-4">
           {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
-        <Skeleton className="h-96" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-64" />)}
+        </div>
       </div>
     );
   }
@@ -441,246 +226,87 @@ export default function DemandPlanning() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Planejamento de Demanda</h1>
-          <p className="text-muted-foreground">
-            Projeção de estoque e simulação de compras
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={handleRefreshData} title="Atualizar dados">
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" onClick={() => setImportInventoryOpen(true)}>
-            <Upload className="mr-2 h-4 w-4" />
-            Importar Estoque
-          </Button>
-          <Button variant="outline" onClick={() => setImportHistoryOpen(true)}>
-            <FileSpreadsheet className="mr-2 h-4 w-4" />
-            Importar Histórico
-          </Button>
-          <Button onClick={() => setImportForecastOpen(true)}>
-            <TrendingUp className="mr-2 h-4 w-4" />
-            Importar Previsão
-          </Button>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Planejamento de Demanda</h1>
+        <p className="text-muted-foreground">
+          Selecione um fornecedor para analisar a projeção de estoque
+        </p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Produtos</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">produtos analisados</p>
-          </CardContent>
-        </Card>
-        <Card className="border-destructive/50">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Com Ruptura</CardTitle>
-            <TrendingDown className="h-4 w-4 text-destructive" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">{stats.withRupture}</div>
-            <p className="text-xs text-muted-foreground">precisam de compra urgente</p>
-          </CardContent>
-        </Card>
-        <Card className="border-yellow-500/50">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Atenção</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-yellow-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-500">{stats.withWarning}</div>
-            <p className="text-xs text-muted-foreground">estoque baixo previsto</p>
-          </CardContent>
-        </Card>
-        <Card className="border-green-500/50">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">OK</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-500">{stats.ok}</div>
-            <p className="text-xs text-muted-foreground">situação confortável</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
+      {/* Overall Stats */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por código ou descrição..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">Resumo Geral</CardTitle>
+          <CardDescription>Visão consolidada de todos os fornecedores</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Package className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{overallStats.totalProducts}</p>
+                <p className="text-xs text-muted-foreground">produtos</p>
               </div>
             </div>
-            <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Fornecedor" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os Fornecedores</SelectItem>
-                {suppliers.map(supplier => (
-                  <SelectItem key={supplier.id} value={supplier.id}>{supplier.company_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedUnit} onValueChange={setSelectedUnit}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Unidade" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as Unidades</SelectItem>
-                {units.map(unit => (
-                  <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={monthsAhead.toString()} onValueChange={(v) => setMonthsAhead(Number(v))}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="6">6 meses</SelectItem>
-                <SelectItem value="12">12 meses</SelectItem>
-                <SelectItem value="18">18 meses</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant={showOnlyRuptures ? "default" : "outline"}
-              onClick={() => setShowOnlyRuptures(!showOnlyRuptures)}
-            >
-              <Filter className="mr-2 h-4 w-4" />
-              Apenas Rupturas
-            </Button>
-            <Button
-              variant={hasPendingArrivals ? "default" : "outline"}
-              onClick={() => setOrderPanelOpen(true)}
-              className="relative"
-            >
-              <Ship className="mr-2 h-4 w-4" />
-              Simular Compra
-              {hasPendingArrivals && (
-                <Badge variant="secondary" className="ml-2 h-5 min-w-[20px] px-1.5">
-                  {Object.keys(pendingArrivals).length}
-                </Badge>
-              )}
-            </Button>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-destructive/10">
+                <TrendingDown className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-destructive">{overallStats.totalCritical}</p>
+                <p className="text-xs text-muted-foreground">críticos</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-yellow-500/10">
+                <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-yellow-500">{overallStats.totalWarning}</p>
+                <p className="text-xs text-muted-foreground">atenção</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-green-500/10">
+                <TrendingUp className="h-5 w-5 text-green-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-500">{overallStats.totalHealthy}</p>
+                <p className="text-xs text-muted-foreground">OK</p>
+              </div>
+            </div>
           </div>
+          <HealthBar
+            critical={overallStats.totalCritical}
+            warning={overallStats.totalWarning}
+            healthy={overallStats.totalHealthy}
+            className="mt-4"
+          />
         </CardContent>
       </Card>
 
-      {/* Chart for selected product */}
-      {selectedProductData && (
+      {/* Supplier Cards */}
+      {supplierHealthData.length === 0 ? (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <span>{selectedProductData.product.code}</span>
-              <span className="text-muted-foreground font-normal">-</span>
-              <span className="font-normal truncate">{selectedProductData.product.technical_description}</span>
-            </CardTitle>
-            <CardDescription>
-              Projeção de estoque para os próximos {monthsAhead} meses
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ProjectionChart projections={selectedProductData.projections} />
+          <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
+            <Building2 className="h-12 w-12 text-muted-foreground" />
+            <div className="text-center">
+              <p className="font-medium">Nenhum fornecedor com produtos</p>
+              <p className="text-sm text-muted-foreground">
+                Cadastre produtos e associe a fornecedores para visualizar o planejamento
+              </p>
+            </div>
           </CardContent>
         </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {supplierHealthData.map(data => (
+            <SupplierHealthCard key={data.supplier.id} data={data} />
+          ))}
+        </div>
       )}
-
-      {/* Projection Table - Virtualized */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Projeção de Estoque</CardTitle>
-          <CardDescription>
-            Clique em um produto para ver o gráfico. Digite valores na linha "Chegada" para simular compras.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div 
-            ref={tableContainerRef}
-            className="overflow-auto max-h-[600px]"
-          >
-            <Table>
-              <TableHeader className="sticky top-0 bg-background z-20">
-                <TableRow>
-                  <TableHead className="sticky left-0 bg-background z-30 min-w-[280px]">Produto</TableHead>
-                  <TableHead className="text-center min-w-[90px] bg-muted/50">Estoque</TableHead>
-                  {productProjections[0]?.projections.map((m, i) => (
-                    <TableHead key={i} className="text-center min-w-[85px]">
-                      {m.monthLabel}
-                    </TableHead>
-                  ))}
-                  <TableHead className="text-center min-w-[90px] bg-muted/30 font-bold">TOTAL</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {productProjections.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={monthsAhead + 3} className="text-center py-8 text-muted-foreground">
-                      Nenhum produto encontrado. Importe previsões e estoque para começar.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  productProjections.map((productProj) => (
-                    <ProductProjectionRow
-                      key={productProj.product.id}
-                      productProj={productProj}
-                      isSelected={selectedProduct === productProj.product.id}
-                      pendingArrivalsInput={pendingArrivalsInput}
-                      onSelectProduct={setSelectedProduct}
-                      onArrivalChange={handleArrivalChange}
-                    />
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Import Modals */}
-      <ImportForecastModal 
-        open={importForecastOpen} 
-        onOpenChange={setImportForecastOpen}
-        onSuccess={handleRefreshData}
-      />
-      <ImportInventoryModal 
-        open={importInventoryOpen} 
-        onOpenChange={setImportInventoryOpen}
-        onSuccess={handleRefreshData}
-      />
-      <ImportSalesHistoryModal 
-        open={importHistoryOpen} 
-        onOpenChange={setImportHistoryOpen}
-        onSuccess={handleRefreshData}
-      />
-
-      {/* Order Simulation Panel */}
-      <OrderSimulationPanel
-        open={orderPanelOpen}
-        onOpenChange={setOrderPanelOpen}
-        pendingArrivals={pendingArrivals}
-        products={products}
-        selectedSupplier={selectedSupplier}
-        supplierName={selectedSupplierName}
-        selectedUnit={selectedUnit}
-        onClear={clearPendingArrivals}
-        onSuccess={handleRefreshData}
-      />
     </div>
   );
 }
