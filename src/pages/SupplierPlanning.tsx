@@ -631,14 +631,15 @@ export default function SupplierPlanning() {
             <Table>
               <TableHeader className="sticky top-0 bg-background z-20">
                 <TableRow>
-                  <TableHead className="sticky left-0 bg-background z-30 min-w-[280px]">Produto</TableHead>
-                  <TableHead className="text-center min-w-[90px] bg-muted/50">Estoque</TableHead>
+                  <TableHead className="sticky left-0 bg-background z-30 min-w-[200px]">Produto</TableHead>
+                  <TableHead className="text-center min-w-[70px] bg-muted/50">Estoque</TableHead>
+                  <TableHead className="text-center min-w-[60px] bg-muted/30">Tipo</TableHead>
                   {productProjections[0]?.projections.map((m, i) => (
-                    <TableHead key={i} className="text-center min-w-[85px]">
+                    <TableHead key={i} className="text-center min-w-[70px] text-xs">
                       {m.monthLabel}
                     </TableHead>
                   ))}
-                  <TableHead className="text-center min-w-[90px] bg-muted/30 font-bold">TOTAL</TableHead>
+                  <TableHead className="text-center min-w-[70px] bg-muted/30 font-bold text-xs">TOTAL</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
