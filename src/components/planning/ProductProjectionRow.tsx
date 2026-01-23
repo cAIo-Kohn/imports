@@ -63,15 +63,18 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
         onClick={handleClick}
       >
         <TableCell className="sticky left-0 bg-background z-10 py-1" rowSpan={4}>
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-col items-start gap-0.5 w-[120px]">
             {productProj.hasRupture && (
-              <Badge variant="destructive" className="shrink-0 text-[10px] px-1.5 py-0">RUPTURA</Badge>
+              <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                RUPTURA
+              </Badge>
             )}
-            <div className="min-w-0">
-              <div className="font-semibold text-sm">{productProj.product.code}</div>
-              <div className="text-xs text-muted-foreground truncate max-w-[150px]">
-                {productProj.product.technical_description}
-              </div>
+            <div className="font-semibold text-sm">{productProj.product.code}</div>
+            <div 
+              className="text-xs text-muted-foreground leading-tight line-clamp-2"
+              title={productProj.product.technical_description}
+            >
+              {productProj.product.technical_description}
             </div>
           </div>
         </TableCell>
