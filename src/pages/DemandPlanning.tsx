@@ -178,27 +178,29 @@ export default function DemandPlanning() {
       }
     });
 
-    // Group forecasts by product and month
-    const forecastByProductMonth = new Map<string, Map<string, number>>();
-    forecasts.forEach(f => {
-      const monthKey = format(new Date(f.year_month), 'yyyy-MM');
-      if (!forecastByProductMonth.has(f.product_id)) {
-        forecastByProductMonth.set(f.product_id, new Map());
-      }
-      const productMonths = forecastByProductMonth.get(f.product_id)!;
-      productMonths.set(monthKey, (productMonths.get(monthKey) || 0) + f.quantity);
-    });
+  // Group forecasts by product and month
+  const forecastByProductMonth = new Map<string, Map<string, number>>();
+  forecasts.forEach(f => {
+    // Extract month key directly from ISO string to avoid timezone issues
+    const monthKey = f.year_month.substring(0, 7);
+    if (!forecastByProductMonth.has(f.product_id)) {
+      forecastByProductMonth.set(f.product_id, new Map());
+    }
+    const productMonths = forecastByProductMonth.get(f.product_id)!;
+    productMonths.set(monthKey, (productMonths.get(monthKey) || 0) + f.quantity);
+  });
 
-    // Group arrivals by product and month
-    const arrivalsByProductMonth = new Map<string, Map<string, number>>();
-    scheduledArrivals.forEach(arr => {
-      const monthKey = format(new Date(arr.arrival_date), 'yyyy-MM');
-      if (!arrivalsByProductMonth.has(arr.product_id)) {
-        arrivalsByProductMonth.set(arr.product_id, new Map());
-      }
-      const productMonths = arrivalsByProductMonth.get(arr.product_id)!;
-      productMonths.set(monthKey, (productMonths.get(monthKey) || 0) + arr.quantity);
-    });
+  // Group arrivals by product and month
+  const arrivalsByProductMonth = new Map<string, Map<string, number>>();
+  scheduledArrivals.forEach(arr => {
+    // Extract month key directly from ISO string to avoid timezone issues
+    const monthKey = arr.arrival_date.substring(0, 7);
+    if (!arrivalsByProductMonth.has(arr.product_id)) {
+      arrivalsByProductMonth.set(arr.product_id, new Map());
+    }
+    const productMonths = arrivalsByProductMonth.get(arr.product_id)!;
+    productMonths.set(monthKey, (productMonths.get(monthKey) || 0) + arr.quantity);
+  });
 
     // Group pending orders by supplier
     const pendingBySupplier = new Map<string, { value: number; nextArrival: string | null }>();
