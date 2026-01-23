@@ -53,35 +53,38 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
     onSelectProduct(isSelected ? null : productProj.product.id);
   };
 
+  const baseRowClass = isSelected ? 'bg-primary/5' : 'hover:bg-muted/30';
+
   return (
     <div style={style} className="contents">
       {/* Row 1: PV (Sales Forecast) */}
       <TableRow 
-        className={`cursor-pointer transition-colors border-t-2 bg-muted/30 ${
-          isSelected ? 'bg-muted' : 'hover:bg-muted/50'
-        }`}
+        className={`cursor-pointer transition-colors border-t-2 border-border ${baseRowClass}`}
         onClick={handleClick}
       >
-        <TableCell className="sticky left-0 bg-background z-10 font-medium" rowSpan={4}>
-          <div className="flex items-center gap-2">
+        <TableCell className="sticky left-0 bg-background z-10 py-1" rowSpan={4}>
+          <div className="flex items-center gap-1.5">
             {productProj.hasRupture && (
-              <Badge variant="destructive" className="shrink-0">RUPTURA</Badge>
+              <Badge variant="destructive" className="shrink-0 text-[10px] px-1.5 py-0">RUPTURA</Badge>
             )}
             <div className="min-w-0">
-              <div className="font-semibold text-base">{productProj.product.code}</div>
-              <div className="text-sm text-muted-foreground truncate max-w-[180px]">
+              <div className="font-semibold text-sm">{productProj.product.code}</div>
+              <div className="text-xs text-muted-foreground truncate max-w-[150px]">
                 {productProj.product.technical_description}
               </div>
             </div>
           </div>
         </TableCell>
-        <TableCell className="text-center bg-muted/50 font-bold text-lg" rowSpan={4}>
+        <TableCell className="text-center bg-muted/40 font-bold py-1" rowSpan={4}>
           {productProj.currentStock.toLocaleString('pt-BR')}
         </TableCell>
+        <TableCell className="text-center py-1 bg-muted/20 text-xs font-medium text-muted-foreground w-[60px]">
+          PV
+        </TableCell>
         {productProj.projections.map((proj, i) => (
-          <TableCell key={i} className="text-center p-1 bg-muted/20">
-            <div className="flex items-center justify-center gap-1">
-              <span className="text-sm text-muted-foreground">
+          <TableCell key={i} className="text-center py-0.5 px-1">
+            <div className="flex items-center justify-center gap-0.5">
+              <span className="text-xs">
                 {proj.forecast > 0 ? proj.forecast.toLocaleString('pt-BR') : '-'}
               </span>
               {proj.forecast > 0 && proj.historyLastYear > 0 && (
@@ -92,87 +95,90 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
                 ) : null
               )}
             </div>
-            <span className="text-[10px] text-muted-foreground font-medium">PV</span>
           </TableCell>
         ))}
-        <TableCell className="text-center p-1 bg-muted/30 font-semibold">
+        <TableCell className="text-center py-0.5 px-1 bg-muted/20 font-semibold text-xs">
           {productProj.totalForecast.toLocaleString('pt-BR')}
         </TableCell>
       </TableRow>
       
       {/* Row 2: History (Previous Year Sales) */}
-      <TableRow className={`bg-secondary/30 ${isSelected ? 'bg-muted' : ''}`}>
+      <TableRow className={baseRowClass}>
+        <TableCell className="text-center py-1 bg-muted/20 text-xs font-medium text-muted-foreground">
+          Hist.
+        </TableCell>
         {productProj.projections.map((proj, i) => (
-          <TableCell key={i} className="text-center p-1 bg-secondary/30">
-            <div className="text-sm text-secondary-foreground">
+          <TableCell key={i} className="text-center py-0.5 px-1">
+            <span className="text-xs text-muted-foreground">
               {proj.historyLastYear > 0 ? proj.historyLastYear.toLocaleString('pt-BR') : '-'}
-            </div>
-            <span className="text-[10px] text-muted-foreground">Hist.</span>
+            </span>
           </TableCell>
         ))}
-        <TableCell className="text-center p-1 bg-secondary/50 font-semibold text-secondary-foreground">
+        <TableCell className="text-center py-0.5 px-1 bg-muted/20 text-xs text-muted-foreground">
           {productProj.totalHistory.toLocaleString('pt-BR')}
         </TableCell>
       </TableRow>
 
       {/* Row 3: Arrivals (Existing + Pending) */}
-      <TableRow className={`bg-accent/20 ${isSelected ? 'bg-muted' : ''}`}>
+      <TableRow className={baseRowClass}>
+        <TableCell className="text-center py-1 bg-muted/20 text-xs font-medium text-muted-foreground">
+          Chegada
+        </TableCell>
         {productProj.projections.map((proj, i) => (
-          <TableCell key={i} className="text-center p-1 bg-accent/30" onClick={(e) => e.stopPropagation()}>
-            <div className="flex flex-col items-center gap-0.5">
-              <ArrivalInput
-                productId={productProj.product.id}
-                monthKey={proj.monthKey}
-                initialValue={pendingArrivalsInput[`${productProj.product.id}-${proj.monthKey}`] || ''}
-                existingPurchases={proj.purchases}
-                onValueChange={onArrivalChange}
-              />
-              <span className="text-[10px] text-muted-foreground">Chegada</span>
-            </div>
+          <TableCell key={i} className="text-center py-0.5 px-1" onClick={(e) => e.stopPropagation()}>
+            <ArrivalInput
+              productId={productProj.product.id}
+              monthKey={proj.monthKey}
+              initialValue={pendingArrivalsInput[`${productProj.product.id}-${proj.monthKey}`] || ''}
+              existingPurchases={proj.purchases}
+              onValueChange={onArrivalChange}
+            />
           </TableCell>
         ))}
-        <TableCell className="text-center p-1 bg-accent/40">
-          <div className="font-semibold text-accent-foreground">
+        <TableCell className="text-center py-0.5 px-1 bg-muted/20">
+          <span className="font-semibold text-xs">
             {(productProj.totalPurchases + productProj.totalPendingArrivals).toLocaleString('pt-BR')}
-          </div>
+          </span>
           {productProj.totalPendingArrivals > 0 && (
-            <span className="text-[10px] text-muted-foreground">
-              (+{productProj.totalPendingArrivals.toLocaleString('pt-BR')} novo)
+            <span className="text-[10px] text-primary ml-1">
+              (+{productProj.totalPendingArrivals.toLocaleString('pt-BR')})
             </span>
           )}
         </TableCell>
       </TableRow>
 
       {/* Row 4: Balance Projection */}
-      <TableRow className={`border-b-2 ${isSelected ? 'bg-muted' : ''}`}>
+      <TableRow className={`border-b ${baseRowClass}`}>
+        <TableCell className="text-center py-1 bg-muted/20 text-xs font-medium text-muted-foreground">
+          Saldo
+        </TableCell>
         {productProj.projections.map((proj, i) => (
-          <TableCell key={i} className="text-center p-1">
-            <div 
-              className={`inline-block px-2 py-0.5 rounded text-sm font-bold ${
+          <TableCell key={i} className="text-center py-0.5 px-1">
+            <span 
+              className={`text-xs font-semibold ${
                 proj.status === 'rupture' 
-                  ? 'bg-destructive/15 text-destructive' 
+                  ? 'text-destructive' 
                   : proj.status === 'warning'
-                  ? 'bg-warning/15 text-warning'
-                  : 'text-foreground'
+                  ? 'text-yellow-600'
+                  : ''
               }`}
             >
               {proj.finalBalance.toLocaleString('pt-BR')}
-            </div>
-            <div className="text-[10px] text-muted-foreground">Saldo</div>
+            </span>
           </TableCell>
         ))}
-        <TableCell className="text-center p-1 bg-muted/30">
-          <div 
-            className={`inline-block px-2 py-0.5 rounded text-sm font-bold ${
+        <TableCell className="text-center py-0.5 px-1 bg-muted/20">
+          <span 
+            className={`text-xs font-bold ${
               productProj.projections[productProj.projections.length - 1]?.status === 'rupture' 
-                ? 'bg-destructive/15 text-destructive' 
+                ? 'text-destructive' 
                 : productProj.projections[productProj.projections.length - 1]?.status === 'warning'
-                ? 'bg-warning/15 text-warning'
-                : 'text-foreground'
+                ? 'text-yellow-600'
+                : ''
             }`}
           >
             {productProj.projections[productProj.projections.length - 1]?.finalBalance.toLocaleString('pt-BR')}
-          </div>
+          </span>
         </TableCell>
       </TableRow>
     </div>
