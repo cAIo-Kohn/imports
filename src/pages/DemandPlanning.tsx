@@ -16,7 +16,7 @@ import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal
 import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
 import { ProjectionChart } from '@/components/planning/ProjectionChart';
 import { OrderSimulationPanel } from '@/components/planning/OrderSimulationPanel';
-import { VirtualizedProductRow } from '@/components/planning/VirtualizedProductRow';
+import { ProductProjectionRow } from '@/components/planning/ProductProjectionRow';
 import { Input } from '@/components/ui/input';
 
 interface Product {
@@ -636,7 +636,7 @@ export default function DemandPlanning() {
                   </TableRow>
                 ) : (
                   productProjections.map((productProj) => (
-                    <VirtualizedProductRow
+                    <ProductProjectionRow
                       key={productProj.product.id}
                       productProj={productProj}
                       isSelected={selectedProduct === productProj.product.id}
