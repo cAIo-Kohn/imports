@@ -151,6 +151,7 @@ export type Database = {
           qty_master_box: number | null
           subcategory_id: string | null
           supplier_id: string | null
+          supplier_specs: string | null
           tax_cofins: number | null
           tax_icms: number | null
           tax_ii: number | null
@@ -196,6 +197,7 @@ export type Database = {
           qty_master_box?: number | null
           subcategory_id?: string | null
           supplier_id?: string | null
+          supplier_specs?: string | null
           tax_cofins?: number | null
           tax_icms?: number | null
           tax_ii?: number | null
@@ -241,6 +243,7 @@ export type Database = {
           qty_master_box?: number | null
           subcategory_id?: string | null
           supplier_id?: string | null
+          supplier_specs?: string | null
           tax_cofins?: number | null
           tax_icms?: number | null
           tax_ii?: number | null
