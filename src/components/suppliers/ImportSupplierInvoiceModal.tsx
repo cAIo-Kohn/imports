@@ -30,19 +30,9 @@ interface ParsedSupplier {
   fax: string;
 }
 
-interface ProductData {
+interface ProductMatch {
   code: string;
   description: string;
-  ncm: string | null;
-  masterBoxLength: number | null;
-  masterBoxWidth: number | null;
-  masterBoxHeight: number | null;
-  masterBoxVolume: number | null;
-  qtyMasterBox: number | null;
-  fobPriceUsd: number | null;
-}
-
-interface ProductMatch extends ProductData {
   productId: string | null;
   found: boolean;
 }
@@ -112,115 +102,45 @@ function extractSupplierData(rows: any[][]): ParsedSupplier {
   };
 }
 
-function parseNumber(value: any): number | null {
-  if (value === null || value === undefined || value === '' || value === 'x') return null;
-  const num = parseFloat(value.toString().replace(',', '.'));
-  return isNaN(num) ? null : num;
-}
-
-function extractProductData(rows: any[][]): ProductData[] {
-  const products: ProductData[] = [];
+function extractProductCodes(rows: any[][]): { code: string; description: string }[] {
+  const products: { code: string; description: string }[] = [];
   
-  // Find the header rows (COI has 2 header rows: main headers + sub-headers)
-  let headerRow1 = -1;
-  let headerRow2 = -1;
+  // Find the header row (look for "MOR CODE" or similar)
   let dataStartRow = -1;
-  
-  // Column indices - based on COI structure
-  const colMap: Record<string, number> = {};
+  let codeColIndex = -1;
+  let descColIndex = -1;
   
   for (let i = 0; i < Math.min(30, rows.length); i++) {
     const row = rows[i];
     if (!row) continue;
     
     for (let j = 0; j < row.length; j++) {
-      const cell = row[j]?.toString().toLowerCase().trim() || '';
-      
-      // First header row with main column names
-      if (cell.includes('mor code') || cell.includes('mor. code')) {
-        colMap.code = j;
-        headerRow1 = i;
+      const cell = row[j]?.toString().toLowerCase() || '';
+      if (cell.includes('mor code') || cell.includes('mor. code') || cell === 'code') {
+        codeColIndex = j;
+        dataStartRow = i + 1;
       }
-      if (cell === 'ncm') {
-        colMap.ncm = j;
-      }
-      if (cell.includes('unit price') || cell.includes('fob')) {
-        colMap.fobPrice = j;
-      }
-      if (cell === 'pcs/ctn' || cell.includes('pcs/ctn')) {
-        colMap.qtyMasterBox = j;
-      }
-      
-      // Look for MASTER CARTON columns (they appear in specific positions)
-      if (cell === 'l (cm)' && colMap.masterL === undefined) {
-        // First L column is for inner box, second set is for master carton
-        if (headerRow1 >= 0 && i === headerRow1 + 1) {
-          // This is the sub-header row
-          headerRow2 = i;
-        }
-      }
-    }
-    
-    if (headerRow1 >= 0 && headerRow2 < 0 && i === headerRow1 + 1) {
-      headerRow2 = i;
-    }
-    
-    if (headerRow2 >= 0 && dataStartRow < 0) {
-      dataStartRow = headerRow2 + 1;
-    }
-  }
-  
-  // Based on the Asiawood format, identify column positions
-  // Structure: ITEM NO | PICTURE | MOR CODE | Inner L | Inner W | Inner H | Master L | Master W | Master H | m³ | DESCRIPTION | ... | NCM | QTY | PCS/CTN | ... | FOB PRICE
-  // Find description column (TECHNICAL PARTS or DESCRIPTION)
-  let descColIndex = -1;
-  if (headerRow1 >= 0) {
-    const headerRowData = rows[headerRow1];
-    for (let j = 0; j < headerRowData?.length; j++) {
-      const cell = headerRowData[j]?.toString().toLowerCase().trim() || '';
-      if (cell.includes('description') || cell.includes('technical')) {
+      if (cell.includes('description') || cell.includes('descrição')) {
         descColIndex = j;
-        break;
       }
     }
+    
+    if (dataStartRow > 0) break;
   }
   
-  // Based on Asiawood.xlsx structure:
-  // Col 2: MOR CODE, Cols 6-8: Master L/W/H, Col 9: m³, Col 10: Description, Col 13: NCM, Col 15: PCS/CTN, Col 18: FOB Price
-  if (colMap.code === undefined) colMap.code = 2;
-  if (colMap.masterL === undefined) colMap.masterL = 6;
-  if (colMap.masterW === undefined) colMap.masterW = 7;
-  if (colMap.masterH === undefined) colMap.masterH = 8;
-  if (colMap.masterVol === undefined) colMap.masterVol = 9;
-  if (descColIndex === -1) descColIndex = 10;
-  if (colMap.ncm === undefined) colMap.ncm = 13;
-  if (colMap.qtyMasterBox === undefined) colMap.qtyMasterBox = 15;
-  if (colMap.fobPrice === undefined) colMap.fobPrice = 18;
-  
-  // Start from row after headers (typically row 23, index 22)
-  const startRow = dataStartRow > 0 ? dataStartRow : 23;
-  
-  for (let i = startRow; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row) continue;
-    
-    const code = row[colMap.code]?.toString().trim() || '';
-    
-    // Check if it looks like a valid product code (5-6 digits)
-    if (code && /^\d{5,6}$/.test(code)) {
-      const description = row[descColIndex]?.toString().trim() || '';
+  // If we found the header, extract products
+  if (dataStartRow > 0 && codeColIndex >= 0) {
+    for (let i = dataStartRow; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row) continue;
       
-      products.push({
-        code,
-        description,
-        ncm: row[colMap.ncm]?.toString().trim() || null,
-        masterBoxLength: parseNumber(row[colMap.masterL]),
-        masterBoxWidth: parseNumber(row[colMap.masterW]),
-        masterBoxHeight: parseNumber(row[colMap.masterH]),
-        masterBoxVolume: parseNumber(row[colMap.masterVol]),
-        qtyMasterBox: parseNumber(row[colMap.qtyMasterBox]),
-        fobPriceUsd: parseNumber(row[colMap.fobPrice]),
-      });
+      const code = row[codeColIndex]?.toString().trim() || '';
+      const description = descColIndex >= 0 ? (row[descColIndex]?.toString().trim() || '') : '';
+      
+      // Check if it looks like a valid product code (6 digits)
+      if (code && /^\d{5,6}$/.test(code)) {
+        products.push({ code, description });
+      }
     }
   }
   
@@ -279,8 +199,8 @@ export function ImportSupplierInvoiceModal({ open, onOpenChange, onSuccess }: Im
       setParsedSupplier(supplier);
       setEditedSupplier(supplier);
       
-      // Extract product data including COI info
-      const extractedProducts = extractProductData(rows);
+      // Extract and match product codes
+      const extractedProducts = extractProductCodes(rows);
       
       // Create a map for quick lookup (normalized code -> product)
       const productMap = new Map<string, { id: string; description: string }>();
@@ -294,7 +214,7 @@ export function ImportSupplierInvoiceModal({ open, onOpenChange, onSuccess }: Im
         const normalizedCode = normalizeProductCode(ep.code);
         const match = productMap.get(normalizedCode);
         return {
-          ...ep,
+          code: ep.code,
           description: ep.description || match?.description || '',
           productId: match?.id || null,
           found: !!match
@@ -368,34 +288,25 @@ export function ImportSupplierInvoiceModal({ open, onOpenChange, onSuccess }: Im
         setProgress(30);
       }
       
-      // Link products to supplier and update COI data
+      // Link products to supplier
       const productsToLink = productMatches.filter(p => p.found && p.productId);
       const totalProducts = productsToLink.length;
       let linkedCount = 0;
       
-      // Update products individually to include all COI data
-      for (const product of productsToLink) {
-        const updateData: Record<string, any> = {
-          supplier_id: supplierId,
-        };
-        
-        // Add COI data if available
-        if (product.ncm) updateData.ncm = product.ncm;
-        if (product.masterBoxLength !== null) updateData.master_box_length = product.masterBoxLength;
-        if (product.masterBoxWidth !== null) updateData.master_box_width = product.masterBoxWidth;
-        if (product.masterBoxHeight !== null) updateData.master_box_height = product.masterBoxHeight;
-        if (product.masterBoxVolume !== null) updateData.master_box_volume = product.masterBoxVolume;
-        if (product.qtyMasterBox !== null) updateData.qty_master_box = product.qtyMasterBox;
-        if (product.fobPriceUsd !== null) updateData.fob_price_usd = product.fobPriceUsd;
+      // Update products in batches
+      const batchSize = 50;
+      for (let i = 0; i < productsToLink.length; i += batchSize) {
+        const batch = productsToLink.slice(i, i + batchSize);
+        const productIds = batch.map(p => p.productId!);
         
         const { error: updateError } = await supabase
           .from('products')
-          .update(updateData)
-          .eq('id', product.productId!);
+          .update({ supplier_id: supplierId })
+          .in('id', productIds);
         
         if (updateError) throw updateError;
         
-        linkedCount++;
+        linkedCount += batch.length;
         setProgress(30 + Math.round((linkedCount / totalProducts) * 70));
       }
       
@@ -553,55 +464,23 @@ export function ImportSupplierInvoiceModal({ open, onOpenChange, onSuccess }: Im
                       </div>
                     </div>
 
-                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    <div className="space-y-2 max-h-[250px] overflow-y-auto">
                       {productMatches.map((product, index) => (
                         <div 
                           key={index}
-                          className={`p-3 rounded-md ${
+                          className={`flex items-center gap-3 p-2 rounded-md ${
                             product.found ? 'bg-primary/10' : 'bg-destructive/10'
                           }`}
                         >
-                          <div className="flex items-center gap-3">
-                            {product.found ? (
-                              <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                            ) : (
-                              <X className="h-4 w-4 text-destructive flex-shrink-0" />
-                            )}
-                            <span className="font-mono text-sm font-medium">{product.code}</span>
-                            <span className="text-sm text-muted-foreground truncate flex-1">
-                              {product.description?.substring(0, 50)}...
-                            </span>
-                          </div>
-                          {product.found && (
-                            <div className="mt-2 ml-7 grid grid-cols-4 gap-2 text-xs">
-                              {product.ncm && (
-                                <div className="flex flex-col">
-                                  <span className="text-muted-foreground">NCM</span>
-                                  <span className="font-mono">{product.ncm}</span>
-                                </div>
-                              )}
-                              {product.fobPriceUsd !== null && (
-                                <div className="flex flex-col">
-                                  <span className="text-muted-foreground">FOB USD</span>
-                                  <span className="font-mono">${product.fobPriceUsd?.toFixed(2)}</span>
-                                </div>
-                              )}
-                              {product.qtyMasterBox !== null && (
-                                <div className="flex flex-col">
-                                  <span className="text-muted-foreground">Pcs/Ctn</span>
-                                  <span className="font-mono">{product.qtyMasterBox}</span>
-                                </div>
-                              )}
-                              {(product.masterBoxLength || product.masterBoxWidth || product.masterBoxHeight) && (
-                                <div className="flex flex-col">
-                                  <span className="text-muted-foreground">Master Box</span>
-                                  <span className="font-mono">
-                                    {product.masterBoxLength || '-'} × {product.masterBoxWidth || '-'} × {product.masterBoxHeight || '-'} cm
-                                  </span>
-                                </div>
-                              )}
-                            </div>
+                          {product.found ? (
+                            <Check className="h-4 w-4 text-primary flex-shrink-0" />
+                          ) : (
+                            <X className="h-4 w-4 text-destructive flex-shrink-0" />
                           )}
+                          <span className="font-mono text-sm">{product.code}</span>
+                          <span className="text-sm text-muted-foreground truncate flex-1">
+                            {product.description}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -624,7 +503,7 @@ export function ImportSupplierInvoiceModal({ open, onOpenChange, onSuccess }: Im
                       ? 'Fornecedor já existe. '
                       : 'Novo fornecedor será criado. '
                     }
-                    {foundProducts.length} produto(s) serão vinculados e atualizados com dados da COI (NCM, dimensões, preço FOB).
+                    {foundProducts.length} produto(s) serão vinculados.
                     {notFoundProducts.length > 0 && (
                       <span className="text-destructive">
                         {' '}{notFoundProducts.length} produto(s) não encontrados no banco.
