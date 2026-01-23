@@ -33,6 +33,7 @@ interface ParsedSupplier {
 interface ProductMatch {
   code: string;
   description: string;
+  supplierSpecs: string;
   productId: string | null;
   found: boolean;
 }
@@ -44,56 +45,57 @@ function normalizeProductCode(code: string): string {
 }
 
 function extractSupplierData(rows: any[][]): ParsedSupplier {
-  // Row 0: Company name (first non-empty cell)
+  // Row 0: Company name (e.g., "ASIAWOOD HOUSEWARE TRADING CO., LIMITED")
   const companyName = rows[0]?.[0]?.toString().trim() || '';
   
-  // Row 6: Full address
-  const addressLine = rows[6]?.[0]?.toString().trim() || '';
+  // Row 2: Full address (correct row based on Excel structure)
+  const addressLine = rows[2]?.[0]?.toString().trim() || '';
   
-  // Row 7: Phone/Fax
-  const contactLine = rows[7]?.[0]?.toString().trim() || '';
+  // Row 3: Phone/Fax info (correct row based on Excel structure)
+  const contactLine = rows[3]?.[0]?.toString().trim() || '';
   
-  // Parse phone and fax from contact line
-  let phone = '';
-  let fax = '';
-  if (contactLine) {
-    const phoneMatch = contactLine.match(/TEL[:\s]*([0-9\s-+]+)/i);
-    const faxMatch = contactLine.match(/FAX[:\s]*([0-9\s-+]+)/i);
-    phone = phoneMatch ? phoneMatch[1].trim() : '';
-    fax = faxMatch ? faxMatch[1].trim() : '';
-  }
+  // Extract phone and fax
+  const phoneMatch = contactLine.match(/TEL[:\s]*([0-9\s\-+]+)/i);
+  const faxMatch = contactLine.match(/FAX[:\s]*([0-9\s\-+]+)/i);
+  const phone = phoneMatch ? phoneMatch[1].trim() : '';
+  const fax = faxMatch ? faxMatch[1].trim() : '';
   
-  // Parse address components
+  // Parse address to extract city, state, country
+  // Typical format: "Room XXX, Building X, ..., City, Province, Country"
+  const addressParts = addressLine.split(',').map(p => p.trim());
+  
   let city = '';
   let stateProvince = '';
-  let country = 'China';
-  let address = addressLine;
+  let country = '';
   
-  // Try to extract city and state from address
-  // Format: "..., City, State/Province, Country"
-  const addressParts = addressLine.split(',').map(p => p.trim());
-  if (addressParts.length >= 3) {
-    // Last part is usually country
+  // Try to detect country (usually last part)
+  if (addressParts.length > 0) {
     const lastPart = addressParts[addressParts.length - 1].toLowerCase();
     if (lastPart.includes('china')) {
       country = 'China';
-    }
-    
-    // Look for city patterns
-    for (const part of addressParts) {
-      if (part.toLowerCase().includes('city')) {
-        city = part.replace(/city/i, '').trim() + ' City';
-      }
-      if (part.toLowerCase() === 'gd' || part.toLowerCase().includes('guangdong')) {
-        stateProvince = 'Guangdong';
+      // Previous part might be province
+      if (addressParts.length > 1) {
+        const prevPart = addressParts[addressParts.length - 2];
+        // Check if it's a province abbreviation like GD (Guangdong)
+        if (prevPart.length <= 3) {
+          stateProvince = prevPart === 'GD' ? 'Guangdong' : prevPart;
+          if (addressParts.length > 2) {
+            city = addressParts[addressParts.length - 3];
+          }
+        } else {
+          stateProvince = prevPart;
+          if (addressParts.length > 2) {
+            city = addressParts[addressParts.length - 3];
+          }
+        }
       }
     }
   }
   
   return {
     companyName,
-    tradeName: '',
-    address,
+    tradeName: companyName, // Use same as company name by default
+    address: addressLine,
     city,
     stateProvince,
     country,
@@ -102,45 +104,62 @@ function extractSupplierData(rows: any[][]): ParsedSupplier {
   };
 }
 
-function extractProductCodes(rows: any[][]): { code: string; description: string }[] {
-  const products: { code: string; description: string }[] = [];
+function extractProductCodes(rows: any[][]): { code: string; description: string; supplierSpecs: string }[] {
+  const products: { code: string; description: string; supplierSpecs: string }[] = [];
   
-  // Find the header row (look for "MOR CODE" or similar)
-  let dataStartRow = -1;
+  // Find the header row that contains "MOR CODE" or similar
+  let headerRowIndex = -1;
   let codeColIndex = -1;
   let descColIndex = -1;
+  let techColIndex = -1;
   
-  for (let i = 0; i < Math.min(30, rows.length); i++) {
+  for (let i = 0; i < Math.min(rows.length, 30); i++) {
     const row = rows[i];
     if (!row) continue;
     
     for (let j = 0; j < row.length; j++) {
       const cell = row[j]?.toString().toLowerCase() || '';
       if (cell.includes('mor code') || cell.includes('mor. code') || cell === 'code') {
+        headerRowIndex = i;
         codeColIndex = j;
-        dataStartRow = i + 1;
       }
-      if (cell.includes('description') || cell.includes('descrição')) {
+      if (cell.includes('description') && headerRowIndex === i) {
         descColIndex = j;
       }
+      if ((cell.includes('technical') || cell.includes('parts')) && headerRowIndex === i) {
+        techColIndex = j;
+      }
     }
-    
-    if (dataStartRow > 0) break;
+    if (headerRowIndex !== -1) break;
   }
   
-  // If we found the header, extract products
-  if (dataStartRow > 0 && codeColIndex >= 0) {
-    for (let i = dataStartRow; i < rows.length; i++) {
-      const row = rows[i];
-      if (!row) continue;
+  if (headerRowIndex === -1 || codeColIndex === -1) {
+    console.log('Could not find MOR CODE column');
+    return products;
+  }
+  
+  // Extract product codes from rows after header
+  for (let i = headerRowIndex + 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row) continue;
+    
+    const codeCell = row[codeColIndex]?.toString().trim() || '';
+    const descCell = descColIndex !== -1 ? (row[descColIndex]?.toString().trim() || '') : '';
+    const techCell = techColIndex !== -1 ? (row[techColIndex]?.toString().trim() || '') : '';
+    
+    // Check if it looks like a product code (5-6 digits)
+    if (/^\d{5,6}$/.test(codeCell)) {
+      // Clean up technical specs - convert HTML line breaks to newlines
+      const cleanedSpecs = techCell
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/\n+/g, '\n')
+        .trim();
       
-      const code = row[codeColIndex]?.toString().trim() || '';
-      const description = descColIndex >= 0 ? (row[descColIndex]?.toString().trim() || '') : '';
-      
-      // Check if it looks like a valid product code (6 digits)
-      if (code && /^\d{5,6}$/.test(code)) {
-        products.push({ code, description });
-      }
+      products.push({
+        code: codeCell.padStart(6, '0'), // Normalize to 6 digits
+        description: descCell,
+        supplierSpecs: cleanedSpecs
+      });
     }
   }
   
@@ -216,6 +235,7 @@ export function ImportSupplierInvoiceModal({ open, onOpenChange, onSuccess }: Im
         return {
           code: ep.code,
           description: ep.description || match?.description || '',
+          supplierSpecs: ep.supplierSpecs,
           productId: match?.id || null,
           found: !!match
         };
@@ -265,14 +285,30 @@ export function ImportSupplierInvoiceModal({ open, onOpenChange, onSuccess }: Im
       
       if (existingSupplier) {
         supplierId = existingSupplier.id;
-        setProgress(30);
+        
+        // Update existing supplier with complete data from invoice
+        const { error: updateSupplierError } = await supabase
+          .from('suppliers')
+          .update({
+            trade_name: editedSupplier.tradeName || editedSupplier.companyName,
+            address: editedSupplier.address || null,
+            city: editedSupplier.city || null,
+            state_province: editedSupplier.stateProvince || null,
+            contact_phone: editedSupplier.phone || null,
+          })
+          .eq('id', supplierId);
+        
+        if (updateSupplierError) {
+          console.error('Error updating supplier:', updateSupplierError);
+        }
+        setProgress(20);
       } else {
         // Create new supplier
         const { data: newSupplier, error: supplierError } = await supabase
           .from('suppliers')
           .insert({
             company_name: editedSupplier.companyName,
-            trade_name: editedSupplier.tradeName || null,
+            trade_name: editedSupplier.tradeName || editedSupplier.companyName,
             country: editedSupplier.country,
             city: editedSupplier.city || null,
             state_province: editedSupplier.stateProvince || null,
@@ -285,33 +321,41 @@ export function ImportSupplierInvoiceModal({ open, onOpenChange, onSuccess }: Im
         
         if (supplierError) throw supplierError;
         supplierId = newSupplier.id;
-        setProgress(30);
+        setProgress(20);
       }
       
-      // Link products to supplier
+      // Link products to supplier and save supplier specs
       const productsToLink = productMatches.filter(p => p.found && p.productId);
       const totalProducts = productsToLink.length;
-      let linkedCount = 0;
       
-      // Update products in batches
-      const batchSize = 50;
-      for (let i = 0; i < productsToLink.length; i += batchSize) {
-        const batch = productsToLink.slice(i, i + batchSize);
-        const productIds = batch.map(p => p.productId!);
+      // Update products one by one to save individual supplier_specs
+      for (let i = 0; i < productsToLink.length; i++) {
+        const product = productsToLink[i];
+        
+        const updateData: { supplier_id: string; supplier_specs?: string } = { 
+          supplier_id: supplierId 
+        };
+        
+        // Only update supplier_specs if we have specs for this product
+        if (product.supplierSpecs) {
+          updateData.supplier_specs = product.supplierSpecs;
+        }
         
         const { error: updateError } = await supabase
           .from('products')
-          .update({ supplier_id: supplierId })
-          .in('id', productIds);
+          .update(updateData)
+          .eq('id', product.productId!);
         
-        if (updateError) throw updateError;
+        if (updateError) {
+          console.error('Error updating product:', updateError);
+        }
         
-        linkedCount += batch.length;
-        setProgress(30 + Math.round((linkedCount / totalProducts) * 70));
+        setProgress(20 + Math.round(((i + 1) / totalProducts) * 70));
       }
       
       setStep('complete');
       
+      const linkedCount = productsToLink.length;
       toast.success(
         existingSupplier 
           ? `${linkedCount} produtos vinculados ao fornecedor existente`
@@ -468,19 +512,26 @@ export function ImportSupplierInvoiceModal({ open, onOpenChange, onSuccess }: Im
                       {productMatches.map((product, index) => (
                         <div 
                           key={index}
-                          className={`flex items-center gap-3 p-2 rounded-md ${
+                          className={`flex flex-col gap-2 p-3 rounded-md ${
                             product.found ? 'bg-primary/10' : 'bg-destructive/10'
                           }`}
                         >
-                          {product.found ? (
-                            <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                          ) : (
-                            <X className="h-4 w-4 text-destructive flex-shrink-0" />
+                          <div className="flex items-center gap-3">
+                            {product.found ? (
+                              <Check className="h-4 w-4 text-primary flex-shrink-0" />
+                            ) : (
+                              <X className="h-4 w-4 text-destructive flex-shrink-0" />
+                            )}
+                            <span className="font-mono text-sm">{product.code}</span>
+                            <span className="text-sm text-muted-foreground truncate flex-1">
+                              {product.description}
+                            </span>
+                          </div>
+                          {product.supplierSpecs && product.found && (
+                            <div className="ml-7 p-2 bg-muted/50 rounded text-xs text-muted-foreground whitespace-pre-line max-h-24 overflow-y-auto">
+                              {product.supplierSpecs}
+                            </div>
                           )}
-                          <span className="font-mono text-sm">{product.code}</span>
-                          <span className="text-sm text-muted-foreground truncate flex-1">
-                            {product.description}
-                          </span>
                         </div>
                       ))}
                     </div>

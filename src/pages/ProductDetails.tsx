@@ -56,6 +56,8 @@ interface Product {
   tax_pis: number | null;
   tax_cofins: number | null;
   tax_icms: number | null;
+  // Supplier specs
+  supplier_specs: string | null;
 }
 
 interface Supplier {
@@ -381,6 +383,24 @@ export default function ProductDetails() {
         </Card>
 
         {/* Taxes */}
+        {/* Supplier Specs */}
+        {product.supplier_specs && (
+          <Card className="lg:col-span-2">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <FileText className="h-5 w-5" />
+                Especificações do Fornecedor
+              </CardTitle>
+              <CardDescription>Dados técnicos detalhados da proforma do fornecedor</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <pre className="whitespace-pre-wrap text-sm font-mono bg-muted/50 p-4 rounded-lg">
+                {product.supplier_specs}
+              </pre>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Impostos</CardTitle>
