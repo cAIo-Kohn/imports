@@ -113,6 +113,7 @@ function extractProductCodes(rows: any[][]): { code: string; description: string
   let descColIndex = -1;
   let techColIndex = -1;
   
+  // First pass: find the row with "MOR CODE"
   for (let i = 0; i < Math.min(rows.length, 30); i++) {
     const row = rows[i];
     if (!row) continue;
@@ -122,12 +123,7 @@ function extractProductCodes(rows: any[][]): { code: string; description: string
       if (cell.includes('mor code') || cell.includes('mor. code') || cell === 'code') {
         headerRowIndex = i;
         codeColIndex = j;
-      }
-      if (cell.includes('description') && headerRowIndex === i) {
-        descColIndex = j;
-      }
-      if ((cell.includes('technical') || cell.includes('parts')) && headerRowIndex === i) {
-        techColIndex = j;
+        break;
       }
     }
     if (headerRowIndex !== -1) break;
@@ -138,8 +134,37 @@ function extractProductCodes(rows: any[][]): { code: string; description: string
     return products;
   }
   
+  // CORREÇÃO: Buscar "TECHNICAL PARTS" e "DESCRIPTION" tanto na linha do cabeçalho 
+  // quanto na linha seguinte (cabeçalho multi-linha como no Asiawood.xlsx)
+  const headerLinesToCheck = [rows[headerRowIndex], rows[headerRowIndex + 1]];
+  
+  for (const headerRow of headerLinesToCheck) {
+    if (!headerRow) continue;
+    for (let j = 0; j < headerRow.length; j++) {
+      const cell = headerRow[j]?.toString().toLowerCase() || '';
+      
+      // Buscar coluna DESCRIPTION
+      if (cell.includes('description') && descColIndex === -1) {
+        descColIndex = j;
+      }
+      
+      // Buscar coluna TECHNICAL PARTS (precisa ter ambas as palavras ou "technical parts")
+      if ((cell.includes('technical') && cell.includes('parts')) && techColIndex === -1) {
+        techColIndex = j;
+      }
+    }
+  }
+  
+  console.log('Header found at row:', headerRowIndex);
+  console.log('MOR CODE column:', codeColIndex);
+  console.log('DESCRIPTION column:', descColIndex);
+  console.log('TECHNICAL PARTS column:', techColIndex);
+  
+  // Dados começam 2 linhas após o primeiro cabeçalho (para pular o sub-header)
+  const dataStartRow = headerRowIndex + 2;
+  
   // Extract product codes from rows after header
-  for (let i = headerRowIndex + 1; i < rows.length; i++) {
+  for (let i = dataStartRow; i < rows.length; i++) {
     const row = rows[i];
     if (!row) continue;
     
