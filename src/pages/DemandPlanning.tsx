@@ -94,7 +94,8 @@ export default function DemandPlanning() {
         .from('sales_forecasts')
         .select('product_id, quantity, year_month')
         .gte('year_month', startMonthStr)
-        .lt('year_month', endMonth);
+        .lt('year_month', endMonth)
+        .limit(10000);
       if (error) throw error;
       return data as Forecast[];
     },
@@ -124,7 +125,8 @@ export default function DemandPlanning() {
         .from('scheduled_arrivals')
         .select('product_id, quantity, arrival_date')
         .gte('arrival_date', startMonthStr)
-        .lt('arrival_date', endMonth);
+        .lt('arrival_date', endMonth)
+        .limit(5000);
       if (error) throw error;
       return data as ScheduledArrival[];
     },
