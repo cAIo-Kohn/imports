@@ -123,7 +123,6 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedUnit, setSelectedUnit] = useState<string>('');
-  const [selectedSupplier, setSelectedSupplier] = useState<string>('');
   const [parsedRows, setParsedRows] = useState<ArrivalRow[]>([]);
   const [productArrivals, setProductArrivals] = useState<ProductArrival[]>([]);
   const [unmatchedCodes, setUnmatchedCodes] = useState<string[]>([]);
@@ -145,19 +144,7 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
     },
   });
 
-  // Fetch suppliers
-  const { data: suppliers = [] } = useQuery({
-    queryKey: ['suppliers-for-arrivals'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('suppliers')
-        .select('id, company_name')
-        .eq('is_active', true)
-        .order('company_name');
-      if (error) throw error;
-      return data;
-    },
-  });
+  // Note: suppliers not needed anymore - we insert directly into scheduled_arrivals
 
   // Fetch products
   const { data: products = [] } = useQuery({
@@ -182,7 +169,6 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
     setProgress(0);
     setErrorMessage('');
     setSelectedUnit('');
-    setSelectedSupplier('');
   }, []);
 
   const handleClose = useCallback(() => {
@@ -308,11 +294,6 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
       return;
     }
 
-    if (!selectedSupplier) {
-      toast({ title: 'Selecione um fornecedor', variant: 'destructive' });
-      return;
-    }
-
     // Filter only matched products
     const matchedArrivals = productArrivals.filter(a => a.productId);
     if (matchedArrivals.length === 0) {
@@ -328,33 +309,14 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      // Generate order number
-      const { data: orderNumber, error: orderError } = await supabase.rpc('generate_purchase_order_number');
-      if (orderError) throw orderError;
-
-      // Create a single purchase order for all arrivals
-      const { data: order, error: insertError } = await supabase
-        .from('purchase_orders')
-        .insert({
-          order_number: orderNumber,
-          supplier_id: selectedSupplier,
-          order_date: format(new Date(), 'yyyy-MM-dd'),
-          status: 'confirmed',
-          notes: `Importado do arquivo: ${file?.name}`,
-          created_by: user.id,
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-
-      // Create order items
+      // Build items for scheduled_arrivals table
       const items: Array<{
-        purchase_order_id: string;
         product_id: string;
         unit_id: string;
+        arrival_date: string;
         quantity: number;
-        expected_arrival: string;
+        source_file: string;
+        created_by: string;
       }> = [];
 
       matchedArrivals.forEach(arrival => {
@@ -362,22 +324,23 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
           // Use the first day of the month as arrival date
           const arrivalDate = `${monthKey}-01`;
           items.push({
-            purchase_order_id: order.id,
             product_id: arrival.productId!,
             unit_id: selectedUnit,
+            arrival_date: arrivalDate,
             quantity,
-            expected_arrival: arrivalDate,
+            source_file: file?.name || 'unknown',
+            created_by: user.id,
           });
         });
       });
 
-      // Insert items in batches
+      // Upsert items in batches (update quantity if same product/unit/date exists)
       const batchSize = 50;
       for (let i = 0; i < items.length; i += batchSize) {
         const batch = items.slice(i, i + batchSize);
         const { error: itemsError } = await supabase
-          .from('purchase_order_items')
-          .insert(batch);
+          .from('scheduled_arrivals')
+          .upsert(batch, { onConflict: 'product_id,unit_id,arrival_date' });
         
         if (itemsError) throw itemsError;
         
@@ -395,7 +358,7 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
       setErrorMessage(error.message || 'Erro ao importar chegadas');
       setStep('error');
     }
-  }, [selectedUnit, selectedSupplier, productArrivals, file, toast, onSuccess]);
+  }, [selectedUnit, productArrivals, file, toast, onSuccess]);
 
   const formatMonthLabel = (monthKey: string) => {
     const date = new Date(monthKey + '-01');
@@ -457,19 +420,6 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
                     <SelectContent>
                       {units.map(unit => (
                         <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex-1">
-                  <Label htmlFor="supplier">Fornecedor</Label>
-                  <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-                    <SelectTrigger id="supplier">
-                      <SelectValue placeholder="Selecione o fornecedor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {suppliers.map(s => (
-                        <SelectItem key={s.id} value={s.id}>{s.company_name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

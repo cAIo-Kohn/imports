@@ -213,23 +213,16 @@ export default function SupplierPlanning() {
     enabled: productIds.length > 0,
   });
 
-  // Fetch purchase order items - filtered by supplier's products
-  const { data: purchaseItems = [], refetch: refetchPurchaseItems } = useQuery({
-    queryKey: ['purchase-order-items', selectedUnit, supplierId, productIds],
+  // Fetch scheduled arrivals - filtered by supplier's products
+  const { data: scheduledArrivals = [], refetch: refetchScheduledArrivals } = useQuery({
+    queryKey: ['scheduled-arrivals', selectedUnit, supplierId, productIds],
     queryFn: async () => {
       if (productIds.length === 0) return [];
       
       let query = supabase
-        .from('purchase_order_items')
-        .select(`
-          product_id,
-          unit_id,
-          quantity,
-          expected_arrival,
-          purchase_orders!inner (status)
-        `)
-        .in('product_id', productIds)
-        .not('expected_arrival', 'is', null);
+        .from('scheduled_arrivals')
+        .select('product_id, unit_id, quantity, arrival_date')
+        .in('product_id', productIds);
       
       if (selectedUnit !== 'all') {
         query = query.eq('unit_id', selectedUnit);
@@ -237,10 +230,7 @@ export default function SupplierPlanning() {
       
       const { data, error } = await query;
       if (error) throw error;
-      return data?.filter(item => 
-        (item.purchase_orders as any)?.status !== 'cancelled' && 
-        (item.purchase_orders as any)?.status !== 'received'
-      ) || [];
+      return data || [];
     },
     enabled: productIds.length > 0,
   });
@@ -311,13 +301,13 @@ export default function SupplierPlanning() {
     });
 
     const purchasesByProductMonth = new Map<string, Map<string, number>>();
-    purchaseItems.forEach(item => {
-      if (!item.expected_arrival) return;
+    scheduledArrivals.forEach(item => {
+      if (!item.arrival_date) return;
       const key = item.product_id;
       if (!purchasesByProductMonth.has(key)) {
         purchasesByProductMonth.set(key, new Map());
       }
-      const monthKey = format(startOfMonth(parseISO(item.expected_arrival)), 'yyyy-MM-dd');
+      const monthKey = format(startOfMonth(parseISO(item.arrival_date)), 'yyyy-MM-dd');
       const current = purchasesByProductMonth.get(key)!.get(monthKey) || 0;
       purchasesByProductMonth.get(key)!.set(monthKey, current + item.quantity);
     });
@@ -409,7 +399,7 @@ export default function SupplierPlanning() {
       if (!a.hasRupture && b.hasRupture) return 1;
       return a.product.code.localeCompare(b.product.code);
     });
-  }, [products, forecasts, salesHistory, inventorySnapshots, purchaseItems, searchQuery, showOnlyRuptures, monthsAhead, selectedUnit, pendingArrivals]);
+  }, [products, forecasts, salesHistory, inventorySnapshots, scheduledArrivals, searchQuery, showOnlyRuptures, monthsAhead, selectedUnit, pendingArrivals]);
 
   const stats = useMemo(() => {
     const total = productProjections.length;
@@ -431,7 +421,7 @@ export default function SupplierPlanning() {
     refetchForecasts();
     refetchInventory();
     refetchHistory();
-    refetchPurchaseItems();
+    refetchScheduledArrivals();
   };
 
   if (supplierLoading || productsLoading) {
