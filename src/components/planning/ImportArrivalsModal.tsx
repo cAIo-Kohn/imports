@@ -123,6 +123,7 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedUnit, setSelectedUnit] = useState<string>('');
+  const [selectedSupplier, setSelectedSupplier] = useState<string>('');
   const [parsedRows, setParsedRows] = useState<ArrivalRow[]>([]);
   const [productArrivals, setProductArrivals] = useState<ProductArrival[]>([]);
   const [unmatchedCodes, setUnmatchedCodes] = useState<string[]>([]);
@@ -139,6 +140,20 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
         .select('id, name')
         .eq('is_active', true)
         .order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch suppliers
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers-for-arrivals'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('suppliers')
+        .select('id, company_name')
+        .eq('is_active', true)
+        .order('company_name');
       if (error) throw error;
       return data;
     },
@@ -167,6 +182,7 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
     setProgress(0);
     setErrorMessage('');
     setSelectedUnit('');
+    setSelectedSupplier('');
   }, []);
 
   const handleClose = useCallback(() => {
@@ -292,6 +308,11 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
       return;
     }
 
+    if (!selectedSupplier) {
+      toast({ title: 'Selecione um fornecedor', variant: 'destructive' });
+      return;
+    }
+
     // Filter only matched products
     const matchedArrivals = productArrivals.filter(a => a.productId);
     if (matchedArrivals.length === 0) {
@@ -307,14 +328,6 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      // Get supplier from first matched product
-      const firstProduct = products.find(p => p.id === matchedArrivals[0].productId);
-      const supplierId = firstProduct?.supplier_id;
-
-      if (!supplierId) {
-        throw new Error('Produto sem fornecedor associado');
-      }
-
       // Generate order number
       const { data: orderNumber, error: orderError } = await supabase.rpc('generate_purchase_order_number');
       if (orderError) throw orderError;
@@ -324,7 +337,7 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
         .from('purchase_orders')
         .insert({
           order_number: orderNumber,
-          supplier_id: supplierId,
+          supplier_id: selectedSupplier,
           order_date: format(new Date(), 'yyyy-MM-dd'),
           status: 'confirmed',
           notes: `Importado do arquivo: ${file?.name}`,
@@ -382,7 +395,7 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
       setErrorMessage(error.message || 'Erro ao importar chegadas');
       setStep('error');
     }
-  }, [selectedUnit, productArrivals, products, file, toast, onSuccess]);
+  }, [selectedUnit, selectedSupplier, productArrivals, file, toast, onSuccess]);
 
   const formatMonthLabel = (monthKey: string) => {
     const date = new Date(monthKey + '-01');
@@ -433,7 +446,7 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
           {/* Preview Step */}
           {step === 'preview' && (
             <div className="space-y-4">
-              {/* Unit Selection */}
+              {/* Unit and Supplier Selection */}
               <div className="flex items-center gap-4">
                 <div className="flex-1">
                   <Label htmlFor="unit">Unidade de destino</Label>
@@ -444,6 +457,19 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
                     <SelectContent>
                       {units.map(unit => (
                         <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <Label htmlFor="supplier">Fornecedor</Label>
+                  <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
+                    <SelectTrigger id="supplier">
+                      <SelectValue placeholder="Selecione o fornecedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {suppliers.map(s => (
+                        <SelectItem key={s.id} value={s.id}>{s.company_name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
