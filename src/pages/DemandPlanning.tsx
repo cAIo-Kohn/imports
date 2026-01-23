@@ -1,13 +1,18 @@
-import { useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Package, TrendingDown, AlertTriangle, TrendingUp, Building2 } from 'lucide-react';
+import { Package, TrendingDown, AlertTriangle, TrendingUp, Building2, Upload, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import { SupplierHealthCard, type SupplierHealthData } from '@/components/planning/SupplierHealthCard';
 import { HealthBar } from '@/components/planning/HealthBar';
+import { ImportForecastModal } from '@/components/planning/ImportForecastModal';
+import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal';
+import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
 import { format, addMonths, startOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useToast } from '@/hooks/use-toast';
 
 interface Supplier {
   id: string;
@@ -21,8 +26,15 @@ interface Product {
 }
 
 export default function DemandPlanning() {
+  const { toast } = useToast();
+  
+  // Modal states
+  const [importForecastOpen, setImportForecastOpen] = useState(false);
+  const [importInventoryOpen, setImportInventoryOpen] = useState(false);
+  const [importHistoryOpen, setImportHistoryOpen] = useState(false);
+
   // Fetch suppliers
-  const { data: suppliers = [], isLoading: suppliersLoading } = useQuery({
+  const { data: suppliers = [], isLoading: suppliersLoading, refetch: refetchSuppliers } = useQuery({
     queryKey: ['suppliers-for-planning'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -49,7 +61,7 @@ export default function DemandPlanning() {
   });
 
   // Fetch forecasts (next 6 months)
-  const { data: forecasts = [] } = useQuery({
+  const { data: forecasts = [], refetch: refetchForecasts } = useQuery({
     queryKey: ['sales-forecasts-summary'],
     queryFn: async () => {
       const now = new Date();
@@ -67,7 +79,7 @@ export default function DemandPlanning() {
   });
 
   // Fetch inventory snapshots (last 3 months for trend)
-  const { data: inventorySnapshots = [] } = useQuery({
+  const { data: inventorySnapshots = [], refetch: refetchInventory } = useQuery({
     queryKey: ['inventory-snapshots-trend'],
     queryFn: async () => {
       const now = new Date();
@@ -277,6 +289,19 @@ export default function DemandPlanning() {
     return { totalProducts, totalCritical, totalWarning, totalHealthy };
   }, [supplierHealthData]);
 
+  // Handle refresh
+  const handleRefreshData = useCallback(() => {
+    refetchSuppliers();
+    refetchForecasts();
+    refetchInventory();
+    toast({ title: 'Dados atualizados', description: 'Os indicadores foram recalculados.' });
+  }, [refetchSuppliers, refetchForecasts, refetchInventory, toast]);
+
+  // Handle import success
+  const handleImportSuccess = useCallback(() => {
+    handleRefreshData();
+  }, [handleRefreshData]);
+
   if (suppliersLoading) {
     return (
       <div className="space-y-6">
@@ -294,11 +319,30 @@ export default function DemandPlanning() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Planejamento de Demanda</h1>
-        <p className="text-muted-foreground">
-          Selecione um fornecedor para analisar a projeção de estoque
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Planejamento de Demanda</h1>
+          <p className="text-muted-foreground">
+            Selecione um fornecedor para analisar a projeção de estoque
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="icon" onClick={handleRefreshData} title="Atualizar dados">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" onClick={() => setImportInventoryOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />
+            Estoque
+          </Button>
+          <Button variant="outline" onClick={() => setImportHistoryOpen(true)}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            Histórico
+          </Button>
+          <Button onClick={() => setImportForecastOpen(true)}>
+            <TrendingUp className="mr-2 h-4 w-4" />
+            Previsão
+          </Button>
+        </div>
       </div>
 
       {/* Overall Stats */}
@@ -375,6 +419,23 @@ export default function DemandPlanning() {
           ))}
         </div>
       )}
+
+      {/* Import Modals */}
+      <ImportForecastModal
+        open={importForecastOpen}
+        onOpenChange={setImportForecastOpen}
+        onSuccess={handleImportSuccess}
+      />
+      <ImportInventoryModal
+        open={importInventoryOpen}
+        onOpenChange={setImportInventoryOpen}
+        onSuccess={handleImportSuccess}
+      />
+      <ImportSalesHistoryModal
+        open={importHistoryOpen}
+        onOpenChange={setImportHistoryOpen}
+        onSuccess={handleImportSuccess}
+      />
     </div>
   );
 }
