@@ -4,11 +4,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Package, TrendingDown, AlertTriangle, TrendingUp, Building2, Upload, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { Package, TrendingDown, AlertTriangle, TrendingUp, Building2, Upload, FileSpreadsheet, RefreshCw, Ship } from 'lucide-react';
 import { SupplierHealthCard, type SupplierHealthData } from '@/components/planning/SupplierHealthCard';
 import { HealthBar } from '@/components/planning/HealthBar';
 import { ImportForecastModal } from '@/components/planning/ImportForecastModal';
 import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal';
+import { ImportArrivalsModal } from '@/components/planning/ImportArrivalsModal';
 import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
 import { format, addMonths, startOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -32,6 +33,7 @@ export default function DemandPlanning() {
   const [importForecastOpen, setImportForecastOpen] = useState(false);
   const [importInventoryOpen, setImportInventoryOpen] = useState(false);
   const [importHistoryOpen, setImportHistoryOpen] = useState(false);
+  const [importArrivalsOpen, setImportArrivalsOpen] = useState(false);
 
   // Fetch suppliers
   const { data: suppliers = [], isLoading: suppliersLoading, refetch: refetchSuppliers } = useQuery({
@@ -338,6 +340,10 @@ export default function DemandPlanning() {
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Histórico
           </Button>
+          <Button variant="outline" onClick={() => setImportArrivalsOpen(true)}>
+            <Ship className="mr-2 h-4 w-4" />
+            Chegadas
+          </Button>
           <Button onClick={() => setImportForecastOpen(true)}>
             <TrendingUp className="mr-2 h-4 w-4" />
             Previsão
@@ -434,6 +440,11 @@ export default function DemandPlanning() {
       <ImportSalesHistoryModal
         open={importHistoryOpen}
         onOpenChange={setImportHistoryOpen}
+        onSuccess={handleImportSuccess}
+      />
+      <ImportArrivalsModal
+        open={importArrivalsOpen}
+        onOpenChange={setImportArrivalsOpen}
         onSuccess={handleImportSuccess}
       />
     </div>
