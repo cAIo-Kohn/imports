@@ -510,6 +510,7 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           id: string
+          process_number: string | null
           product_id: string
           quantity: number
           source_file: string | null
@@ -520,6 +521,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: string
+          process_number?: string | null
           product_id: string
           quantity?: number
           source_file?: string | null
@@ -530,6 +532,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: string
+          process_number?: string | null
           product_id?: string
           quantity?: number
           source_file?: string | null

@@ -13,6 +13,7 @@ interface MonthProjection {
   pendingArrival: number;
   finalBalance: number;
   status: 'ok' | 'warning' | 'rupture';
+  processNumber: string | null;
 }
 
 interface Product {
@@ -134,6 +135,7 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
               monthKey={proj.monthKey}
               initialValue={pendingArrivalsInput[`${productProj.product.id}-${proj.monthKey}`] || ''}
               existingPurchases={proj.purchases}
+              processNumber={proj.processNumber}
               onValueChange={onArrivalChange}
             />
           </TableCell>

@@ -61,6 +61,7 @@ interface MonthProjection {
   pendingArrival: number;
   finalBalance: number;
   status: 'ok' | 'warning' | 'rupture';
+  processNumber: string | null;
 }
 
 interface ProductProjection {
@@ -221,7 +222,7 @@ export default function SupplierPlanning() {
       
       let query = supabase
         .from('scheduled_arrivals')
-        .select('product_id, unit_id, quantity, arrival_date')
+        .select('product_id, unit_id, quantity, arrival_date, process_number')
         .in('product_id', productIds);
       
       if (selectedUnit !== 'all') {
@@ -300,7 +301,7 @@ export default function SupplierPlanning() {
       }
     });
 
-    const purchasesByProductMonth = new Map<string, Map<string, number>>();
+    const purchasesByProductMonth = new Map<string, Map<string, { quantity: number; processNumbers: string[] }>>();
     scheduledArrivals.forEach(item => {
       if (!item.arrival_date) return;
       const key = item.product_id;
@@ -308,8 +309,12 @@ export default function SupplierPlanning() {
         purchasesByProductMonth.set(key, new Map());
       }
       const monthKey = format(startOfMonth(parseISO(item.arrival_date)), 'yyyy-MM-dd');
-      const current = purchasesByProductMonth.get(key)!.get(monthKey) || 0;
-      purchasesByProductMonth.get(key)!.set(monthKey, current + item.quantity);
+      const current = purchasesByProductMonth.get(key)!.get(monthKey) || { quantity: 0, processNumbers: [] };
+      current.quantity += item.quantity;
+      if (item.process_number && !current.processNumbers.includes(item.process_number)) {
+        current.processNumbers.push(item.process_number);
+      }
+      purchasesByProductMonth.get(key)!.set(monthKey, current);
     });
 
     const projections: ProductProjection[] = products
@@ -334,7 +339,9 @@ export default function SupplierPlanning() {
         const monthProjections: MonthProjection[] = months.map((month, index) => {
           const monthKey = format(month, 'yyyy-MM-dd');
           const forecast = productForecasts.get(monthKey) || 0;
-          const existingPurchases = productPurchases.get(monthKey) || 0;
+          const purchaseData = productPurchases.get(monthKey) || { quantity: 0, processNumbers: [] };
+          const existingPurchases = purchaseData.quantity;
+          const processNumber = purchaseData.processNumbers.length > 0 ? purchaseData.processNumbers.join(', ') : null;
           
           const pendingArrivalKey = `${product.id}-${monthKey}`;
           const pendingArrival = pendingArrivals[pendingArrivalKey] || 0;
@@ -372,6 +379,7 @@ export default function SupplierPlanning() {
             pendingArrival,
             finalBalance,
             status,
+            processNumber,
           };
         });
 
