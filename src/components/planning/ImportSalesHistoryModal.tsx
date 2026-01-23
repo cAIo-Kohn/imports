@@ -12,7 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent } from '@/components/ui/card';
-import { Upload, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react';
+import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 
 interface ImportSalesHistoryModalProps {
@@ -58,10 +59,14 @@ function parseMonthHeader(header: string): Date | null {
   const normalized = header.toLowerCase().trim();
   
   const monthMap: Record<string, number> = {
+    // Português
     jan: 0, janeiro: 0, fev: 1, fevereiro: 1, mar: 2, marco: 2, março: 2,
     abr: 3, abril: 3, mai: 4, maio: 4, jun: 5, junho: 5,
     jul: 6, julho: 6, ago: 7, agosto: 7, set: 8, setembro: 8,
     out: 9, outubro: 9, nov: 10, novembro: 10, dez: 11, dezembro: 11,
+    // Inglês
+    feb: 1, february: 1, apr: 3, april: 3, may: 4, aug: 7, august: 7,
+    sep: 8, sept: 8, september: 8, oct: 9, october: 9, dec: 11, december: 11,
   };
 
   const match = normalized.match(/([a-zç]+)[\/\-\s]?(\d{2,4})/);
@@ -111,6 +116,7 @@ export function ImportSalesHistoryModal({ open, onOpenChange, onSuccess }: Impor
   const [errorMessage, setErrorMessage] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [importStats, setImportStats] = useState({ imported: 0 });
+  const [unmatchedCodes, setUnmatchedCodes] = useState<string[]>([]);
 
   const { data: units = [] } = useQuery({
     queryKey: ['units-for-import'],
@@ -147,6 +153,7 @@ export function ImportSalesHistoryModal({ open, onOpenChange, onSuccess }: Impor
     setProgress(0);
     setErrorMessage('');
     setImportStats({ imported: 0 });
+    setUnmatchedCodes([]);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -220,12 +227,17 @@ export function ImportSalesHistoryModal({ open, onOpenChange, onSuccess }: Impor
     const productMap = new Map(products.map(p => [p.code.replace(/^0+/, ''), p.id]));
 
     const rows: SalesRow[] = [];
+    const unmatched: string[] = [];
+    
     for (const row of rawData) {
       const rawCode = String(row[codeColIndex] || '').trim();
       if (!rawCode) continue;
 
       const normalizedCode = rawCode.replace(/^0+/, '');
-      if (!productMap.has(normalizedCode)) continue;
+      if (!productMap.has(normalizedCode)) {
+        unmatched.push(rawCode);
+        continue;
+      }
 
       const months: { date: Date; quantity: number }[] = [];
       for (const { index, date } of monthColumns) {
@@ -243,6 +255,7 @@ export function ImportSalesHistoryModal({ open, onOpenChange, onSuccess }: Impor
       }
     }
 
+    setUnmatchedCodes(unmatched);
     setParsedRows(rows);
     setStep('preview');
   };
@@ -397,6 +410,17 @@ export function ImportSalesHistoryModal({ open, onOpenChange, onSuccess }: Impor
 
         {step === 'preview' && (
           <div className="space-y-4">
+            {unmatchedCodes.length > 0 && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>{unmatchedCodes.length} códigos não encontrados</AlertTitle>
+                <AlertDescription>
+                  {unmatchedCodes.slice(0, 10).join(', ')}
+                  {unmatchedCodes.length > 10 && ` ... e mais ${unmatchedCodes.length - 10}`}
+                </AlertDescription>
+              </Alert>
+            )}
+            
             <div className="grid grid-cols-2 gap-4">
               <Card>
                 <CardContent className="pt-4">
