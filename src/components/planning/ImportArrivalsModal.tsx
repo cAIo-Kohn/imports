@@ -412,7 +412,7 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-auto min-h-0">
           {/* Upload Step */}
           {step === 'upload' && (
             <div
@@ -463,54 +463,53 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
                 </div>
               </div>
 
-              {/* Unmatched Warning */}
+              {/* Unmatched Warning - Compact */}
               {unmatchedCodes.length > 0 && (
-                <Alert variant="destructive">
+                <Alert variant="destructive" className="py-2">
                   <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>{unmatchedCodes.length} códigos não encontrados</AlertTitle>
-                  <AlertDescription className="mt-2">
+                  <AlertTitle className="text-sm">{unmatchedCodes.length} códigos não encontrados</AlertTitle>
+                  <AlertDescription className="mt-1">
                     <div className="flex flex-wrap gap-1">
-                      {unmatchedCodes.slice(0, 10).map(code => (
+                      {unmatchedCodes.slice(0, 6).map(code => (
                         <span key={code} className="px-2 py-0.5 bg-destructive/20 rounded text-xs">
                           {code}
                         </span>
                       ))}
-                      {unmatchedCodes.length > 10 && (
-                        <span className="text-xs">+{unmatchedCodes.length - 10} mais</span>
+                      {unmatchedCodes.length > 6 && (
+                        <span className="text-xs">+{unmatchedCodes.length - 6} mais</span>
                       )}
                     </div>
                   </AlertDescription>
                 </Alert>
               )}
 
-              {/* Sync Warning */}
-              <Alert>
+              {/* Sync Warning - Compact */}
+              <Alert className="py-2">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
+                <AlertDescription className="text-xs">
                   A importação irá <strong>substituir todas as chegadas</strong> da unidade 
-                  selecionada pelos dados deste arquivo. Chegadas de arquivos anteriores 
-                  serão removidas.
+                  selecionada pelos dados deste arquivo.
                 </AlertDescription>
               </Alert>
 
               {/* Stats */}
               <div className="grid grid-cols-3 gap-4 text-center">
-                <div className="p-3 bg-muted rounded-lg">
-                  <p className="text-2xl font-bold">{parsedRows.length}</p>
+                <div className="p-2 bg-muted rounded-lg">
+                  <p className="text-xl font-bold">{parsedRows.length}</p>
                   <p className="text-xs text-muted-foreground">registros</p>
                 </div>
-                <div className="p-3 bg-muted rounded-lg">
-                  <p className="text-2xl font-bold">{productArrivals.filter(a => a.productId).length}</p>
+                <div className="p-2 bg-muted rounded-lg">
+                  <p className="text-xl font-bold">{productArrivals.filter(a => a.productId).length}</p>
                   <p className="text-xs text-muted-foreground">produtos válidos</p>
                 </div>
-                <div className="p-3 bg-muted rounded-lg">
-                  <p className="text-2xl font-bold">{monthColumns.length}</p>
+                <div className="p-2 bg-muted rounded-lg">
+                  <p className="text-xl font-bold">{monthColumns.length}</p>
                   <p className="text-xs text-muted-foreground">meses</p>
                 </div>
               </div>
 
               {/* Data Table */}
-              <ScrollArea className="h-[300px] border rounded-lg">
+              <ScrollArea className="h-[180px] border rounded-lg">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -551,17 +550,6 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
                   </TableBody>
                 </Table>
               </ScrollArea>
-
-              {/* Actions */}
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={handleClose}>Cancelar</Button>
-                <Button 
-                  onClick={handleImport} 
-                  disabled={!selectedUnit || productArrivals.filter(a => a.productId).length === 0}
-                >
-                  Importar {productArrivals.filter(a => a.productId).length} produtos
-                </Button>
-              </div>
             </div>
           )}
 
@@ -592,6 +580,19 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
             </div>
           )}
         </div>
+
+        {/* Fixed Footer with Actions - Always visible */}
+        {step === 'preview' && (
+          <div className="flex justify-end gap-2 pt-4 border-t mt-4 shrink-0">
+            <Button variant="outline" onClick={handleClose}>Cancelar</Button>
+            <Button 
+              onClick={handleImport} 
+              disabled={!selectedUnit || productArrivals.filter(a => a.productId).length === 0}
+            >
+              Importar {productArrivals.filter(a => a.productId).length} produtos
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
