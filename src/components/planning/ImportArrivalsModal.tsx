@@ -63,12 +63,12 @@ interface ProductArrival {
 
 type ImportStep = 'upload' | 'preview' | 'importing' | 'complete' | 'error';
 
-// Column positions in the fixed-width file
+// Column positions in the fixed-width file (RSPD12 format)
 const COLUMN_POSITIONS = {
-  estabelecimento: { start: 0, end: 3 },
-  processo: { start: 4, end: 18 },
-  item: { start: 19, end: 35 },
-  entrega: { start: 36, end: 46 },
+  estabelecimento: { start: 0, end: 6 },
+  processo: { start: 6, end: 19 },
+  item: { start: 19, end: 36 },
+  entrega: { start: 36, end: 47 },
   qtdeSaldo: { start: 47, end: 62 },
 };
 
@@ -92,16 +92,6 @@ function parseFixedWidthLine(line: string): ArrivalRow | null {
     const entregaStr = line.substring(COLUMN_POSITIONS.entrega.start, COLUMN_POSITIONS.entrega.end).trim();
     const qtdeSaldoStr = line.substring(COLUMN_POSITIONS.qtdeSaldo.start, COLUMN_POSITIONS.qtdeSaldo.end).trim();
 
-    // DEBUG: Log first 5 parsed lines to verify column positions
-    console.log('=== DEBUG PARSING ===');
-    console.log('Full line:', JSON.stringify(line));
-    console.log('Line length:', line.length);
-    console.log('Estabelecimento (0-3):', JSON.stringify(estabelecimento));
-    console.log('Processo (4-18):', JSON.stringify(processo));
-    console.log('Item (19-35):', JSON.stringify(item));
-    console.log('Entrega (36-46):', JSON.stringify(entregaStr));
-    console.log('QtdeSaldo (47-62):', JSON.stringify(qtdeSaldoStr));
-    console.log('=====================');
 
     // Skip if item is empty
     if (!item) return null;
