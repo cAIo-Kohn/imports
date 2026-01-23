@@ -5,14 +5,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Package, TrendingDown, AlertTriangle, TrendingUp, Building2, Upload, FileSpreadsheet, RefreshCw, Ship } from 'lucide-react';
-import { SupplierHealthCard, type SupplierHealthData } from '@/components/planning/SupplierHealthCard';
+import { SupplierHealthRow, type SupplierHealthRowData } from '@/components/planning/SupplierHealthRow';
+import { type PeriodStats } from '@/components/planning/PeriodIndicator';
 import { HealthBar } from '@/components/planning/HealthBar';
 import { ImportForecastModal } from '@/components/planning/ImportForecastModal';
 import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal';
 import { ImportArrivalsModal } from '@/components/planning/ImportArrivalsModal';
 import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
 import { format, addMonths, startOfMonth, subMonths } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 
 interface Supplier {
@@ -26,6 +26,24 @@ interface Product {
   supplier_id: string | null;
 }
 
+interface Forecast {
+  product_id: string;
+  quantity: number;
+  year_month: string;
+}
+
+interface InventorySnapshot {
+  product_id: string;
+  quantity: number;
+  snapshot_date: string;
+}
+
+interface ScheduledArrival {
+  product_id: string;
+  quantity: number;
+  arrival_date: string;
+}
+
 export default function DemandPlanning() {
   const { toast } = useToast();
   
@@ -34,6 +52,9 @@ export default function DemandPlanning() {
   const [importInventoryOpen, setImportInventoryOpen] = useState(false);
   const [importHistoryOpen, setImportHistoryOpen] = useState(false);
   const [importArrivalsOpen, setImportArrivalsOpen] = useState(false);
+
+  const now = new Date();
+  const startMonth = startOfMonth(now);
 
   // Fetch suppliers
   const { data: suppliers = [], isLoading: suppliersLoading, refetch: refetchSuppliers } = useQuery({
@@ -62,38 +83,50 @@ export default function DemandPlanning() {
     },
   });
 
-  // Fetch forecasts (next 6 months)
+  // Fetch forecasts (next 12 months)
   const { data: forecasts = [], refetch: refetchForecasts } = useQuery({
-    queryKey: ['sales-forecasts-summary'],
+    queryKey: ['sales-forecasts-12m'],
     queryFn: async () => {
-      const now = new Date();
-      const startMonth = format(startOfMonth(now), 'yyyy-MM-dd');
-      const endMonth = format(addMonths(startOfMonth(now), 6), 'yyyy-MM-dd');
+      const startMonthStr = format(startMonth, 'yyyy-MM-dd');
+      const endMonth = format(addMonths(startMonth, 12), 'yyyy-MM-dd');
       
       const { data, error } = await supabase
         .from('sales_forecasts')
-        .select('product_id, quantity')
-        .gte('year_month', startMonth)
+        .select('product_id, quantity, year_month')
+        .gte('year_month', startMonthStr)
         .lt('year_month', endMonth);
       if (error) throw error;
-      return data;
+      return data as Forecast[];
     },
   });
 
-  // Fetch inventory snapshots (last 3 months for trend)
+  // Fetch inventory snapshots (latest per product)
   const { data: inventorySnapshots = [], refetch: refetchInventory } = useQuery({
-    queryKey: ['inventory-snapshots-trend'],
+    queryKey: ['inventory-snapshots-latest'],
     queryFn: async () => {
-      const now = new Date();
-      const threeMonthsAgo = format(subMonths(startOfMonth(now), 3), 'yyyy-MM-dd');
-      
       const { data, error } = await supabase
         .from('inventory_snapshots')
         .select('product_id, quantity, snapshot_date')
-        .gte('snapshot_date', threeMonthsAgo)
-        .order('snapshot_date', { ascending: true });
+        .order('snapshot_date', { ascending: false });
       if (error) throw error;
-      return data;
+      return data as InventorySnapshot[];
+    },
+  });
+
+  // Fetch scheduled arrivals (next 12 months)
+  const { data: scheduledArrivals = [], refetch: refetchArrivals } = useQuery({
+    queryKey: ['scheduled-arrivals-12m'],
+    queryFn: async () => {
+      const startMonthStr = format(startMonth, 'yyyy-MM-dd');
+      const endMonth = format(addMonths(startMonth, 12), 'yyyy-MM-dd');
+      
+      const { data, error } = await supabase
+        .from('scheduled_arrivals')
+        .select('product_id, quantity, arrival_date')
+        .gte('arrival_date', startMonthStr)
+        .lt('arrival_date', endMonth);
+      if (error) throw error;
+      return data as ScheduledArrival[];
     },
   });
 
@@ -119,42 +152,52 @@ export default function DemandPlanning() {
     },
   });
 
-  // Calculate supplier health data
-  const supplierHealthData = useMemo((): SupplierHealthData[] => {
-    // Group forecasts by product (sum of 6 months)
-    const forecastByProduct = new Map<string, number>();
-    forecasts.forEach(f => {
-      const current = forecastByProduct.get(f.product_id) || 0;
-      forecastByProduct.set(f.product_id, current + f.quantity);
-    });
+  // Generate month keys for 12 months
+  const monthKeys = useMemo(() => {
+    const keys: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      keys.push(format(addMonths(startMonth, i), 'yyyy-MM'));
+    }
+    return keys;
+  }, []);
 
-    // Group inventory by product and month for trend analysis
-    const inventoryByProductMonth = new Map<string, Map<string, number>>();
+  // Calculate supplier health data with proper month-by-month projection
+  const supplierHealthData = useMemo((): SupplierHealthRowData[] => {
+    // Get latest inventory per product
     const latestInventoryByProduct = new Map<string, number>();
     const processedLatest = new Set<string>();
     
-    // Sort by date descending for latest
     const sortedInventory = [...inventorySnapshots].sort((a, b) => 
       new Date(b.snapshot_date).getTime() - new Date(a.snapshot_date).getTime()
     );
     
     sortedInventory.forEach(inv => {
-      // Track latest inventory per product
       if (!processedLatest.has(inv.product_id)) {
         latestInventoryByProduct.set(inv.product_id, inv.quantity);
         processedLatest.add(inv.product_id);
       }
-      
-      // Group by month for trend
-      const monthKey = format(startOfMonth(new Date(inv.snapshot_date)), 'yyyy-MM');
-      if (!inventoryByProductMonth.has(inv.product_id)) {
-        inventoryByProductMonth.set(inv.product_id, new Map());
+    });
+
+    // Group forecasts by product and month
+    const forecastByProductMonth = new Map<string, Map<string, number>>();
+    forecasts.forEach(f => {
+      const monthKey = format(new Date(f.year_month), 'yyyy-MM');
+      if (!forecastByProductMonth.has(f.product_id)) {
+        forecastByProductMonth.set(f.product_id, new Map());
       }
-      const productMonths = inventoryByProductMonth.get(inv.product_id)!;
-      // Keep the latest snapshot per month
-      if (!productMonths.has(monthKey)) {
-        productMonths.set(monthKey, inv.quantity);
+      const productMonths = forecastByProductMonth.get(f.product_id)!;
+      productMonths.set(monthKey, (productMonths.get(monthKey) || 0) + f.quantity);
+    });
+
+    // Group arrivals by product and month
+    const arrivalsByProductMonth = new Map<string, Map<string, number>>();
+    scheduledArrivals.forEach(arr => {
+      const monthKey = format(new Date(arr.arrival_date), 'yyyy-MM');
+      if (!arrivalsByProductMonth.has(arr.product_id)) {
+        arrivalsByProductMonth.set(arr.product_id, new Map());
       }
+      const productMonths = arrivalsByProductMonth.get(arr.product_id)!;
+      productMonths.set(monthKey, (productMonths.get(monthKey) || 0) + arr.quantity);
     });
 
     // Group pending orders by supplier
@@ -179,71 +222,74 @@ export default function DemandPlanning() {
       });
     });
 
-    // Generate last 3 months keys
-    const now = new Date();
-    const monthKeys: string[] = [];
-    for (let i = 2; i >= 0; i--) {
-      monthKeys.push(format(subMonths(startOfMonth(now), i), 'yyyy-MM'));
-    }
-
     // Calculate health for each supplier
     return suppliers.map(supplier => {
       const supplierProducts = products.filter(p => p.supplier_id === supplier.id);
       
-      let criticalCount = 0;
-      let warningCount = 0;
-      let healthyCount = 0;
-
-      // Aggregate stock trend data for this supplier
-      const monthlyTotals = new Map<string, number>();
-      monthKeys.forEach(mk => monthlyTotals.set(mk, 0));
+      // Track ruptures per period
+      let rupturesIn3m = 0;
+      let rupturesIn6m = 0;
+      let rupturesIn9m = 0;
+      let rupturesIn12m = 0;
 
       supplierProducts.forEach(product => {
-        const stock = latestInventoryByProduct.get(product.id) || 0;
-        const forecast = forecastByProduct.get(product.id) || 0;
+        const initialStock = latestInventoryByProduct.get(product.id) || 0;
+        const productForecasts = forecastByProductMonth.get(product.id) || new Map();
+        const productArrivals = arrivalsByProductMonth.get(product.id) || new Map();
         
-        if (forecast === 0) {
-          healthyCount++;
-        } else if (stock < forecast * 0.3) {
-          criticalCount++;
-        } else if (stock < forecast) {
-          warningCount++;
-        } else {
-          healthyCount++;
+        let balance = initialStock;
+        let firstRuptureMonth: number | null = null;
+
+        // Project month by month
+        for (let i = 0; i < 12; i++) {
+          const monthKey = monthKeys[i];
+          const forecast = productForecasts.get(monthKey) || 0;
+          const arrivals = productArrivals.get(monthKey) || 0;
+          
+          balance = balance - forecast + arrivals;
+          
+          if (balance < 0 && firstRuptureMonth === null) {
+            firstRuptureMonth = i;
+            break; // We only need the first rupture month
+          }
         }
 
-        // Aggregate monthly stock for trend
-        const productMonths = inventoryByProductMonth.get(product.id);
-        if (productMonths) {
-          monthKeys.forEach(mk => {
-            const qty = productMonths.get(mk) || 0;
-            monthlyTotals.set(mk, (monthlyTotals.get(mk) || 0) + qty);
-          });
+        // Classify by period
+        if (firstRuptureMonth !== null) {
+          if (firstRuptureMonth < 3) {
+            rupturesIn3m++;
+          } else if (firstRuptureMonth < 6) {
+            rupturesIn6m++;
+          } else if (firstRuptureMonth < 9) {
+            rupturesIn9m++;
+          } else {
+            rupturesIn12m++;
+          }
         }
       });
 
-      // Calculate trend data
-      const trendData = monthKeys.map(mk => ({
-        month: format(new Date(mk + '-01'), 'MMM', { locale: ptBR }),
-        value: monthlyTotals.get(mk) || 0,
-      }));
+      // Create period stats
+      const createPeriodStats = (label: string, count: number, periodType: 'critical' | 'alert' | 'attention' | 'ok'): PeriodStats => ({
+        label,
+        ruptureCount: count,
+        status: count > 0 ? periodType : 'ok',
+      });
 
-      // Determine trend direction
-      const firstValue = trendData[0]?.value || 0;
-      const lastValue = trendData[trendData.length - 1]?.value || 0;
-      let trend: 'up' | 'down' | 'stable' = 'stable';
-      let percentChange = 0;
+      const periods = {
+        threeMonths: createPeriodStats('3 meses', rupturesIn3m, 'critical'),
+        sixMonths: createPeriodStats('6 meses', rupturesIn6m, 'alert'),
+        nineMonths: createPeriodStats('9 meses', rupturesIn9m, 'attention'),
+        twelveMonths: createPeriodStats('12 meses', rupturesIn12m, 'ok'),
+      };
 
-      if (firstValue > 0) {
-        percentChange = ((lastValue - firstValue) / firstValue) * 100;
-        if (percentChange > 5) {
-          trend = 'up';
-        } else if (percentChange < -5) {
-          trend = 'down';
-        }
-      } else if (lastValue > 0) {
-        trend = 'up';
-        percentChange = 100;
+      // Determine overall status (based on earliest rupture)
+      let overallStatus: 'critical' | 'alert' | 'attention' | 'ok' = 'ok';
+      if (rupturesIn3m > 0) {
+        overallStatus = 'critical';
+      } else if (rupturesIn6m > 0) {
+        overallStatus = 'alert';
+      } else if (rupturesIn9m > 0) {
+        overallStatus = 'attention';
       }
 
       const pending = pendingBySupplier.get(supplier.id) || { value: 0, nextArrival: null };
@@ -256,39 +302,41 @@ export default function DemandPlanning() {
         },
         stats: {
           totalProducts: supplierProducts.length,
-          criticalCount,
-          warningCount,
-          healthyCount,
+          periods,
+          overallStatus,
         },
         pendingOrders: {
           totalValue: pending.value,
           nextArrival: pending.nextArrival,
         },
-        stockTrend: {
-          data: trendData,
-          trend,
-          percentChange,
-        },
       };
     }).filter(s => s.stats.totalProducts > 0)
       .sort((a, b) => {
-        if (a.stats.criticalCount !== b.stats.criticalCount) {
-          return b.stats.criticalCount - a.stats.criticalCount;
+        // Sort by urgency (critical first)
+        const statusOrder = { critical: 0, alert: 1, attention: 2, ok: 3 };
+        if (statusOrder[a.stats.overallStatus] !== statusOrder[b.stats.overallStatus]) {
+          return statusOrder[a.stats.overallStatus] - statusOrder[b.stats.overallStatus];
         }
-        if (a.stats.warningCount !== b.stats.warningCount) {
-          return b.stats.warningCount - a.stats.warningCount;
+        // Then by total ruptures
+        const aRuptures = a.stats.periods.threeMonths.ruptureCount + a.stats.periods.sixMonths.ruptureCount + 
+                          a.stats.periods.nineMonths.ruptureCount + a.stats.periods.twelveMonths.ruptureCount;
+        const bRuptures = b.stats.periods.threeMonths.ruptureCount + b.stats.periods.sixMonths.ruptureCount + 
+                          b.stats.periods.nineMonths.ruptureCount + b.stats.periods.twelveMonths.ruptureCount;
+        if (aRuptures !== bRuptures) {
+          return bRuptures - aRuptures;
         }
         return a.supplier.company_name.localeCompare(b.supplier.company_name);
       });
-  }, [suppliers, products, forecasts, inventorySnapshots, purchaseItems]);
+  }, [suppliers, products, forecasts, inventorySnapshots, scheduledArrivals, purchaseItems, monthKeys]);
 
   // Overall stats
   const overallStats = useMemo(() => {
     const totalProducts = supplierHealthData.reduce((sum, s) => sum + s.stats.totalProducts, 0);
-    const totalCritical = supplierHealthData.reduce((sum, s) => sum + s.stats.criticalCount, 0);
-    const totalWarning = supplierHealthData.reduce((sum, s) => sum + s.stats.warningCount, 0);
-    const totalHealthy = supplierHealthData.reduce((sum, s) => sum + s.stats.healthyCount, 0);
-    return { totalProducts, totalCritical, totalWarning, totalHealthy };
+    const totalCritical = supplierHealthData.reduce((sum, s) => sum + s.stats.periods.threeMonths.ruptureCount, 0);
+    const totalAlert = supplierHealthData.reduce((sum, s) => sum + s.stats.periods.sixMonths.ruptureCount, 0);
+    const totalAttention = supplierHealthData.reduce((sum, s) => sum + s.stats.periods.nineMonths.ruptureCount, 0);
+    const totalOk = totalProducts - totalCritical - totalAlert - totalAttention;
+    return { totalProducts, totalCritical, totalAlert, totalAttention, totalOk: Math.max(0, totalOk) };
   }, [supplierHealthData]);
 
   // Handle refresh
@@ -296,8 +344,9 @@ export default function DemandPlanning() {
     refetchSuppliers();
     refetchForecasts();
     refetchInventory();
+    refetchArrivals();
     toast({ title: 'Dados atualizados', description: 'Os indicadores foram recalculados.' });
-  }, [refetchSuppliers, refetchForecasts, refetchInventory, toast]);
+  }, [refetchSuppliers, refetchForecasts, refetchInventory, refetchArrivals, toast]);
 
   // Handle import success
   const handleImportSuccess = useCallback(() => {
@@ -311,8 +360,8 @@ export default function DemandPlanning() {
         <div className="grid grid-cols-4 gap-4">
           {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-64" />)}
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       </div>
     );
@@ -355,10 +404,10 @@ export default function DemandPlanning() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg">Resumo Geral</CardTitle>
-          <CardDescription>Visão consolidada de todos os fornecedores</CardDescription>
+          <CardDescription>Visão consolidada por horizonte de planejamento</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10">
                 <Package className="h-5 w-5 text-primary" />
@@ -374,7 +423,16 @@ export default function DemandPlanning() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-destructive">{overallStats.totalCritical}</p>
-                <p className="text-xs text-muted-foreground">críticos</p>
+                <p className="text-xs text-muted-foreground">crítico (3m)</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-orange-500/10">
+                <AlertTriangle className="h-5 w-5 text-orange-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-orange-500">{overallStats.totalAlert}</p>
+                <p className="text-xs text-muted-foreground">alerta (6m)</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -382,8 +440,8 @@ export default function DemandPlanning() {
                 <AlertTriangle className="h-5 w-5 text-yellow-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-yellow-500">{overallStats.totalWarning}</p>
-                <p className="text-xs text-muted-foreground">atenção</p>
+                <p className="text-2xl font-bold text-yellow-500">{overallStats.totalAttention}</p>
+                <p className="text-xs text-muted-foreground">atenção (9m)</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -391,21 +449,21 @@ export default function DemandPlanning() {
                 <TrendingUp className="h-5 w-5 text-green-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-green-500">{overallStats.totalHealthy}</p>
+                <p className="text-2xl font-bold text-green-500">{overallStats.totalOk}</p>
                 <p className="text-xs text-muted-foreground">OK</p>
               </div>
             </div>
           </div>
           <HealthBar
             critical={overallStats.totalCritical}
-            warning={overallStats.totalWarning}
-            healthy={overallStats.totalHealthy}
+            warning={overallStats.totalAlert + overallStats.totalAttention}
+            healthy={overallStats.totalOk}
             className="mt-4"
           />
         </CardContent>
       </Card>
 
-      {/* Supplier Cards */}
+      {/* Supplier Rows */}
       {supplierHealthData.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
@@ -419,9 +477,9 @@ export default function DemandPlanning() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="space-y-3">
           {supplierHealthData.map(data => (
-            <SupplierHealthCard key={data.supplier.id} data={data} />
+            <SupplierHealthRow key={data.supplier.id} data={data} />
           ))}
         </div>
       )}
