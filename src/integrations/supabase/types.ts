@@ -501,6 +501,54 @@ export type Database = {
           },
         ]
       }
+      scheduled_arrivals: {
+        Row: {
+          arrival_date: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          product_id: string
+          quantity: number
+          source_file: string | null
+          unit_id: string
+        }
+        Insert: {
+          arrival_date: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          product_id: string
+          quantity?: number
+          source_file?: string | null
+          unit_id: string
+        }
+        Update: {
+          arrival_date?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          product_id?: string
+          quantity?: number
+          source_file?: string | null
+          unit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_arrivals_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_arrivals_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subcategories: {
         Row: {
           category_id: string
