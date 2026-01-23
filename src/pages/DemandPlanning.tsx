@@ -6,7 +6,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Package, TrendingDown, AlertTriangle, TrendingUp, Building2 } from 'lucide-react';
 import { SupplierHealthCard, type SupplierHealthData } from '@/components/planning/SupplierHealthCard';
 import { HealthBar } from '@/components/planning/HealthBar';
-import { format, addMonths, startOfMonth, parseISO } from 'date-fns';
+import { format, addMonths, startOfMonth, subMonths } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface Supplier {
   id: string;
@@ -65,14 +66,18 @@ export default function DemandPlanning() {
     },
   });
 
-  // Fetch latest inventory
+  // Fetch inventory snapshots (last 3 months for trend)
   const { data: inventorySnapshots = [] } = useQuery({
-    queryKey: ['inventory-snapshots-summary'],
+    queryKey: ['inventory-snapshots-trend'],
     queryFn: async () => {
+      const now = new Date();
+      const threeMonthsAgo = format(subMonths(startOfMonth(now), 3), 'yyyy-MM-dd');
+      
       const { data, error } = await supabase
         .from('inventory_snapshots')
         .select('product_id, quantity, snapshot_date')
-        .order('snapshot_date', { ascending: false });
+        .gte('snapshot_date', threeMonthsAgo)
+        .order('snapshot_date', { ascending: true });
       if (error) throw error;
       return data;
     },
@@ -109,13 +114,32 @@ export default function DemandPlanning() {
       forecastByProduct.set(f.product_id, current + f.quantity);
     });
 
-    // Get latest inventory per product
-    const inventoryByProduct = new Map<string, number>();
-    const processedProducts = new Set<string>();
-    inventorySnapshots.forEach(inv => {
-      if (!processedProducts.has(inv.product_id)) {
-        inventoryByProduct.set(inv.product_id, inv.quantity);
-        processedProducts.add(inv.product_id);
+    // Group inventory by product and month for trend analysis
+    const inventoryByProductMonth = new Map<string, Map<string, number>>();
+    const latestInventoryByProduct = new Map<string, number>();
+    const processedLatest = new Set<string>();
+    
+    // Sort by date descending for latest
+    const sortedInventory = [...inventorySnapshots].sort((a, b) => 
+      new Date(b.snapshot_date).getTime() - new Date(a.snapshot_date).getTime()
+    );
+    
+    sortedInventory.forEach(inv => {
+      // Track latest inventory per product
+      if (!processedLatest.has(inv.product_id)) {
+        latestInventoryByProduct.set(inv.product_id, inv.quantity);
+        processedLatest.add(inv.product_id);
+      }
+      
+      // Group by month for trend
+      const monthKey = format(startOfMonth(new Date(inv.snapshot_date)), 'yyyy-MM');
+      if (!inventoryByProductMonth.has(inv.product_id)) {
+        inventoryByProductMonth.set(inv.product_id, new Map());
+      }
+      const productMonths = inventoryByProductMonth.get(inv.product_id)!;
+      // Keep the latest snapshot per month
+      if (!productMonths.has(monthKey)) {
+        productMonths.set(monthKey, inv.quantity);
       }
     });
 
@@ -141,6 +165,13 @@ export default function DemandPlanning() {
       });
     });
 
+    // Generate last 3 months keys
+    const now = new Date();
+    const monthKeys: string[] = [];
+    for (let i = 2; i >= 0; i--) {
+      monthKeys.push(format(subMonths(startOfMonth(now), i), 'yyyy-MM'));
+    }
+
     // Calculate health for each supplier
     return suppliers.map(supplier => {
       const supplierProducts = products.filter(p => p.supplier_id === supplier.id);
@@ -149,24 +180,57 @@ export default function DemandPlanning() {
       let warningCount = 0;
       let healthyCount = 0;
 
+      // Aggregate stock trend data for this supplier
+      const monthlyTotals = new Map<string, number>();
+      monthKeys.forEach(mk => monthlyTotals.set(mk, 0));
+
       supplierProducts.forEach(product => {
-        const stock = inventoryByProduct.get(product.id) || 0;
+        const stock = latestInventoryByProduct.get(product.id) || 0;
         const forecast = forecastByProduct.get(product.id) || 0;
         
         if (forecast === 0) {
-          // No forecast = consider healthy
           healthyCount++;
         } else if (stock < forecast * 0.3) {
-          // Less than 30% of needed = critical
           criticalCount++;
         } else if (stock < forecast) {
-          // Between 30% and 100% = warning
           warningCount++;
         } else {
-          // More than forecast = healthy
           healthyCount++;
         }
+
+        // Aggregate monthly stock for trend
+        const productMonths = inventoryByProductMonth.get(product.id);
+        if (productMonths) {
+          monthKeys.forEach(mk => {
+            const qty = productMonths.get(mk) || 0;
+            monthlyTotals.set(mk, (monthlyTotals.get(mk) || 0) + qty);
+          });
+        }
       });
+
+      // Calculate trend data
+      const trendData = monthKeys.map(mk => ({
+        month: format(new Date(mk + '-01'), 'MMM', { locale: ptBR }),
+        value: monthlyTotals.get(mk) || 0,
+      }));
+
+      // Determine trend direction
+      const firstValue = trendData[0]?.value || 0;
+      const lastValue = trendData[trendData.length - 1]?.value || 0;
+      let trend: 'up' | 'down' | 'stable' = 'stable';
+      let percentChange = 0;
+
+      if (firstValue > 0) {
+        percentChange = ((lastValue - firstValue) / firstValue) * 100;
+        if (percentChange > 5) {
+          trend = 'up';
+        } else if (percentChange < -5) {
+          trend = 'down';
+        }
+      } else if (lastValue > 0) {
+        trend = 'up';
+        percentChange = 100;
+      }
 
       const pending = pendingBySupplier.get(supplier.id) || { value: 0, nextArrival: null };
 
@@ -186,10 +250,14 @@ export default function DemandPlanning() {
           totalValue: pending.value,
           nextArrival: pending.nextArrival,
         },
+        stockTrend: {
+          data: trendData,
+          trend,
+          percentChange,
+        },
       };
-    }).filter(s => s.stats.totalProducts > 0) // Only show suppliers with products
+    }).filter(s => s.stats.totalProducts > 0)
       .sort((a, b) => {
-        // Sort by urgency: critical first, then warning
         if (a.stats.criticalCount !== b.stats.criticalCount) {
           return b.stats.criticalCount - a.stats.criticalCount;
         }

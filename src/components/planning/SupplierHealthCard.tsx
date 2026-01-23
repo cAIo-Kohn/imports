@@ -3,9 +3,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { HealthBar } from "./HealthBar";
-import { Building2, Package, DollarSign, Calendar, ChevronRight, AlertTriangle } from "lucide-react";
+import { TrendSparkline } from "./TrendSparkline";
+import { Building2, Package, DollarSign, Calendar, ChevronRight, AlertTriangle, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+export interface StockTrendData {
+  month: string;
+  value: number;
+}
 
 export interface SupplierHealthData {
   supplier: {
@@ -22,6 +28,11 @@ export interface SupplierHealthData {
   pendingOrders: {
     totalValue: number;
     nextArrival: string | null;
+  };
+  stockTrend?: {
+    data: StockTrendData[];
+    trend: 'up' | 'down' | 'stable';
+    percentChange: number;
   };
 }
 
@@ -87,6 +98,45 @@ export function SupplierHealthCard({ data }: SupplierHealthCardProps) {
           healthy={stats.healthyCount}
           showLabels
         />
+
+        {/* Stock Trend Chart */}
+        {data.stockTrend && data.stockTrend.data.length >= 2 && (
+          <div className="pt-2 border-t">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-muted-foreground">Tendência de Estoque (3 meses)</span>
+              <div className="flex items-center gap-1">
+                {data.stockTrend.trend === 'up' && (
+                  <>
+                    <TrendingUp className="h-3 w-3 text-green-500" />
+                    <span className="text-xs font-medium text-green-500">
+                      +{data.stockTrend.percentChange.toFixed(0)}%
+                    </span>
+                  </>
+                )}
+                {data.stockTrend.trend === 'down' && (
+                  <>
+                    <TrendingDown className="h-3 w-3 text-destructive" />
+                    <span className="text-xs font-medium text-destructive">
+                      {data.stockTrend.percentChange.toFixed(0)}%
+                    </span>
+                  </>
+                )}
+                {data.stockTrend.trend === 'stable' && (
+                  <>
+                    <Minus className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Estável
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+            <TrendSparkline 
+              data={data.stockTrend.data} 
+              trend={data.stockTrend.trend}
+            />
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-3 pt-2">
