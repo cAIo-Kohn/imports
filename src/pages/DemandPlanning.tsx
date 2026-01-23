@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format, addMonths, startOfMonth, parseISO, subYears } from 'date-fns';
@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { TrendingUp, TrendingDown, AlertTriangle, Package, Search, Filter, Upload, FileSpreadsheet, RefreshCw, Ship } from 'lucide-react';
@@ -16,6 +15,8 @@ import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal
 import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
 import { ProjectionChart } from '@/components/planning/ProjectionChart';
 import { OrderSimulationPanel } from '@/components/planning/OrderSimulationPanel';
+import { ArrivalInput } from '@/components/planning/ArrivalInput';
+import { Input } from '@/components/ui/input';
 
 interface Product {
   id: string;
@@ -80,6 +81,8 @@ export default function DemandPlanning() {
 
   // Pending arrivals: key = "productId-yyyy-MM-dd", value = quantity
   const [pendingArrivals, setPendingArrivals] = useState<Record<string, number>>({});
+  // String version for inputs (debounced sync from ArrivalInput)
+  const [pendingArrivalsInput, setPendingArrivalsInput] = useState<Record<string, string>>({});
 
   // Fetch units
   const { data: units = [] } = useQuery({
@@ -208,11 +211,21 @@ export default function DemandPlanning() {
     },
   });
 
-  // Handle pending arrival change
+  // Handle pending arrival change (called after debounce from ArrivalInput)
   const handleArrivalChange = useCallback((productId: string, monthKey: string, value: string) => {
     const key = `${productId}-${monthKey}`;
     const numValue = parseInt(value) || 0;
     
+    // Update string version for inputs
+    setPendingArrivalsInput(prev => {
+      if (value === '' || value === '0') {
+        const { [key]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [key]: value };
+    });
+    
+    // Update numeric version for calculations
     setPendingArrivals(prev => {
       if (numValue <= 0) {
         const { [key]: _, ...rest } = prev;
@@ -225,6 +238,7 @@ export default function DemandPlanning() {
   // Clear pending arrivals
   const clearPendingArrivals = useCallback(() => {
     setPendingArrivals({});
+    setPendingArrivalsInput({});
   }, []);
 
   // Calculate projections with pending arrivals
@@ -688,22 +702,16 @@ export default function DemandPlanning() {
                         className={`bg-green-500/5 ${selectedProduct === productProj.product.id ? 'bg-muted' : ''}`}
                       >
                         {productProj.projections.map((proj, i) => (
-                          <TableCell key={i} className="text-center p-1 bg-green-500/5" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex flex-col items-center">
-                              {proj.purchases > 0 && (
-                                <span className="text-xs text-green-600 dark:text-green-400">
-                                  +{proj.purchases.toLocaleString('pt-BR')}
-                                </span>
-                              )}
-                              <Input
-                                type="number"
-                                min="0"
-                                placeholder="0"
-                                className="w-16 h-6 text-center text-xs px-1 bg-green-500/10 border-green-500/30 focus:border-green-500"
-                                value={pendingArrivals[`${productProj.product.id}-${proj.monthKey}`] || ''}
-                                onChange={(e) => handleArrivalChange(productProj.product.id, proj.monthKey, e.target.value)}
+                          <TableCell key={i} className="text-center p-1 bg-accent/30" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-col items-center gap-0.5">
+                              <ArrivalInput
+                                productId={productProj.product.id}
+                                monthKey={proj.monthKey}
+                                initialValue={pendingArrivalsInput[`${productProj.product.id}-${proj.monthKey}`] || ''}
+                                existingPurchases={proj.purchases}
+                                onValueChange={handleArrivalChange}
                               />
-                              <span className="text-[10px] text-green-500/70">Chegada</span>
+                              <span className="text-[10px] text-muted-foreground">Chegada</span>
                             </div>
                           </TableCell>
                         ))}
