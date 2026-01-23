@@ -29,7 +29,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Upload, FileText, AlertTriangle, CheckCircle2, X, Ship } from 'lucide-react';
+import { Upload, FileText, AlertTriangle, CheckCircle2, X, Ship, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, parse, startOfMonth, addMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -323,6 +323,15 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
+      // STEP 1: Delete all existing arrivals for this unit
+      // This ensures the new file is the source of truth
+      const { error: deleteError } = await supabase
+        .from('scheduled_arrivals')
+        .delete()
+        .eq('unit_id', selectedUnit);
+
+      if (deleteError) throw deleteError;
+
       // Build items for scheduled_arrivals table
       const items: Array<{
         product_id: string;
@@ -354,13 +363,13 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
         });
       });
 
-      // Upsert items in batches (update quantity if same product/unit/date exists)
+      // STEP 2: Insert all items from the new file
       const batchSize = 50;
       for (let i = 0; i < items.length; i += batchSize) {
         const batch = items.slice(i, i + batchSize);
         const { error: itemsError } = await supabase
           .from('scheduled_arrivals')
-          .upsert(batch, { onConflict: 'product_id,unit_id,arrival_date' });
+          .insert(batch);
         
         if (itemsError) throw itemsError;
         
@@ -472,6 +481,16 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
                   </AlertDescription>
                 </Alert>
               )}
+
+              {/* Sync Warning */}
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  A importação irá <strong>substituir todas as chegadas</strong> da unidade 
+                  selecionada pelos dados deste arquivo. Chegadas de arquivos anteriores 
+                  serão removidas.
+                </AlertDescription>
+              </Alert>
 
               {/* Stats */}
               <div className="grid grid-cols-3 gap-4 text-center">
