@@ -48,11 +48,16 @@ interface ArrivalRow {
   lineNumber: number;
 }
 
+interface MonthlyArrivalData {
+  quantity: number;
+  processNumbers: Set<string>;
+}
+
 interface ProductArrival {
   productCode: string;
   productId: string | null;
   productName?: string;
-  monthlyArrivals: Map<string, number>; // monthKey (yyyy-MM) -> quantity
+  monthlyArrivals: Map<string, MonthlyArrivalData>; // monthKey (yyyy-MM) -> data
   totalQuantity: number;
 }
 
@@ -232,12 +237,21 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
 
         const existing = arrivalsByProduct.get(row.productCode);
         if (existing) {
-          const currentQty = existing.monthlyArrivals.get(monthKey) || 0;
-          existing.monthlyArrivals.set(monthKey, currentQty + row.quantity);
+          const currentData = existing.monthlyArrivals.get(monthKey);
+          if (currentData) {
+            currentData.quantity += row.quantity;
+            if (row.processNumber) currentData.processNumbers.add(row.processNumber);
+          } else {
+            const processNumbers = new Set<string>();
+            if (row.processNumber) processNumbers.add(row.processNumber);
+            existing.monthlyArrivals.set(monthKey, { quantity: row.quantity, processNumbers });
+          }
           existing.totalQuantity += row.quantity;
         } else {
-          const monthlyArrivals = new Map<string, number>();
-          monthlyArrivals.set(monthKey, row.quantity);
+          const monthlyArrivals = new Map<string, MonthlyArrivalData>();
+          const processNumbers = new Set<string>();
+          if (row.processNumber) processNumbers.add(row.processNumber);
+          monthlyArrivals.set(monthKey, { quantity: row.quantity, processNumbers });
           arrivalsByProduct.set(row.productCode, {
             productCode: row.productCode,
             productId: productInfo?.id || null,
@@ -317,19 +331,25 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
         quantity: number;
         source_file: string;
         created_by: string;
+        process_number: string | null;
       }> = [];
 
       matchedArrivals.forEach(arrival => {
-        arrival.monthlyArrivals.forEach((quantity, monthKey) => {
+        arrival.monthlyArrivals.forEach((data, monthKey) => {
           // Use the first day of the month as arrival date
           const arrivalDate = `${monthKey}-01`;
+          // Join multiple process numbers with comma
+          const processNumber = data.processNumbers.size > 0 
+            ? Array.from(data.processNumbers).join(', ') 
+            : null;
           items.push({
             product_id: arrival.productId!,
             unit_id: selectedUnit,
             arrival_date: arrivalDate,
-            quantity,
+            quantity: data.quantity,
             source_file: file?.name || 'unknown',
             created_by: user.id,
+            process_number: processNumber,
           });
         });
       });
@@ -477,9 +497,9 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
                       <TableHead className="sticky left-0 bg-background">Código</TableHead>
                       <TableHead>Produto</TableHead>
                       {monthColumns.map(month => (
-                        <TableHead key={month} className="text-right">
+                        <TableCell key={month} className="text-right">
                           {formatMonthLabel(month)}
-                        </TableHead>
+                        </TableCell>
                       ))}
                       <TableHead className="text-right">Total</TableHead>
                     </TableRow>
@@ -500,7 +520,7 @@ export function ImportArrivalsModal({ open, onOpenChange, onSuccess }: ImportArr
                         </TableCell>
                         {monthColumns.map(month => (
                           <TableCell key={month} className="text-right tabular-nums">
-                            {arrival.monthlyArrivals.get(month)?.toLocaleString('pt-BR') || '-'}
+                            {arrival.monthlyArrivals.get(month)?.quantity.toLocaleString('pt-BR') || '-'}
                           </TableCell>
                         ))}
                         <TableCell className="text-right font-medium tabular-nums">
