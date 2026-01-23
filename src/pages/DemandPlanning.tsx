@@ -1,5 +1,6 @@
-import { useState, useMemo, useCallback, memo } from 'react';
+import { useState, useMemo, useCallback, memo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { supabase } from '@/integrations/supabase/client';
 import { format, addMonths, startOfMonth, parseISO, subYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -15,7 +16,7 @@ import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal
 import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
 import { ProjectionChart } from '@/components/planning/ProjectionChart';
 import { OrderSimulationPanel } from '@/components/planning/OrderSimulationPanel';
-import { ArrivalInput } from '@/components/planning/ArrivalInput';
+import { VirtualizedProductRow } from '@/components/planning/VirtualizedProductRow';
 import { Input } from '@/components/ui/input';
 
 interface Product {
@@ -83,6 +84,9 @@ export default function DemandPlanning() {
   const [pendingArrivals, setPendingArrivals] = useState<Record<string, number>>({});
   // String version for inputs (debounced sync from ArrivalInput)
   const [pendingArrivalsInput, setPendingArrivalsInput] = useState<Record<string, string>>({});
+  
+  // Ref for virtualized table container
+  const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // Fetch units
   const { data: units = [] } = useQuery({
@@ -597,7 +601,7 @@ export default function DemandPlanning() {
         </Card>
       )}
 
-      {/* Projection Table - Expanded View */}
+      {/* Projection Table - Virtualized */}
       <Card>
         <CardHeader>
           <CardTitle>Projeção de Estoque</CardTitle>
@@ -606,11 +610,14 @@ export default function DemandPlanning() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-auto">
+          <div 
+            ref={tableContainerRef}
+            className="overflow-auto max-h-[600px]"
+          >
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-background z-20">
                 <TableRow>
-                  <TableHead className="sticky left-0 bg-background z-10 min-w-[280px]">Produto</TableHead>
+                  <TableHead className="sticky left-0 bg-background z-30 min-w-[280px]">Produto</TableHead>
                   <TableHead className="text-center min-w-[90px] bg-muted/50">Estoque</TableHead>
                   {productProjections[0]?.projections.map((m, i) => (
                     <TableHead key={i} className="text-center min-w-[85px]">
@@ -629,140 +636,14 @@ export default function DemandPlanning() {
                   </TableRow>
                 ) : (
                   productProjections.map((productProj) => (
-                    <>
-                      {/* Row 1: PV (Sales Forecast) */}
-                      <TableRow 
-                        key={`${productProj.product.id}-pv`}
-                        className={`cursor-pointer transition-colors border-t-2 bg-muted/30 ${
-                          selectedProduct === productProj.product.id ? 'bg-muted' : 'hover:bg-muted/50'
-                        }`}
-                        onClick={() => setSelectedProduct(
-                          selectedProduct === productProj.product.id ? null : productProj.product.id
-                        )}
-                      >
-                        <TableCell className="sticky left-0 bg-background z-10 font-medium" rowSpan={4}>
-                          <div className="flex items-center gap-2">
-                            {productProj.hasRupture && (
-                              <Badge variant="destructive" className="shrink-0">RUPTURA</Badge>
-                            )}
-                            <div className="min-w-0">
-                              <div className="font-semibold text-base">{productProj.product.code}</div>
-                              <div className="text-sm text-muted-foreground truncate max-w-[180px]">
-                                {productProj.product.technical_description}
-                              </div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center bg-muted/50 font-bold text-lg" rowSpan={4}>
-                          {productProj.currentStock.toLocaleString('pt-BR')}
-                        </TableCell>
-                        {productProj.projections.map((proj, i) => (
-                          <TableCell key={i} className="text-center p-1 bg-muted/20">
-                            <div className="flex items-center justify-center gap-1">
-                              <span className="text-sm text-muted-foreground">
-                                {proj.forecast > 0 ? proj.forecast.toLocaleString('pt-BR') : '-'}
-                              </span>
-                              {proj.forecast > 0 && proj.historyLastYear > 0 && (
-                                proj.forecast > proj.historyLastYear ? (
-                                  <TrendingUp className="h-3 w-3 text-orange-500" />
-                                ) : proj.forecast < proj.historyLastYear ? (
-                                  <TrendingDown className="h-3 w-3 text-green-500" />
-                                ) : null
-                              )}
-                            </div>
-                            <span className="text-[10px] text-muted-foreground font-medium">PV</span>
-                          </TableCell>
-                        ))}
-                        <TableCell className="text-center p-1 bg-muted/30 font-semibold">
-                          {productProj.totalForecast.toLocaleString('pt-BR')}
-                        </TableCell>
-                      </TableRow>
-                      
-                      {/* Row 2: History (Previous Year Sales) */}
-                      <TableRow 
-                        key={`${productProj.product.id}-history`}
-                        className={`bg-blue-500/5 ${selectedProduct === productProj.product.id ? 'bg-muted' : ''}`}
-                      >
-                        {productProj.projections.map((proj, i) => (
-                          <TableCell key={i} className="text-center p-1 bg-blue-500/5">
-                            <div className="text-sm text-blue-600 dark:text-blue-400">
-                              {proj.historyLastYear > 0 ? proj.historyLastYear.toLocaleString('pt-BR') : '-'}
-                            </div>
-                            <span className="text-[10px] text-blue-500/70">Hist.</span>
-                          </TableCell>
-                        ))}
-                        <TableCell className="text-center p-1 bg-blue-500/10 font-semibold text-blue-600 dark:text-blue-400">
-                          {productProj.totalHistory.toLocaleString('pt-BR')}
-                        </TableCell>
-                      </TableRow>
-
-                      {/* Row 3: Arrivals (Existing + Pending) */}
-                      <TableRow 
-                        key={`${productProj.product.id}-arrivals`}
-                        className={`bg-green-500/5 ${selectedProduct === productProj.product.id ? 'bg-muted' : ''}`}
-                      >
-                        {productProj.projections.map((proj, i) => (
-                          <TableCell key={i} className="text-center p-1 bg-accent/30" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex flex-col items-center gap-0.5">
-                              <ArrivalInput
-                                productId={productProj.product.id}
-                                monthKey={proj.monthKey}
-                                initialValue={pendingArrivalsInput[`${productProj.product.id}-${proj.monthKey}`] || ''}
-                                existingPurchases={proj.purchases}
-                                onValueChange={handleArrivalChange}
-                              />
-                              <span className="text-[10px] text-muted-foreground">Chegada</span>
-                            </div>
-                          </TableCell>
-                        ))}
-                        <TableCell className="text-center p-1 bg-green-500/10">
-                          <div className="font-semibold text-green-600 dark:text-green-400">
-                            {(productProj.totalPurchases + productProj.totalPendingArrivals).toLocaleString('pt-BR')}
-                          </div>
-                          {productProj.totalPendingArrivals > 0 && (
-                            <span className="text-[10px] text-green-500/70">
-                              (+{productProj.totalPendingArrivals.toLocaleString('pt-BR')} novo)
-                            </span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-
-                      {/* Row 4: Balance Projection */}
-                      <TableRow 
-                        key={`${productProj.product.id}-balance`}
-                        className={`border-b-2 ${selectedProduct === productProj.product.id ? 'bg-muted' : ''}`}
-                      >
-                        {productProj.projections.map((proj, i) => (
-                          <TableCell key={i} className="text-center p-1">
-                            <div 
-                              className={`inline-block px-2 py-0.5 rounded text-sm font-bold ${
-                                proj.status === 'rupture' 
-                                  ? 'bg-destructive/15 text-destructive' 
-                                  : proj.status === 'warning'
-                                  ? 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-500'
-                                  : 'text-foreground'
-                              }`}
-                            >
-                              {proj.finalBalance.toLocaleString('pt-BR')}
-                            </div>
-                            <div className="text-[10px] text-muted-foreground">Saldo</div>
-                          </TableCell>
-                        ))}
-                        <TableCell className="text-center p-1 bg-muted/30">
-                          <div 
-                            className={`inline-block px-2 py-0.5 rounded text-sm font-bold ${
-                              productProj.projections[productProj.projections.length - 1]?.status === 'rupture' 
-                                ? 'bg-destructive/15 text-destructive' 
-                                : productProj.projections[productProj.projections.length - 1]?.status === 'warning'
-                                ? 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-500'
-                                : 'text-foreground'
-                            }`}
-                          >
-                            {productProj.projections[productProj.projections.length - 1]?.finalBalance.toLocaleString('pt-BR')}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    </>
+                    <VirtualizedProductRow
+                      key={productProj.product.id}
+                      productProj={productProj}
+                      isSelected={selectedProduct === productProj.product.id}
+                      pendingArrivalsInput={pendingArrivalsInput}
+                      onSelectProduct={setSelectedProduct}
+                      onArrivalChange={handleArrivalChange}
+                    />
                   ))
                 )}
               </TableBody>
