@@ -92,6 +92,17 @@ function parseFixedWidthLine(line: string): ArrivalRow | null {
     const entregaStr = line.substring(COLUMN_POSITIONS.entrega.start, COLUMN_POSITIONS.entrega.end).trim();
     const qtdeSaldoStr = line.substring(COLUMN_POSITIONS.qtdeSaldo.start, COLUMN_POSITIONS.qtdeSaldo.end).trim();
 
+    // DEBUG: Log first 5 parsed lines to verify column positions
+    console.log('=== DEBUG PARSING ===');
+    console.log('Full line:', JSON.stringify(line));
+    console.log('Line length:', line.length);
+    console.log('Estabelecimento (0-3):', JSON.stringify(estabelecimento));
+    console.log('Processo (4-18):', JSON.stringify(processo));
+    console.log('Item (19-35):', JSON.stringify(item));
+    console.log('Entrega (36-46):', JSON.stringify(entregaStr));
+    console.log('QtdeSaldo (47-62):', JSON.stringify(qtdeSaldoStr));
+    console.log('=====================');
+
     // Skip if item is empty
     if (!item) return null;
 
