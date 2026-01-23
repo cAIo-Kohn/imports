@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Factory, Trash2, Globe, Mail, Phone, Package } from 'lucide-react';
+import { Plus, Search, Factory, Trash2, Globe, Mail, Phone, Package, Upload } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { supabase } from '@/integrations/supabase/client';
 import { CreateSupplierModal } from '@/components/suppliers/CreateSupplierModal';
 import { DeleteSupplierDialog } from '@/components/suppliers/DeleteSupplierDialog';
+import { ImportSupplierInvoiceModal } from '@/components/suppliers/ImportSupplierInvoiceModal';
 
 interface Supplier {
   id: string;
@@ -32,6 +33,7 @@ export default function Suppliers() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [supplierToDelete, setSupplierToDelete] = useState<{ id: string; company_name: string; trade_name: string | null } | null>(null);
 
@@ -89,10 +91,16 @@ export default function Suppliers() {
           <h1 className="text-3xl font-bold tracking-tight">Fornecedores</h1>
           <p className="text-muted-foreground">Gerencie seus fornecedores internacionais</p>
         </div>
-        <Button onClick={() => setCreateModalOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Fornecedor
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportModalOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />
+            Importar
+          </Button>
+          <Button onClick={() => setCreateModalOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Fornecedor
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4">
@@ -268,6 +276,12 @@ export default function Suppliers() {
         onOpenChange={setDeleteDialogOpen}
         supplier={supplierToDelete}
         linkedProductsCount={linkedProductsCount}
+        onSuccess={handleSuccess}
+      />
+
+      <ImportSupplierInvoiceModal
+        open={importModalOpen}
+        onOpenChange={setImportModalOpen}
         onSuccess={handleSuccess}
       />
     </div>
