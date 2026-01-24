@@ -238,14 +238,24 @@ export default function SupplierPlanning() {
 
   const handleArrivalChange = useCallback((productId: string, monthKey: string, value: string) => {
     const key = `${productId}::${monthKey}`;
-    const numValue = parseInt(value) || 0;
+    let numValue = parseInt(value) || 0;
+    
+    // Encontrar o produto para obter qty_master_box
+    const product = products?.find(p => p.id === productId);
+    const qtyMasterBox = product?.qty_master_box;
+    
+    // Se o produto tem qty_master_box definido, arredondar para cima em caixas completas
+    if (qtyMasterBox && qtyMasterBox > 0 && numValue > 0) {
+      const masterBoxes = Math.ceil(numValue / qtyMasterBox);
+      numValue = masterBoxes * qtyMasterBox;
+    }
     
     setPendingArrivalsInput(prev => {
-      if (value === '' || value === '0') {
+      if (numValue <= 0) {
         const { [key]: _, ...rest } = prev;
         return rest;
       }
-      return { ...prev, [key]: value };
+      return { ...prev, [key]: numValue.toString() };
     });
     
     setPendingArrivals(prev => {
@@ -255,7 +265,7 @@ export default function SupplierPlanning() {
       }
       return { ...prev, [key]: numValue };
     });
-  }, []);
+  }, [products]);
 
   const clearPendingArrivals = useCallback(() => {
     setPendingArrivals({});
