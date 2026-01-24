@@ -86,6 +86,7 @@ export const ArrivalInput = memo(function ArrivalInput({
   }
 
   // Display mode with optional tooltip
+  // Black for existing purchases (uploads), Blue for inline typed pending values
   const displayContent = (
     <div 
       className="flex items-center justify-center gap-1 cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5 min-h-[24px] transition-colors"
@@ -93,16 +94,30 @@ export const ArrivalInput = memo(function ArrivalInput({
     >
       {totalArrival > 0 ? (
         <>
-          <span className="text-xs font-medium">
-            {totalArrival.toLocaleString('pt-BR')}
-          </span>
-          {pendingValue > 0 && existingPurchases > 0 && (
-            <span className="text-[10px] text-muted-foreground">
-              ({existingPurchases.toLocaleString('pt-BR')}+{pendingValue.toLocaleString('pt-BR')})
+          {/* Only existing purchases - black */}
+          {existingPurchases > 0 && pendingValue === 0 && (
+            <span className="text-xs font-semibold text-foreground">
+              {existingPurchases.toLocaleString('pt-BR')}
             </span>
           )}
+          
+          {/* Only pending value - blue */}
           {pendingValue > 0 && existingPurchases === 0 && (
-            <span className="text-[10px] text-primary">*</span>
+            <span className="text-xs font-semibold text-blue-600">
+              {pendingValue.toLocaleString('pt-BR')}
+            </span>
+          )}
+          
+          {/* Both - black + blue separated */}
+          {existingPurchases > 0 && pendingValue > 0 && (
+            <>
+              <span className="text-xs font-semibold text-foreground">
+                {existingPurchases.toLocaleString('pt-BR')}
+              </span>
+              <span className="text-xs font-semibold text-blue-600">
+                +{pendingValue.toLocaleString('pt-BR')}
+              </span>
+            </>
           )}
         </>
       ) : (

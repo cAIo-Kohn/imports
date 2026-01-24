@@ -61,8 +61,9 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
   return (
     <div style={style} className="contents">
       {/* Row 1: PV (Sales Forecast) */}
+      {/* Row 1: PV (Sales Forecast) */}
       <TableRow 
-        className={`cursor-pointer transition-colors border-t-2 border-border ${baseRowClass}`}
+        className={`cursor-pointer transition-colors border-t-4 border-border/60 ${baseRowClass}`}
         onClick={handleClick}
       >
         <TableCell className="sticky left-0 bg-background z-10 py-1" rowSpan={4}>
@@ -125,9 +126,9 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
         </TableCell>
       </TableRow>
 
-      {/* Row 3: Arrivals (Existing + Pending) */}
-      <TableRow className={baseRowClass}>
-        <TableCell className="text-center py-1 bg-muted/20 text-xs font-medium text-muted-foreground">
+      {/* Row 3: Arrivals (Existing + Pending) - Highlighted */}
+      <TableRow className={`${baseRowClass} bg-blue-50/50 dark:bg-blue-950/20`}>
+        <TableCell className="text-center py-1 bg-blue-100/60 dark:bg-blue-900/40 text-xs font-medium text-muted-foreground">
           Chegada
         </TableCell>
         {productProj.projections.map((proj, i) => (
@@ -161,11 +162,18 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
           Saldo
         </TableCell>
         {productProj.projections.map((proj, i) => (
-          <TableCell key={i} className="text-center py-0.5 px-1">
+          <TableCell 
+            key={i} 
+            className={`text-center py-0.5 px-1 ${
+              proj.status === 'rupture' 
+                ? 'bg-red-100 dark:bg-red-900/30' 
+                : ''
+            }`}
+          >
             <span 
               className={`text-xs font-semibold ${
                 proj.status === 'rupture' 
-                  ? 'text-destructive' 
+                  ? 'text-red-700 dark:text-red-400' 
                   : proj.status === 'warning'
                   ? 'text-yellow-600'
                   : ''
@@ -175,11 +183,17 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
             </span>
           </TableCell>
         ))}
-        <TableCell className="text-center py-0.5 px-1 bg-muted/20">
+        <TableCell 
+          className={`text-center py-0.5 px-1 bg-muted/20 ${
+            productProj.projections[productProj.projections.length - 1]?.status === 'rupture'
+              ? 'bg-red-100 dark:bg-red-900/30'
+              : ''
+          }`}
+        >
           <span 
             className={`text-xs font-bold ${
               productProj.projections[productProj.projections.length - 1]?.status === 'rupture' 
-                ? 'text-destructive' 
+                ? 'text-red-700 dark:text-red-400' 
                 : productProj.projections[productProj.projections.length - 1]?.status === 'warning'
                 ? 'text-yellow-600'
                 : ''
