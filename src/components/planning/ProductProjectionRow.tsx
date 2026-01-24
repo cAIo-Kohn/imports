@@ -39,6 +39,7 @@ interface VirtualizedProductRowProps {
   pendingArrivalsInput: Record<string, string>;
   onSelectProduct: (productId: string | null) => void;
   onArrivalChange: (productId: string, monthKey: string, value: string) => void;
+  onArrivalBlur?: (productId: string, monthKey: string) => void;
   style?: React.CSSProperties;
 }
 
@@ -48,6 +49,7 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
   pendingArrivalsInput,
   onSelectProduct,
   onArrivalChange,
+  onArrivalBlur,
   style,
 }: VirtualizedProductRowProps) {
   const handleClick = () => {
@@ -137,6 +139,7 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
               existingPurchases={proj.purchases}
               processNumber={proj.processNumber}
               onValueChange={onArrivalChange}
+              onBlur={onArrivalBlur}
             />
           </TableCell>
         ))}

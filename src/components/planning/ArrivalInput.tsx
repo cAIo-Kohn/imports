@@ -14,6 +14,7 @@ interface ArrivalInputProps {
   existingPurchases: number;
   processNumber: string | null;
   onValueChange: (productId: string, monthKey: string, value: string) => void;
+  onBlur?: (productId: string, monthKey: string) => void;
 }
 
 export const ArrivalInput = memo(function ArrivalInput({
@@ -23,6 +24,7 @@ export const ArrivalInput = memo(function ArrivalInput({
   existingPurchases,
   processNumber,
   onValueChange,
+  onBlur,
 }: ArrivalInputProps) {
   const [localValue, setLocalValue] = useState(initialValue);
   const [isEditing, setIsEditing] = useState(false);
@@ -50,7 +52,8 @@ export const ArrivalInput = memo(function ArrivalInput({
 
   const handleBlur = useCallback(() => {
     setIsEditing(false);
-  }, []);
+    onBlur?.(productId, monthKey);
+  }, [onBlur, productId, monthKey]);
 
   const handleClick = useCallback(() => {
     setIsEditing(true);
