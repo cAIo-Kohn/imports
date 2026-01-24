@@ -41,6 +41,7 @@ interface VirtualizedProductRowProps {
   onArrivalChange: (productId: string, monthKey: string, value: string) => void;
   onArrivalBlur?: (productId: string, monthKey: string) => void;
   style?: React.CSSProperties;
+  index?: number;
 }
 
 export const ProductProjectionRow = memo(function ProductProjectionRow({
@@ -51,22 +52,34 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
   onArrivalChange,
   onArrivalBlur,
   style,
+  index = 0,
 }: VirtualizedProductRowProps) {
   const handleClick = () => {
     onSelectProduct(isSelected ? null : productProj.product.id);
   };
 
-  const baseRowClass = isSelected ? 'bg-primary/5' : 'hover:bg-muted/30';
+  // Zebra striping: alternate background between products
+  const isEven = index % 2 === 0;
+  const zebraClass = isEven ? '' : 'bg-slate-50 dark:bg-slate-900/30';
+  const baseRowClass = isSelected 
+    ? 'bg-primary/5' 
+    : `hover:bg-muted/30 ${zebraClass}`;
+  
+  // Sticky cell background must match zebra
+  const stickyCellBg = isSelected 
+    ? 'bg-primary/5' 
+    : isEven 
+      ? 'bg-background' 
+      : 'bg-slate-50 dark:bg-slate-900/30';
 
   return (
     <div style={style} className="contents">
-      {/* Row 1: PV (Sales Forecast) */}
-      {/* Row 1: PV (Sales Forecast) */}
+      {/* Row 1: PV (Sales Forecast) - with strong separator border */}
       <TableRow 
-        className={`cursor-pointer transition-colors border-t-4 border-border/60 ${baseRowClass}`}
+        className={`cursor-pointer transition-colors border-t-[3px] border-slate-300 dark:border-slate-600 ${baseRowClass}`}
         onClick={handleClick}
       >
-        <TableCell className="sticky left-0 bg-background z-10 py-1" rowSpan={4}>
+        <TableCell className={`sticky left-0 z-10 py-1 ${stickyCellBg}`} rowSpan={4}>
           <div className="flex flex-col items-start gap-0.5 w-[120px]">
             {productProj.hasRupture && (
               <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
