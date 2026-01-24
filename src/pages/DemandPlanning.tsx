@@ -1,18 +1,20 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Package, TrendingDown, AlertTriangle, TrendingUp, Building2, Upload, FileSpreadsheet, RefreshCw, Ship } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Package, TrendingDown, AlertTriangle, TrendingUp, Building2, Upload, FileSpreadsheet, RefreshCw, Ship, Bug } from 'lucide-react';
 import { SupplierHealthRow, type SupplierHealthRowData } from '@/components/planning/SupplierHealthRow';
-import { type PeriodStats } from '@/components/planning/PeriodIndicator';
+import { type PeriodStats, type RupturedProduct } from '@/components/planning/PeriodIndicator';
 import { HealthBar } from '@/components/planning/HealthBar';
 import { ImportForecastModal } from '@/components/planning/ImportForecastModal';
 import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal';
 import { ImportArrivalsModal } from '@/components/planning/ImportArrivalsModal';
 import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
-import { format, addMonths, startOfMonth, subMonths } from 'date-fns';
+import { format, addMonths, startOfMonth } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
 interface Supplier {
@@ -23,6 +25,7 @@ interface Supplier {
 
 interface Product {
   id: string;
+  code: string;
   supplier_id: string | null;
 }
 
@@ -46,6 +49,8 @@ interface ScheduledArrival {
 
 export default function DemandPlanning() {
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const debugMode = searchParams.get('debug') === '1';
   
   // Modal states
   const [importForecastOpen, setImportForecastOpen] = useState(false);
@@ -70,31 +75,32 @@ export default function DemandPlanning() {
     },
   });
 
-  // Fetch products
-  const { data: products = [] } = useQuery({
+  // Fetch products (include code for debug tooltips)
+  const { data: products = [], isLoading: productsLoading } = useQuery({
     queryKey: ['products-for-planning'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('products')
-        .select('id, supplier_id')
+        .select('id, code, supplier_id')
         .eq('is_active', true);
       if (error) throw error;
       return data as Product[];
     },
   });
 
-  // Fetch forecasts (next 12 months)
-  const { data: forecasts = [], refetch: refetchForecasts } = useQuery({
-    queryKey: ['sales-forecasts-12m'],
+  // Date range for 12-month queries (memoized for stable queryKey)
+  const startMonthStr = useMemo(() => format(startMonth, 'yyyy-MM-dd'), []);
+  const endMonthStr = useMemo(() => format(addMonths(startMonth, 12), 'yyyy-MM-dd'), []);
+
+  // Fetch forecasts (next 12 months) - queryKey includes date range for proper cache invalidation
+  const { data: forecasts = [], isLoading: forecastsLoading, refetch: refetchForecasts } = useQuery({
+    queryKey: ['sales-forecasts-12m', startMonthStr, endMonthStr],
     queryFn: async () => {
-      const startMonthStr = format(startMonth, 'yyyy-MM-dd');
-      const endMonth = format(addMonths(startMonth, 12), 'yyyy-MM-dd');
-      
       const { data, error } = await supabase
         .from('sales_forecasts')
         .select('product_id, quantity, year_month')
         .gte('year_month', startMonthStr)
-        .lt('year_month', endMonth)
+        .lt('year_month', endMonthStr)
         .limit(10000);
       if (error) throw error;
       return data as Forecast[];
@@ -102,30 +108,28 @@ export default function DemandPlanning() {
   });
 
   // Fetch inventory snapshots (latest per product)
-  const { data: inventorySnapshots = [], refetch: refetchInventory } = useQuery({
+  const { data: inventorySnapshots = [], isLoading: inventoryLoading, refetch: refetchInventory } = useQuery({
     queryKey: ['inventory-snapshots-latest'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('inventory_snapshots')
         .select('product_id, quantity, snapshot_date')
-        .order('snapshot_date', { ascending: false });
+        .order('snapshot_date', { ascending: false })
+        .limit(5000);
       if (error) throw error;
       return data as InventorySnapshot[];
     },
   });
 
-  // Fetch scheduled arrivals (next 12 months)
-  const { data: scheduledArrivals = [], refetch: refetchArrivals } = useQuery({
-    queryKey: ['scheduled-arrivals-12m'],
+  // Fetch scheduled arrivals (next 12 months) - queryKey includes date range
+  const { data: scheduledArrivals = [], isLoading: arrivalsLoading, refetch: refetchArrivals } = useQuery({
+    queryKey: ['scheduled-arrivals-12m', startMonthStr, endMonthStr],
     queryFn: async () => {
-      const startMonthStr = format(startMonth, 'yyyy-MM-dd');
-      const endMonth = format(addMonths(startMonth, 12), 'yyyy-MM-dd');
-      
       const { data, error } = await supabase
         .from('scheduled_arrivals')
         .select('product_id, quantity, arrival_date')
         .gte('arrival_date', startMonthStr)
-        .lt('arrival_date', endMonth)
+        .lt('arrival_date', endMonthStr)
         .limit(5000);
       if (error) throw error;
       return data as ScheduledArrival[];
@@ -153,6 +157,9 @@ export default function DemandPlanning() {
       ) || [];
     },
   });
+
+  // Check if all data is ready for rendering
+  const isDataReady = !suppliersLoading && !productsLoading && !forecastsLoading && !inventoryLoading && !arrivalsLoading;
 
   // Generate month keys for 12 months
   const monthKeys = useMemo(() => {
@@ -230,11 +237,11 @@ export default function DemandPlanning() {
     return suppliers.map(supplier => {
       const supplierProducts = products.filter(p => p.supplier_id === supplier.id);
       
-      // Track ruptures per period
-      let rupturesIn3m = 0;
-      let rupturesIn6m = 0;
-      let rupturesIn9m = 0;
-      let rupturesIn12m = 0;
+      // Track ruptures per period with product details
+      const rupturesIn3m: RupturedProduct[] = [];
+      const rupturesIn6m: RupturedProduct[] = [];
+      const rupturesIn9m: RupturedProduct[] = [];
+      const rupturesIn12m: RupturedProduct[] = [];
 
       supplierProducts.forEach(product => {
         const initialStock = latestInventoryByProduct.get(product.id) || 0;
@@ -243,6 +250,7 @@ export default function DemandPlanning() {
         
         let balance = initialStock;
         let firstRuptureMonth: number | null = null;
+        let firstRuptureMonthKey: string | null = null;
 
         // Project month by month
         for (let i = 0; i < 12; i++) {
@@ -254,29 +262,41 @@ export default function DemandPlanning() {
           
           if (balance < 0 && firstRuptureMonth === null) {
             firstRuptureMonth = i;
+            firstRuptureMonthKey = monthKey;
             break; // We only need the first rupture month
           }
         }
 
-        // Classify by period
-        if (firstRuptureMonth !== null) {
+        // Classify by period with product details
+        if (firstRuptureMonth !== null && firstRuptureMonthKey !== null) {
+          const ruptureInfo: RupturedProduct = {
+            productId: product.id,
+            code: product.code,
+            firstRuptureMonthKey,
+          };
+          
           if (firstRuptureMonth < 3) {
-            rupturesIn3m++;
+            rupturesIn3m.push(ruptureInfo);
           } else if (firstRuptureMonth < 6) {
-            rupturesIn6m++;
+            rupturesIn6m.push(ruptureInfo);
           } else if (firstRuptureMonth < 9) {
-            rupturesIn9m++;
+            rupturesIn9m.push(ruptureInfo);
           } else {
-            rupturesIn12m++;
+            rupturesIn12m.push(ruptureInfo);
           }
         }
       });
 
-      // Create period stats
-      const createPeriodStats = (label: string, count: number, periodType: 'critical' | 'alert' | 'attention' | 'ok'): PeriodStats => ({
+      // Create period stats with product details
+      const createPeriodStats = (
+        label: string, 
+        rupturedProducts: RupturedProduct[], 
+        periodType: 'critical' | 'alert' | 'attention' | 'ok'
+      ): PeriodStats => ({
         label,
-        ruptureCount: count,
-        status: count > 0 ? periodType : 'ok',
+        ruptureCount: rupturedProducts.length,
+        status: rupturedProducts.length > 0 ? periodType : 'ok',
+        rupturedProducts,
       });
 
       const periods = {
@@ -288,11 +308,11 @@ export default function DemandPlanning() {
 
       // Determine overall status (based on earliest rupture)
       let overallStatus: 'critical' | 'alert' | 'attention' | 'ok' = 'ok';
-      if (rupturesIn3m > 0) {
+      if (rupturesIn3m.length > 0) {
         overallStatus = 'critical';
-      } else if (rupturesIn6m > 0) {
+      } else if (rupturesIn6m.length > 0) {
         overallStatus = 'alert';
-      } else if (rupturesIn9m > 0) {
+      } else if (rupturesIn9m.length > 0) {
         overallStatus = 'attention';
       }
 
@@ -349,7 +369,7 @@ export default function DemandPlanning() {
     refetchForecasts();
     refetchInventory();
     refetchArrivals();
-    toast({ title: 'Dados atualizados', description: 'Os indicadores foram recalculados.' });
+    toast({ title: 'Dados atualizados', description: 'Os indicadores foram recalculados com base nos dados mais recentes.' });
   }, [refetchSuppliers, refetchForecasts, refetchInventory, refetchArrivals, toast]);
 
   // Handle import success
@@ -357,7 +377,18 @@ export default function DemandPlanning() {
     handleRefreshData();
   }, [handleRefreshData]);
 
-  if (suppliersLoading) {
+  // Toggle debug mode
+  const toggleDebug = useCallback(() => {
+    if (debugMode) {
+      searchParams.delete('debug');
+    } else {
+      searchParams.set('debug', '1');
+    }
+    setSearchParams(searchParams);
+  }, [debugMode, searchParams, setSearchParams]);
+
+  // Show loading state until ALL data is ready (prevents false "OK" states)
+  if (!isDataReady) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-64" />
@@ -367,6 +398,7 @@ export default function DemandPlanning() {
         <div className="space-y-3">
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
+        <p className="text-sm text-muted-foreground text-center">Carregando dados e calculando indicadores...</p>
       </div>
     );
   }
@@ -382,6 +414,14 @@ export default function DemandPlanning() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant={debugMode ? "default" : "outline"} 
+            size="icon" 
+            onClick={toggleDebug} 
+            title={debugMode ? "Desativar modo debug" : "Ativar modo debug"}
+          >
+            <Bug className="h-4 w-4" />
+          </Button>
           <Button variant="outline" size="icon" onClick={handleRefreshData} title="Atualizar dados">
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -403,6 +443,37 @@ export default function DemandPlanning() {
           </Button>
         </div>
       </div>
+
+      {/* Debug Panel */}
+      {debugMode && (
+        <Card className="border-dashed border-2 border-amber-500 bg-amber-500/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Bug className="h-4 w-4 text-amber-500" />
+              Modo Diagnóstico
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge variant="outline">Período: {startMonthStr} → {endMonthStr}</Badge>
+              <Badge variant={forecasts.length >= 9000 ? "destructive" : "secondary"}>
+                Previsões: {forecasts.length.toLocaleString()}
+                {forecasts.length === 10000 && " (LIMITE!)"}
+              </Badge>
+              <Badge variant={scheduledArrivals.length >= 4500 ? "destructive" : "secondary"}>
+                Chegadas: {scheduledArrivals.length.toLocaleString()}
+                {scheduledArrivals.length === 5000 && " (LIMITE!)"}
+              </Badge>
+              <Badge variant="secondary">Estoque: {inventorySnapshots.length.toLocaleString()}</Badge>
+              <Badge variant="secondary">Produtos: {products.length.toLocaleString()}</Badge>
+              <Badge variant="secondary">Fornecedores: {suppliers.length}</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Passe o mouse nos indicadores de período (3m, 6m...) para ver os produtos com ruptura.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Overall Stats */}
       <Card>

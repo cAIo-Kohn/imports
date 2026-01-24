@@ -1,10 +1,18 @@
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+export interface RupturedProduct {
+  productId: string;
+  code: string;
+  firstRuptureMonthKey: string;
+}
 
 export interface PeriodStats {
   label: string;
   ruptureCount: number;
   status: 'critical' | 'alert' | 'attention' | 'ok';
+  rupturedProducts?: RupturedProduct[];
 }
 
 interface PeriodIndicatorProps {
@@ -42,6 +50,7 @@ const statusConfig = {
 
 export function PeriodIndicator({ label, stats, className }: PeriodIndicatorProps) {
   const config = statusConfig[stats.status];
+  const hasProducts = stats.rupturedProducts && stats.rupturedProducts.length > 0;
   
   return (
     <TooltipProvider>
@@ -65,13 +74,32 @@ export function PeriodIndicator({ label, stats, className }: PeriodIndicatorProp
             )}
           </div>
         </TooltipTrigger>
-        <TooltipContent>
-          <p>
-            {stats.ruptureCount > 0 
-              ? `${stats.ruptureCount} produto${stats.ruptureCount > 1 ? 's' : ''} com ruptura em ${label}`
-              : `Estoque OK para ${label}`
-            }
-          </p>
+        <TooltipContent className="max-w-xs">
+          <div className="space-y-1">
+            <p className="font-medium">
+              {stats.ruptureCount > 0 
+                ? `${stats.ruptureCount} produto${stats.ruptureCount > 1 ? 's' : ''} com ruptura em ${label}`
+                : `Estoque OK para ${label}`
+              }
+            </p>
+            {hasProducts && (
+              <ScrollArea className="max-h-32">
+                <ul className="text-xs text-muted-foreground space-y-0.5 mt-1">
+                  {stats.rupturedProducts!.slice(0, 10).map((p) => (
+                    <li key={p.productId} className="flex justify-between gap-2">
+                      <span className="font-mono">{p.code}</span>
+                      <span className="text-destructive">{p.firstRuptureMonthKey}</span>
+                    </li>
+                  ))}
+                  {stats.rupturedProducts!.length > 10 && (
+                    <li className="text-muted-foreground italic">
+                      +{stats.rupturedProducts!.length - 10} mais...
+                    </li>
+                  )}
+                </ul>
+              </ScrollArea>
+            )}
+          </div>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
