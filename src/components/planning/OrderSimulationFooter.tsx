@@ -241,31 +241,43 @@ export function OrderSimulationFooter({
     
     if (remainingVolume <= 0 || remainingVolume >= container.volume) return;
     
-    // Calculate proportion of each product based on current volume
-    const itemProportions = draft.items.map(item => {
+    // Filter only products that can receive additional volume (have master box data)
+    const eligibleItems = draft.items.filter(item => {
       const product = products.find(p => p.id === item.productId);
+      return product?.qty_master_box && product?.master_box_volume;
+    });
+
+    if (eligibleItems.length === 0) {
+      toast.error('Nenhum produto possui dados de caixa master para preencher');
+      return;
+    }
+
+    // Calculate total volume only from eligible items
+    const eligibleVolume = eligibleItems.reduce((sum, item) => sum + item.volume, 0);
+
+    // Calculate proportion based on eligible items
+    const itemProportions = eligibleItems.map(item => {
+      const product = products.find(p => p.id === item.productId)!;
       return {
         productId: item.productId,
-        proportion: draft.totalVolume > 0 ? item.volume / draft.totalVolume : 1 / draft.items.length,
+        proportion: eligibleVolume > 0 ? item.volume / eligibleVolume : 1 / eligibleItems.length,
         product,
         currentQuantity: item.quantity,
       };
-    }).filter(item => item.product);
+    });
     
     // Distribute remaining volume proportionally
     const updates: Record<string, number> = {};
     
     itemProportions.forEach(({ productId, proportion, product, currentQuantity }) => {
-      if (!product?.qty_master_box || !product?.master_box_volume) return;
-      
       // Volume adicional para este produto
       const additionalVolume = remainingVolume * proportion;
       
       // Convert volume to master boxes (round up to ensure we actually fill)
-      const additionalBoxes = Math.ceil(additionalVolume / product.master_box_volume);
+      const additionalBoxes = Math.ceil(additionalVolume / product.master_box_volume!);
       
       // Convert boxes to units
-      const additionalUnits = additionalBoxes * product.qty_master_box;
+      const additionalUnits = additionalBoxes * product.qty_master_box!;
       
       // New total for this product
       const key = `${productId}::${draft.monthKey}`;
