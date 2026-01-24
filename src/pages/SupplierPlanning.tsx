@@ -460,11 +460,7 @@ export default function SupplierPlanning() {
       })
       .filter(p => !showOnlyRuptures || p.hasRupture);
 
-    return projections.sort((a, b) => {
-      if (a.hasRupture && !b.hasRupture) return -1;
-      if (!a.hasRupture && b.hasRupture) return 1;
-      return a.product.code.localeCompare(b.product.code);
-    });
+    return projections.sort((a, b) => a.product.code.localeCompare(b.product.code));
   }, [products, forecasts, salesHistory, inventorySnapshots, scheduledArrivals, searchQuery, showOnlyRuptures, monthsAhead, selectedUnit, pendingArrivals]);
 
   const stats = useMemo(() => {
