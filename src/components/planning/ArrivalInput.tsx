@@ -62,8 +62,9 @@ export const ArrivalInput = memo(function ArrivalInput({
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === 'Escape') {
       setIsEditing(false);
+      onBlur?.(productId, monthKey);
     }
-  }, []);
+  }, [onBlur, productId, monthKey]);
 
   const pendingValue = localValue ? parseInt(localValue) : 0;
   const totalArrival = existingPurchases + pendingValue;
