@@ -237,7 +237,7 @@ export default function SupplierPlanning() {
   });
 
   const handleArrivalChange = useCallback((productId: string, monthKey: string, value: string) => {
-    const key = `${productId}-${monthKey}`;
+    const key = `${productId}::${monthKey}`;
     const numValue = parseInt(value) || 0;
     
     setPendingArrivalsInput(prev => {
@@ -343,7 +343,7 @@ export default function SupplierPlanning() {
           const existingPurchases = purchaseData.quantity;
           const processNumber = purchaseData.processNumbers.length > 0 ? purchaseData.processNumbers.join(', ') : null;
           
-          const pendingArrivalKey = `${product.id}-${monthKey}`;
+          const pendingArrivalKey = `${product.id}::${monthKey}`;
           const pendingArrival = pendingArrivals[pendingArrivalKey] || 0;
           
           const totalArrivals = existingPurchases + pendingArrival;

@@ -41,21 +41,12 @@ export const ArrivalInput = memo(function ArrivalInput({
     }
   }, [isEditing]);
 
-  // Debounce: only propagate change after 300ms without typing
-  useEffect(() => {
-    // Skip if value hasn't changed from initial
-    if (localValue === initialValue) return;
-
-    const timer = setTimeout(() => {
-      onValueChange(productId, monthKey, localValue);
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [localValue, productId, monthKey, onValueChange, initialValue]);
-
+  // Real-time update: propagate immediately on change
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setLocalValue(e.target.value);
-  }, []);
+    const newValue = e.target.value;
+    setLocalValue(newValue);
+    onValueChange(productId, monthKey, newValue);
+  }, [onValueChange, productId, monthKey]);
 
   const handleBlur = useCallback(() => {
     setIsEditing(false);

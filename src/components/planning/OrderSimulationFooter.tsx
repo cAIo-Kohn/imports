@@ -67,7 +67,7 @@ export function OrderSimulationFooter({
   const queryClient = useQueryClient();
   const { state: sidebarState, isMobile } = useSidebar();
   const [containerType, setContainerType] = useState<keyof typeof CONTAINER_SPECS>('40hq');
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   const container = CONTAINER_SPECS[containerType];
   
@@ -98,8 +98,7 @@ export function OrderSimulationFooter({
     Object.entries(pendingArrivals).forEach(([key, quantity]) => {
       if (quantity <= 0) return;
 
-      const [productId, ...monthParts] = key.split('-');
-      const monthKey = monthParts.join('-');
+      const [productId, monthKey] = key.split('::');
       const product = products.find(p => p.id === productId);
       if (!product) return;
 
