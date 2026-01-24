@@ -283,6 +283,18 @@ export default function SupplierPlanning() {
     });
   }, []);
 
+  // Update multiple arrivals at once (for fill container function)
+  const updateMultipleArrivals = useCallback((updates: Record<string, number>) => {
+    setPendingArrivals(prev => ({ ...prev, ...updates }));
+    setPendingArrivalsInput(prev => {
+      const inputUpdates: Record<string, string> = {};
+      Object.entries(updates).forEach(([key, value]) => {
+        inputUpdates[key] = value.toString();
+      });
+      return { ...prev, ...inputUpdates };
+    });
+  }, []);
+
   const productProjections = useMemo(() => {
     const now = new Date();
     const startMonth = startOfMonth(now);
@@ -709,6 +721,7 @@ export default function SupplierPlanning() {
         selectedUnit={selectedUnit}
         onClear={clearPendingArrivals}
         onClearMonth={clearPendingArrivalsForMonth}
+        onUpdateArrivals={updateMultipleArrivals}
         onSuccess={handleRefreshData}
       />
     </div>
