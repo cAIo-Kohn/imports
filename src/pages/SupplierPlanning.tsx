@@ -703,10 +703,11 @@ export default function SupplierPlanning() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  productProjections.map((productProj) => (
+                  productProjections.map((productProj, index) => (
                     <ProductProjectionRow
                       key={productProj.product.id}
                       productProj={productProj}
+                      index={index}
                       isSelected={selectedProduct === productProj.product.id}
                       pendingArrivalsInput={pendingArrivalsInput}
                       onSelectProduct={setSelectedProduct}
