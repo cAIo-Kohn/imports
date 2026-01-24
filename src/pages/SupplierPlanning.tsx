@@ -719,6 +719,7 @@ export default function SupplierPlanning() {
       <OrderSimulationFooter
         pendingArrivals={pendingArrivals}
         products={products}
+        productProjections={productProjections}
         selectedSupplier={supplierId || ''}
         supplierName={supplier.company_name}
         selectedUnit={selectedUnit}
