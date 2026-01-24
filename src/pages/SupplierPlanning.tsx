@@ -238,24 +238,15 @@ export default function SupplierPlanning() {
 
   const handleArrivalChange = useCallback((productId: string, monthKey: string, value: string) => {
     const key = `${productId}::${monthKey}`;
-    let numValue = parseInt(value) || 0;
+    const numValue = parseInt(value) || 0;
     
-    // Encontrar o produto para obter qty_master_box
-    const product = products?.find(p => p.id === productId);
-    const qtyMasterBox = product?.qty_master_box;
-    
-    // Se o produto tem qty_master_box definido, arredondar para cima em caixas completas
-    if (qtyMasterBox && qtyMasterBox > 0 && numValue > 0) {
-      const masterBoxes = Math.ceil(numValue / qtyMasterBox);
-      numValue = masterBoxes * qtyMasterBox;
-    }
-    
+    // Atualiza sem arredondar - permite digitação livre
     setPendingArrivalsInput(prev => {
-      if (numValue <= 0) {
+      if (value === '' || value === '0') {
         const { [key]: _, ...rest } = prev;
         return rest;
       }
-      return { ...prev, [key]: numValue.toString() };
+      return { ...prev, [key]: value };
     });
     
     setPendingArrivals(prev => {
@@ -265,7 +256,31 @@ export default function SupplierPlanning() {
       }
       return { ...prev, [key]: numValue };
     });
-  }, [products]);
+  }, []);
+
+  // Arredondamento para caixa master apenas ao sair do campo
+  const handleArrivalBlur = useCallback((productId: string, monthKey: string) => {
+    const key = `${productId}::${monthKey}`;
+    const currentValue = pendingArrivals[key] || 0;
+    
+    if (currentValue <= 0) return;
+    
+    // Encontrar o produto para obter qty_master_box
+    const product = products?.find(p => p.id === productId);
+    const qtyMasterBox = product?.qty_master_box;
+    
+    // Se o produto tem qty_master_box definido, arredondar para cima em caixas completas
+    if (qtyMasterBox && qtyMasterBox > 0) {
+      const masterBoxes = Math.ceil(currentValue / qtyMasterBox);
+      const roundedValue = masterBoxes * qtyMasterBox;
+      
+      // Atualizar apenas se o valor mudou
+      if (roundedValue !== currentValue) {
+        setPendingArrivalsInput(prev => ({ ...prev, [key]: roundedValue.toString() }));
+        setPendingArrivals(prev => ({ ...prev, [key]: roundedValue }));
+      }
+    }
+  }, [products, pendingArrivals]);
 
   const clearPendingArrivals = useCallback(() => {
     setPendingArrivals({});
@@ -696,6 +711,7 @@ export default function SupplierPlanning() {
                       pendingArrivalsInput={pendingArrivalsInput}
                       onSelectProduct={setSelectedProduct}
                       onArrivalChange={handleArrivalChange}
+                      onArrivalBlur={handleArrivalBlur}
                     />
                   ))
                 )}
