@@ -274,6 +274,13 @@ export type Database = {
             foreignKeyName: "products_supplier_id_fkey"
             columns: ["supplier_id"]
             isOneToOne: false
+            referencedRelation: "supplier_health_summary"
+            referencedColumns: ["supplier_id"]
+          },
+          {
+            foreignKeyName: "products_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
@@ -402,6 +409,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "purchase_orders_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_health_summary"
+            referencedColumns: ["supplier_id"]
+          },
           {
             foreignKeyName: "purchase_orders_supplier_id_fkey"
             columns: ["supplier_id"]
@@ -727,7 +741,22 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      supplier_health_summary: {
+        Row: {
+          alert_count: number | null
+          attention_count: number | null
+          calculated_at: string | null
+          company_name: string | null
+          country: string | null
+          critical_count: number | null
+          ok_count: number | null
+          overall_status: string | null
+          ruptured_products: Json | null
+          supplier_id: string | null
+          total_products: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       generate_purchase_order_number: { Args: never; Returns: string }
@@ -738,6 +767,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      refresh_supplier_health_summary: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "buyer" | "viewer"
