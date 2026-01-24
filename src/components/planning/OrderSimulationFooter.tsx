@@ -64,9 +64,40 @@ interface OrderDraft {
   hasCriticalETD: boolean;
 }
 
+interface MonthProjection {
+  month: Date;
+  monthKey: string;
+  monthLabel: string;
+  initialStock: number;
+  forecast: number;
+  historyLastYear: number;
+  purchases: number;
+  pendingArrival: number;
+  finalBalance: number;
+  status: 'ok' | 'warning' | 'rupture';
+  processNumber: string | null;
+}
+
+interface ProductProjection {
+  product: {
+    id: string;
+    code: string;
+    technical_description: string;
+  };
+  currentStock: number;
+  projections: MonthProjection[];
+  hasRupture: boolean;
+  firstRuptureMonth: Date | null;
+  totalForecast: number;
+  totalHistory: number;
+  totalPurchases: number;
+  totalPendingArrivals: number;
+}
+
 interface OrderSimulationFooterProps {
   pendingArrivals: Record<string, number>;
   products: ProductWithDetails[];
+  productProjections?: ProductProjection[];
   selectedSupplier: string;
   supplierName: string;
   selectedUnit: string;
@@ -97,6 +128,7 @@ function calculateRequiredETD(arrivalMonthKey: string, leadTimeDays: number): Da
 export function OrderSimulationFooter({
   pendingArrivals,
   products,
+  productProjections,
   selectedSupplier,
   supplierName,
   selectedUnit,
@@ -228,7 +260,21 @@ export function OrderSimulationFooter({
     setContainerTypes(prev => ({ ...prev, [monthKey]: type }));
   };
 
-  // Fill container function - distributes remaining space proportionally among products in the order
+  // Calculate stock deficit for a product (sum of all negative future balances)
+  const calculateStockDeficit = useCallback((productId: string): number => {
+    const projection = productProjections?.find(p => p.product.id === productId);
+    if (!projection) return 0;
+    
+    // Sum of absolute values of all negative final balances
+    return projection.projections.reduce((deficit, month) => {
+      if (month.finalBalance < 0) {
+        return deficit + Math.abs(month.finalBalance);
+      }
+      return deficit;
+    }, 0);
+  }, [productProjections]);
+
+  // Fill container function - distributes remaining space proportionally based on STOCK DEFICIT
   const handleFillContainer = useCallback((draft: OrderDraft) => {
     if (!onUpdateArrivals) return;
     if (draft.partialContainerPercent === 0) return;
@@ -252,25 +298,32 @@ export function OrderSimulationFooter({
       return;
     }
 
-    // Calculate total volume only from eligible items
-    const eligibleVolume = eligibleItems.reduce((sum, item) => sum + item.volume, 0);
-
-    // Calculate proportion based on eligible items
-    const itemProportions = eligibleItems.map(item => {
+    // Calculate stock deficit for each eligible item
+    const itemDeficits = eligibleItems.map(item => {
       const product = products.find(p => p.id === item.productId)!;
+      const deficit = calculateStockDeficit(item.productId);
       return {
         productId: item.productId,
-        proportion: eligibleVolume > 0 ? item.volume / eligibleVolume : 1 / eligibleItems.length,
+        deficit,
         product,
         currentQuantity: item.quantity,
       };
     });
+
+    // Calculate total deficit
+    const totalDeficit = itemDeficits.reduce((sum, item) => sum + item.deficit, 0);
+
+    // Calculate proportion based on stock deficit (or equal if no deficit)
+    const itemProportions = itemDeficits.map(item => ({
+      ...item,
+      proportion: totalDeficit > 0 ? item.deficit / totalDeficit : 1 / eligibleItems.length,
+    }));
     
-    // Distribute remaining volume proportionally
+    // Distribute remaining volume proportionally based on stock need
     const updates: Record<string, number> = {};
     
     itemProportions.forEach(({ productId, proportion, product, currentQuantity }) => {
-      // Volume adicional para este produto
+      // Volume adicional para este produto baseado na necessidade de estoque
       const additionalVolume = remainingVolume * proportion;
       
       // Convert volume to master boxes (round up to ensure we actually fill)
@@ -286,9 +339,9 @@ export function OrderSimulationFooter({
     
     if (Object.keys(updates).length > 0) {
       onUpdateArrivals(updates);
-      toast.success('Container preenchido proporcionalmente!');
+      toast.success('Container preenchido proporcionalmente à necessidade de estoque!');
     }
-  }, [products, onUpdateArrivals]);
+  }, [products, productProjections, onUpdateArrivals, calculateStockDeficit]);
 
   const createOrderMutation = useMutation({
     mutationFn: async (draft: OrderDraft) => {
