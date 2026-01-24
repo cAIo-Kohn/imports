@@ -64,40 +64,10 @@ interface OrderDraft {
   hasCriticalETD: boolean;
 }
 
-interface MonthProjection {
-  month: Date;
-  monthKey: string;
-  monthLabel: string;
-  initialStock: number;
-  forecast: number;
-  historyLastYear: number;
-  purchases: number;
-  pendingArrival: number;
-  finalBalance: number;
-  status: 'ok' | 'warning' | 'rupture';
-  processNumber: string | null;
-}
-
-interface ProductProjection {
-  product: {
-    id: string;
-    code: string;
-    technical_description: string;
-  };
-  currentStock: number;
-  projections: MonthProjection[];
-  hasRupture: boolean;
-  firstRuptureMonth: Date | null;
-  totalForecast: number;
-  totalHistory: number;
-  totalPurchases: number;
-  totalPendingArrivals: number;
-}
-
 interface OrderSimulationFooterProps {
   pendingArrivals: Record<string, number>;
   products: ProductWithDetails[];
-  productProjections?: ProductProjection[];
+  productProjections?: unknown; // Kept for backwards compatibility, no longer used
   selectedSupplier: string;
   supplierName: string;
   selectedUnit: string;
@@ -128,7 +98,6 @@ function calculateRequiredETD(arrivalMonthKey: string, leadTimeDays: number): Da
 export function OrderSimulationFooter({
   pendingArrivals,
   products,
-  productProjections,
   selectedSupplier,
   supplierName,
   selectedUnit,
@@ -260,21 +229,7 @@ export function OrderSimulationFooter({
     setContainerTypes(prev => ({ ...prev, [monthKey]: type }));
   };
 
-  // Calculate stock deficit for a product (sum of all negative future balances)
-  const calculateStockDeficit = useCallback((productId: string): number => {
-    const projection = productProjections?.find(p => p.product.id === productId);
-    if (!projection) return 0;
-    
-    // Sum of absolute values of all negative final balances
-    return projection.projections.reduce((deficit, month) => {
-      if (month.finalBalance < 0) {
-        return deficit + Math.abs(month.finalBalance);
-      }
-      return deficit;
-    }, 0);
-  }, [productProjections]);
-
-  // Fill container function - distributes remaining space proportionally based on STOCK DEFICIT
+  // Fill container function - distributes remaining volume EQUALLY among products
   const handleFillContainer = useCallback((draft: OrderDraft) => {
     if (!onUpdateArrivals) return;
     if (draft.partialContainerPercent === 0) return;
@@ -298,50 +253,30 @@ export function OrderSimulationFooter({
       return;
     }
 
-    // Calculate stock deficit for each eligible item
-    const itemDeficits = eligibleItems.map(item => {
-      const product = products.find(p => p.id === item.productId)!;
-      const deficit = calculateStockDeficit(item.productId);
-      return {
-        productId: item.productId,
-        deficit,
-        product,
-        currentQuantity: item.quantity,
-      };
-    });
-
-    // Calculate total deficit
-    const totalDeficit = itemDeficits.reduce((sum, item) => sum + item.deficit, 0);
-
-    // Calculate proportion based on stock deficit (or equal if no deficit)
-    const itemProportions = itemDeficits.map(item => ({
-      ...item,
-      proportion: totalDeficit > 0 ? item.deficit / totalDeficit : 1 / eligibleItems.length,
-    }));
+    // Distribute volume EQUALLY among all eligible products
+    const volumePerProduct = remainingVolume / eligibleItems.length;
     
-    // Distribute remaining volume proportionally based on stock need
     const updates: Record<string, number> = {};
     
-    itemProportions.forEach(({ productId, proportion, product, currentQuantity }) => {
-      // Volume adicional para este produto baseado na necessidade de estoque
-      const additionalVolume = remainingVolume * proportion;
+    eligibleItems.forEach((item) => {
+      const product = products.find(p => p.id === item.productId)!;
       
       // Convert volume to master boxes (round up to ensure we actually fill)
-      const additionalBoxes = Math.ceil(additionalVolume / product.master_box_volume!);
+      const additionalBoxes = Math.ceil(volumePerProduct / product.master_box_volume!);
       
       // Convert boxes to units
       const additionalUnits = additionalBoxes * product.qty_master_box!;
       
       // New total for this product
-      const key = `${productId}::${draft.monthKey}`;
-      updates[key] = currentQuantity + additionalUnits;
+      const key = `${item.productId}::${draft.monthKey}`;
+      updates[key] = item.quantity + additionalUnits;
     });
     
     if (Object.keys(updates).length > 0) {
       onUpdateArrivals(updates);
-      toast.success('Container preenchido proporcionalmente à necessidade de estoque!');
+      toast.success(`Container preenchido! +${volumePerProduct.toFixed(2)}m³ por produto`);
     }
-  }, [products, productProjections, onUpdateArrivals, calculateStockDeficit]);
+  }, [products, onUpdateArrivals]);
 
   const createOrderMutation = useMutation({
     mutationFn: async (draft: OrderDraft) => {
