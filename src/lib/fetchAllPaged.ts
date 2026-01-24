@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { addMonths, format, parseISO } from 'date-fns';
 
 /**
  * Helper to create a paged query for sales_forecasts
@@ -50,6 +51,27 @@ export async function fetchAllForecasts(
 }
 
 /**
+ * Fetch forecasts in parallel using two 6-month ranges
+ */
+export async function fetchForecastsParallel(
+  startMonth: string,
+  endMonth: string
+): Promise<{ data: { product_id: string; quantity: number; year_month: string }[]; total: number }> {
+  const midMonth = addMonths(parseISO(startMonth), 6);
+  const midMonthStr = format(midMonth, 'yyyy-MM-dd');
+  
+  const [range1, range2] = await Promise.all([
+    fetchAllForecasts(startMonth, midMonthStr),
+    fetchAllForecasts(midMonthStr, endMonth),
+  ]);
+  
+  return {
+    data: [...range1.data, ...range2.data],
+    total: range1.total + range2.total,
+  };
+}
+
+/**
  * Helper to create a paged query for scheduled_arrivals
  */
 export async function fetchAllArrivals(
@@ -96,6 +118,27 @@ export async function fetchAllArrivals(
   }
 
   return { data: allData, total };
+}
+
+/**
+ * Fetch arrivals in parallel using two 6-month ranges
+ */
+export async function fetchArrivalsParallel(
+  startMonth: string,
+  endMonth: string
+): Promise<{ data: { product_id: string; quantity: number; arrival_date: string }[]; total: number }> {
+  const midMonth = addMonths(parseISO(startMonth), 6);
+  const midMonthStr = format(midMonth, 'yyyy-MM-dd');
+  
+  const [range1, range2] = await Promise.all([
+    fetchAllArrivals(startMonth, midMonthStr),
+    fetchAllArrivals(midMonthStr, endMonth),
+  ]);
+  
+  return {
+    data: [...range1.data, ...range2.data],
+    total: range1.total + range2.total,
+  };
 }
 
 /**

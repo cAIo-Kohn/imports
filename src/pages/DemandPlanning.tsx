@@ -16,7 +16,7 @@ import { ImportArrivalsModal } from '@/components/planning/ImportArrivalsModal';
 import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
 import { format, addMonths, startOfMonth } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { fetchAllForecasts, fetchAllArrivals, fetchAllInventory } from '@/lib/fetchAllPaged';
+import { fetchForecastsParallel, fetchArrivalsParallel, fetchAllInventory } from '@/lib/fetchAllPaged';
 
 interface Supplier {
   id: string;
@@ -93,10 +93,10 @@ export default function DemandPlanning() {
   const startMonthStr = useMemo(() => format(startMonth, 'yyyy-MM-dd'), []);
   const endMonthStr = useMemo(() => format(addMonths(startMonth, 12), 'yyyy-MM-dd'), []);
 
-  // Fetch forecasts (next 12 months) with pagination - queryKey includes date range for proper cache invalidation
+  // Fetch forecasts (next 12 months) with parallel pagination - queryKey includes date range for proper cache invalidation
   const { data: forecastsResult, isLoading: forecastsLoading, refetch: refetchForecasts } = useQuery({
-    queryKey: ['sales-forecasts-12m-paged', startMonthStr, endMonthStr],
-    queryFn: () => fetchAllForecasts(startMonthStr, endMonthStr),
+    queryKey: ['sales-forecasts-12m-parallel', startMonthStr, endMonthStr],
+    queryFn: () => fetchForecastsParallel(startMonthStr, endMonthStr),
   });
   const forecasts = forecastsResult?.data ?? [];
   const forecastsTotal = forecastsResult?.total ?? 0;
@@ -109,10 +109,10 @@ export default function DemandPlanning() {
   const inventorySnapshots = inventoryResult?.data ?? [];
   const inventoryTotal = inventoryResult?.total ?? 0;
 
-  // Fetch scheduled arrivals (next 12 months) with pagination - queryKey includes date range
+  // Fetch scheduled arrivals (next 12 months) with parallel pagination - queryKey includes date range
   const { data: arrivalsResult, isLoading: arrivalsLoading, refetch: refetchArrivals } = useQuery({
-    queryKey: ['scheduled-arrivals-12m-paged', startMonthStr, endMonthStr],
-    queryFn: () => fetchAllArrivals(startMonthStr, endMonthStr),
+    queryKey: ['scheduled-arrivals-12m-parallel', startMonthStr, endMonthStr],
+    queryFn: () => fetchArrivalsParallel(startMonthStr, endMonthStr),
   });
   const scheduledArrivals = arrivalsResult?.data ?? [];
   const arrivalsTotal = arrivalsResult?.total ?? 0;
