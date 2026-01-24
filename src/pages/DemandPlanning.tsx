@@ -16,6 +16,7 @@ import { ImportArrivalsModal } from '@/components/planning/ImportArrivalsModal';
 import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
 import { format, addMonths, startOfMonth } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { fetchAllForecasts, fetchAllArrivals, fetchAllInventory } from '@/lib/fetchAllPaged';
 
 interface Supplier {
   id: string;
@@ -92,49 +93,29 @@ export default function DemandPlanning() {
   const startMonthStr = useMemo(() => format(startMonth, 'yyyy-MM-dd'), []);
   const endMonthStr = useMemo(() => format(addMonths(startMonth, 12), 'yyyy-MM-dd'), []);
 
-  // Fetch forecasts (next 12 months) - queryKey includes date range for proper cache invalidation
-  const { data: forecasts = [], isLoading: forecastsLoading, refetch: refetchForecasts } = useQuery({
-    queryKey: ['sales-forecasts-12m', startMonthStr, endMonthStr],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('sales_forecasts')
-        .select('product_id, quantity, year_month')
-        .gte('year_month', startMonthStr)
-        .lt('year_month', endMonthStr)
-        .limit(10000);
-      if (error) throw error;
-      return data as Forecast[];
-    },
+  // Fetch forecasts (next 12 months) with pagination - queryKey includes date range for proper cache invalidation
+  const { data: forecastsResult, isLoading: forecastsLoading, refetch: refetchForecasts } = useQuery({
+    queryKey: ['sales-forecasts-12m-paged', startMonthStr, endMonthStr],
+    queryFn: () => fetchAllForecasts(startMonthStr, endMonthStr),
   });
+  const forecasts = forecastsResult?.data ?? [];
+  const forecastsTotal = forecastsResult?.total ?? 0;
 
-  // Fetch inventory snapshots (latest per product)
-  const { data: inventorySnapshots = [], isLoading: inventoryLoading, refetch: refetchInventory } = useQuery({
-    queryKey: ['inventory-snapshots-latest'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('inventory_snapshots')
-        .select('product_id, quantity, snapshot_date')
-        .order('snapshot_date', { ascending: false })
-        .limit(5000);
-      if (error) throw error;
-      return data as InventorySnapshot[];
-    },
+  // Fetch inventory snapshots (latest per product) with pagination
+  const { data: inventoryResult, isLoading: inventoryLoading, refetch: refetchInventory } = useQuery({
+    queryKey: ['inventory-snapshots-paged'],
+    queryFn: () => fetchAllInventory(),
   });
+  const inventorySnapshots = inventoryResult?.data ?? [];
+  const inventoryTotal = inventoryResult?.total ?? 0;
 
-  // Fetch scheduled arrivals (next 12 months) - queryKey includes date range
-  const { data: scheduledArrivals = [], isLoading: arrivalsLoading, refetch: refetchArrivals } = useQuery({
-    queryKey: ['scheduled-arrivals-12m', startMonthStr, endMonthStr],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('scheduled_arrivals')
-        .select('product_id, quantity, arrival_date')
-        .gte('arrival_date', startMonthStr)
-        .lt('arrival_date', endMonthStr)
-        .limit(5000);
-      if (error) throw error;
-      return data as ScheduledArrival[];
-    },
+  // Fetch scheduled arrivals (next 12 months) with pagination - queryKey includes date range
+  const { data: arrivalsResult, isLoading: arrivalsLoading, refetch: refetchArrivals } = useQuery({
+    queryKey: ['scheduled-arrivals-12m-paged', startMonthStr, endMonthStr],
+    queryFn: () => fetchAllArrivals(startMonthStr, endMonthStr),
   });
+  const scheduledArrivals = arrivalsResult?.data ?? [];
+  const arrivalsTotal = arrivalsResult?.total ?? 0;
 
   // Fetch pending purchase orders
   const { data: purchaseItems = [] } = useQuery({
@@ -456,18 +437,26 @@ export default function DemandPlanning() {
           <CardContent className="space-y-2">
             <div className="flex flex-wrap gap-2 text-xs">
               <Badge variant="outline">Período: {startMonthStr} → {endMonthStr}</Badge>
-              <Badge variant={forecasts.length >= 9000 ? "destructive" : "secondary"}>
-                Previsões: {forecasts.length.toLocaleString()}
-                {forecasts.length === 10000 && " (LIMITE!)"}
+              <Badge variant={forecasts.length < forecastsTotal ? "destructive" : "secondary"}>
+                Previsões: {forecasts.length.toLocaleString()} / {forecastsTotal.toLocaleString()}
+                {forecasts.length < forecastsTotal && " (INCOMPLETO!)"}
               </Badge>
-              <Badge variant={scheduledArrivals.length >= 4500 ? "destructive" : "secondary"}>
-                Chegadas: {scheduledArrivals.length.toLocaleString()}
-                {scheduledArrivals.length === 5000 && " (LIMITE!)"}
+              <Badge variant={scheduledArrivals.length < arrivalsTotal ? "destructive" : "secondary"}>
+                Chegadas: {scheduledArrivals.length.toLocaleString()} / {arrivalsTotal.toLocaleString()}
+                {scheduledArrivals.length < arrivalsTotal && " (INCOMPLETO!)"}
               </Badge>
-              <Badge variant="secondary">Estoque: {inventorySnapshots.length.toLocaleString()}</Badge>
+              <Badge variant={inventorySnapshots.length < inventoryTotal ? "destructive" : "secondary"}>
+                Estoque: {inventorySnapshots.length.toLocaleString()} / {inventoryTotal.toLocaleString()}
+                {inventorySnapshots.length < inventoryTotal && " (INCOMPLETO!)"}
+              </Badge>
               <Badge variant="secondary">Produtos: {products.length.toLocaleString()}</Badge>
               <Badge variant="secondary">Fornecedores: {suppliers.length}</Badge>
             </div>
+            {(forecasts.length === forecastsTotal && scheduledArrivals.length === arrivalsTotal && inventorySnapshots.length === inventoryTotal) ? (
+              <p className="text-xs text-green-600">✓ Todos os dados foram carregados com sucesso via paginação.</p>
+            ) : (
+              <p className="text-xs text-destructive">⚠ Alguns dados podem estar incompletos. Verifique os badges acima.</p>
+            )}
             <p className="text-xs text-muted-foreground">
               Passe o mouse nos indicadores de período (3m, 6m...) para ver os produtos com ruptura.
             </p>
