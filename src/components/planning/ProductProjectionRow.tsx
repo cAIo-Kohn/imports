@@ -133,7 +133,7 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
             <ArrivalInput
               productId={productProj.product.id}
               monthKey={proj.monthKey}
-              initialValue={pendingArrivalsInput[`${productProj.product.id}-${proj.monthKey}`] || ''}
+              initialValue={pendingArrivalsInput[`${productProj.product.id}::${proj.monthKey}`] || ''}
               existingPurchases={proj.purchases}
               processNumber={proj.processNumber}
               onValueChange={onArrivalChange}
