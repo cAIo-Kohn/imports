@@ -15,7 +15,7 @@ import { ImportForecastModal } from '@/components/planning/ImportForecastModal';
 import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal';
 import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
 import { ProjectionChart } from '@/components/planning/ProjectionChart';
-import { OrderSimulationPanel } from '@/components/planning/OrderSimulationPanel';
+import { OrderSimulationFooter } from '@/components/planning/OrderSimulationFooter';
 import { ProductProjectionRow } from '@/components/planning/ProductProjectionRow';
 import { Input } from '@/components/ui/input';
 import {
@@ -89,7 +89,7 @@ export default function SupplierPlanning() {
   const [importForecastOpen, setImportForecastOpen] = useState(false);
   const [importInventoryOpen, setImportInventoryOpen] = useState(false);
   const [importHistoryOpen, setImportHistoryOpen] = useState(false);
-  const [orderPanelOpen, setOrderPanelOpen] = useState(false);
+  
 
   const [pendingArrivals, setPendingArrivals] = useState<Record<string, number>>({});
   const [pendingArrivalsInput, setPendingArrivalsInput] = useState<Record<string, string>>({});
@@ -454,7 +454,7 @@ export default function SupplierPlanning() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       {/* Breadcrumb */}
       <Breadcrumb>
         <BreadcrumbList>
@@ -587,19 +587,6 @@ export default function SupplierPlanning() {
               <Filter className="mr-2 h-4 w-4" />
               Apenas Rupturas
             </Button>
-            <Button
-              variant={hasPendingArrivals ? "default" : "outline"}
-              onClick={() => setOrderPanelOpen(true)}
-              className="relative"
-            >
-              <Ship className="mr-2 h-4 w-4" />
-              Simular Compra
-              {hasPendingArrivals && (
-                <Badge variant="secondary" className="ml-2 h-5 min-w-[20px] px-1.5">
-                  {Object.keys(pendingArrivals).length}
-                </Badge>
-              )}
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -692,10 +679,8 @@ export default function SupplierPlanning() {
         onSuccess={handleRefreshData}
       />
 
-      {/* Order Simulation Panel */}
-      <OrderSimulationPanel
-        open={orderPanelOpen}
-        onOpenChange={setOrderPanelOpen}
+      {/* Order Simulation Footer - Fixed at bottom */}
+      <OrderSimulationFooter
         pendingArrivals={pendingArrivals}
         products={products}
         selectedSupplier={supplierId || ''}
