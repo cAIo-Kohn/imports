@@ -9,9 +9,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, DollarSign, Scale, Box, Trash2, Ship, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
+import { Package, DollarSign, Scale, Trash2, Ship, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { useSidebar } from '@/components/ui/sidebar';
 
 interface ProductWithDetails {
   id: string;
@@ -64,10 +65,14 @@ export function OrderSimulationFooter({
 }: OrderSimulationFooterProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { state: sidebarState, isMobile } = useSidebar();
   const [containerType, setContainerType] = useState<keyof typeof CONTAINER_SPECS>('40hq');
   const [isExpanded, setIsExpanded] = useState(false);
 
   const container = CONTAINER_SPECS[containerType];
+  
+  // Calculate left offset based on sidebar state
+  const sidebarWidth = isMobile ? '0px' : (sidebarState === 'expanded' ? 'var(--sidebar-width)' : 'var(--sidebar-width-icon)');
 
   const orderSummary = useMemo(() => {
     const items: {
@@ -228,7 +233,10 @@ export function OrderSimulationFooter({
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t shadow-lg md:left-[var(--sidebar-width,0)]">
+    <div 
+      className="fixed bottom-0 right-0 z-50 bg-background border-t shadow-2xl"
+      style={{ left: sidebarWidth }}
+    >
       {/* Compact Bar - Always visible */}
       <div 
         className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"
