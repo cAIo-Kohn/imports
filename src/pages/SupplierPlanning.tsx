@@ -17,6 +17,8 @@ import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistor
 import { ProjectionChart } from '@/components/planning/ProjectionChart';
 import { OrderSimulationFooter } from '@/components/planning/OrderSimulationFooter';
 import { ProductProjectionCard } from '@/components/planning/ProductProjectionCard';
+import { SmartOrderBuilder } from '@/components/planning/SmartOrderBuilder';
+import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import {
   Breadcrumb,
@@ -547,10 +549,24 @@ export default function SupplierPlanning() {
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Importar Histórico
           </Button>
-          <Button onClick={() => setImportForecastOpen(true)}>
+          <Button variant="outline" onClick={() => setImportForecastOpen(true)}>
             <TrendingUp className="mr-2 h-4 w-4" />
             Importar Previsão
           </Button>
+          <SmartOrderBuilder
+            productProjections={productProjections}
+            products={products}
+            onGenerateOrder={(arrivals) => {
+              // Clear previous simulations and apply new ones
+              setPendingArrivals(arrivals);
+              setPendingArrivalsInput(
+                Object.fromEntries(
+                  Object.entries(arrivals).map(([k, v]) => [k, v.toString()])
+                )
+              );
+              toast.success('Pedido simulado gerado! Ajuste as quantidades e crie o pedido.');
+            }}
+          />
         </div>
       </div>
 
