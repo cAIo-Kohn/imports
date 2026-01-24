@@ -262,6 +262,27 @@ export default function SupplierPlanning() {
     setPendingArrivalsInput({});
   }, []);
 
+  const clearPendingArrivalsForMonth = useCallback((monthKey: string) => {
+    setPendingArrivals(prev => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach(key => {
+        if (key.endsWith(`::${monthKey}`)) {
+          delete updated[key];
+        }
+      });
+      return updated;
+    });
+    setPendingArrivalsInput(prev => {
+      const updated = { ...prev };
+      Object.keys(updated).forEach(key => {
+        if (key.endsWith(`::${monthKey}`)) {
+          delete updated[key];
+        }
+      });
+      return updated;
+    });
+  }, []);
+
   const productProjections = useMemo(() => {
     const now = new Date();
     const startMonth = startOfMonth(now);
@@ -687,6 +708,7 @@ export default function SupplierPlanning() {
         supplierName={supplier.company_name}
         selectedUnit={selectedUnit}
         onClear={clearPendingArrivals}
+        onClearMonth={clearPendingArrivalsForMonth}
         onSuccess={handleRefreshData}
       />
     </div>
