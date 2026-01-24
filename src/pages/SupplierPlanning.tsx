@@ -16,7 +16,7 @@ import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal
 import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
 import { ProjectionChart } from '@/components/planning/ProjectionChart';
 import { OrderSimulationFooter } from '@/components/planning/OrderSimulationFooter';
-import { ProductProjectionRow } from '@/components/planning/ProductProjectionRow';
+import { ProductProjectionCard } from '@/components/planning/ProductProjectionCard';
 import { Input } from '@/components/ui/input';
 import {
   Breadcrumb,
@@ -668,7 +668,7 @@ export default function SupplierPlanning() {
         </Card>
       )}
 
-      {/* Projection Table */}
+      {/* Projection Cards */}
       <Card>
         <CardHeader>
           <CardTitle>Projeção de Estoque</CardTitle>
@@ -679,45 +679,25 @@ export default function SupplierPlanning() {
         <CardContent>
           <div 
             ref={tableContainerRef}
-            className="overflow-auto max-h-[600px]"
+            className="space-y-3 max-h-[700px] overflow-y-auto pr-2"
           >
-            <Table>
-              <TableHeader className="sticky top-0 bg-background z-20">
-                <TableRow>
-                  <TableHead className="sticky left-0 bg-background z-30 min-w-[200px]">Produto</TableHead>
-                  <TableHead className="text-center min-w-[70px] bg-muted/50">Estoque</TableHead>
-                  <TableHead className="text-center min-w-[60px] bg-muted/30">Tipo</TableHead>
-                  {productProjections[0]?.projections.map((m, i) => (
-                    <TableHead key={i} className="text-center min-w-[70px] text-xs">
-                      {m.monthLabel}
-                    </TableHead>
-                  ))}
-                  <TableHead className="text-center min-w-[70px] bg-muted/30 font-bold text-xs">TOTAL</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {productProjections.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={monthsAhead + 3} className="text-center py-8 text-muted-foreground">
-                      Nenhum produto encontrado. Importe previsões e estoque para começar.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  productProjections.map((productProj, index) => (
-                    <ProductProjectionRow
-                      key={productProj.product.id}
-                      productProj={productProj}
-                      index={index}
-                      isSelected={selectedProduct === productProj.product.id}
-                      pendingArrivalsInput={pendingArrivalsInput}
-                      onSelectProduct={setSelectedProduct}
-                      onArrivalChange={handleArrivalChange}
-                      onArrivalBlur={handleArrivalBlur}
-                    />
-                  ))
-                )}
-              </TableBody>
-            </Table>
+            {productProjections.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Nenhum produto encontrado. Importe previsões e estoque para começar.
+              </div>
+            ) : (
+              productProjections.map((productProj) => (
+                <ProductProjectionCard
+                  key={productProj.product.id}
+                  productProj={productProj}
+                  isSelected={selectedProduct === productProj.product.id}
+                  pendingArrivalsInput={pendingArrivalsInput}
+                  onSelectProduct={setSelectedProduct}
+                  onArrivalChange={handleArrivalChange}
+                  onArrivalBlur={handleArrivalBlur}
+                />
+              ))
+            )}
           </div>
         </CardContent>
       </Card>
