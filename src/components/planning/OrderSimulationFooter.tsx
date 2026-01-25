@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Package, DollarSign, Scale, Trash2, Ship, ChevronUp, ChevronDown, AlertTriangle, Calendar, Plus } from 'lucide-react';
@@ -110,6 +111,7 @@ export function OrderSimulationFooter({
   const queryClient = useQueryClient();
   const { state: sidebarState, isMobile } = useSidebar();
   const [containerTypes, setContainerTypes] = useState<Record<string, keyof typeof CONTAINER_SPECS>>({});
+  const [customContainerVolumes, setCustomContainerVolumes] = useState<Record<string, number>>({});
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('');
 
@@ -197,9 +199,10 @@ export function OrderSimulationFooter({
     // Calculate sequential container counting for each draft
     grouped.forEach((draft) => {
       const container = CONTAINER_SPECS[draft.containerType];
+      const effectiveVolume = customContainerVolumes[draft.monthKey] ?? container.volume;
       
       // Sequential container counting
-      const totalContainers = draft.totalVolume / container.volume;
+      const totalContainers = draft.totalVolume / effectiveVolume;
       draft.totalContainers = totalContainers;
       draft.fullContainers = Math.floor(totalContainers);
       draft.partialContainerPercent = Math.round((totalContainers - draft.fullContainers) * 100);
@@ -214,7 +217,7 @@ export function OrderSimulationFooter({
     });
 
     return Array.from(grouped.values()).sort((a, b) => a.monthKey.localeCompare(b.monthKey));
-  }, [pendingArrivals, products, selectedSupplier, containerTypes]);
+  }, [pendingArrivals, products, selectedSupplier, containerTypes, customContainerVolumes]);
 
   // Set initial active tab
   React.useEffect(() => {
@@ -229,18 +232,23 @@ export function OrderSimulationFooter({
     setContainerTypes(prev => ({ ...prev, [monthKey]: type }));
   };
 
+  const getContainerVolume = (monthKey: string, containerType: keyof typeof CONTAINER_SPECS) => {
+    return customContainerVolumes[monthKey] ?? CONTAINER_SPECS[containerType].volume;
+  };
+
   // Fill container function - distributes remaining volume EQUALLY among products
   const handleFillContainer = useCallback((draft: OrderDraft) => {
     if (!onUpdateArrivals) return;
     if (draft.partialContainerPercent === 0) return;
     
     const container = CONTAINER_SPECS[draft.containerType];
+    const effectiveVolume = customContainerVolumes[draft.monthKey] ?? container.volume;
     
     // Calculate how much volume is needed to fill the partial container
-    const partialVolume = draft.totalVolume % container.volume;
-    const remainingVolume = container.volume - partialVolume;
+    const partialVolume = draft.totalVolume % effectiveVolume;
+    const remainingVolume = effectiveVolume - partialVolume;
     
-    if (remainingVolume <= 0 || remainingVolume >= container.volume) return;
+    if (remainingVolume <= 0 || remainingVolume >= effectiveVolume) return;
     
     // Filter only products that can receive additional volume (have master box data)
     const eligibleItems = draft.items.filter(item => {
@@ -276,7 +284,7 @@ export function OrderSimulationFooter({
       onUpdateArrivals(updates);
       toast.success(`Container preenchido! +${volumePerProduct.toFixed(2)}m³ por produto`);
     }
-  }, [products, onUpdateArrivals]);
+  }, [products, onUpdateArrivals, customContainerVolumes]);
 
   const createOrderMutation = useMutation({
     mutationFn: async (draft: OrderDraft) => {
@@ -397,57 +405,75 @@ export function OrderSimulationFooter({
       : '0';
     
     return (
-      <div className="space-y-2">
-        {/* Full containers */}
-        {Array.from({ length: Math.min(draft.fullContainers, 5) }).map((_, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <Package className="h-4 w-4 text-green-500 flex-shrink-0" />
-            <div className="flex-1 h-2.5 bg-green-500 rounded-full" />
-            <span className="text-xs text-green-600 font-medium w-12 text-right">100%</span>
-          </div>
-        ))}
+      (() => {
+        const totalContainersCount = Math.ceil(draft.totalContainers) || 1;
+        const weightPerContainer = draft.totalWeight / totalContainersCount;
+        const container = CONTAINER_SPECS[draft.containerType];
+        const isOverweightPerContainer = weightPerContainer > container.maxWeight;
         
-        {/* Show "..." if more than 5 full containers */}
-        {draft.fullContainers > 5 && (
-          <div className="text-xs text-muted-foreground text-center">
-            ... +{draft.fullContainers - 5} containers cheios
-          </div>
-        )}
-        
-        {/* Partial container */}
-        {draft.partialContainerPercent > 0 && (
-          <div className="flex items-center gap-2">
-            <Package className="h-4 w-4 text-yellow-500 flex-shrink-0" />
-            <div className="flex-1 h-2.5 bg-muted rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-yellow-500 transition-all duration-300" 
-                style={{ width: `${draft.partialContainerPercent}%` }}
-              />
-            </div>
-            <span className="text-xs text-yellow-600 font-medium w-12 text-right">
-              {draft.partialContainerPercent}%
-            </span>
-          </div>
-        )}
-        
-        {/* Summary */}
-        <div className="text-sm text-muted-foreground pt-1 flex items-center justify-between">
-          <span>
-            {draft.fullContainers > 0 && (
-              <span className="font-medium text-foreground">
-                {draft.fullContainers} container{draft.fullContainers > 1 ? 's' : ''} cheio{draft.fullContainers > 1 ? 's' : ''}
-              </span>
+        return (
+          <div className="space-y-1.5">
+            {/* Full containers */}
+            {Array.from({ length: Math.min(draft.fullContainers, 5) }).map((_, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-green-500 flex-shrink-0" />
+                <div className="flex-1 h-2.5 bg-green-500 rounded-full" />
+                <span className="text-xs text-green-600 font-medium w-10 text-right">100%</span>
+                <span className={cn(
+                  "text-xs w-14 text-right",
+                  isOverweightPerContainer ? "text-destructive font-medium" : "text-muted-foreground"
+                )}>
+                  {(weightPerContainer / 1000).toFixed(1)}t
+                </span>
+              </div>
+            ))}
+            
+            {/* Show "..." if more than 5 full containers */}
+            {draft.fullContainers > 5 && (
+              <div className="text-xs text-muted-foreground text-center">
+                ... +{draft.fullContainers - 5} containers cheios ({(weightPerContainer / 1000).toFixed(1)}t cada)
+              </div>
             )}
-            {draft.fullContainers > 0 && draft.partialContainerPercent > 0 && ' + '}
+            
+            {/* Partial container */}
             {draft.partialContainerPercent > 0 && (
-              <span>{draft.partialContainerPercent}% do próximo</span>
+              <div className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+                <div className="flex-1 h-2.5 bg-muted rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-yellow-500 transition-all duration-300" 
+                    style={{ width: `${draft.partialContainerPercent}%` }}
+                  />
+                </div>
+                <span className="text-xs text-yellow-600 font-medium w-10 text-right">
+                  {draft.partialContainerPercent}%
+                </span>
+                <span className="text-xs text-muted-foreground w-14 text-right">
+                  {((weightPerContainer * draft.partialContainerPercent / 100) / 1000).toFixed(1)}t
+                </span>
+              </div>
             )}
-          </span>
-          <span className="text-xs">
-            {draft.totalVolume.toFixed(1)}m³ total
-          </span>
-        </div>
-      </div>
+            
+            {/* Summary */}
+            <div className="text-sm text-muted-foreground pt-1 flex items-center justify-between">
+              <span>
+                {draft.fullContainers > 0 && (
+                  <span className="font-medium text-foreground">
+                    {draft.fullContainers} cheio{draft.fullContainers > 1 ? 's' : ''}
+                  </span>
+                )}
+                {draft.fullContainers > 0 && draft.partialContainerPercent > 0 && ' + '}
+                {draft.partialContainerPercent > 0 && (
+                  <span>{draft.partialContainerPercent}%</span>
+                )}
+              </span>
+              <span className="text-xs">
+                {draft.totalVolume.toFixed(1)}m³ | {(draft.totalWeight / 1000).toFixed(1)}t total
+              </span>
+            </div>
+          </div>
+        );
+      })()
     );
   };
 
@@ -536,8 +562,9 @@ export function OrderSimulationFooter({
             {/* Tab Content */}
             {ordersByMonth.map((draft) => {
               const container = CONTAINER_SPECS[draft.containerType];
+              const effectiveVolume = customContainerVolumes[draft.monthKey] ?? container.volume;
               const remainingVolume = draft.partialContainerPercent > 0 
-                ? (container.volume - (draft.totalVolume % container.volume)).toFixed(1)
+                ? (effectiveVolume - (draft.totalVolume % effectiveVolume)).toFixed(1)
                 : '0';
               
               return (
@@ -545,26 +572,52 @@ export function OrderSimulationFooter({
                   <div className="p-3 space-y-3">
                     {/* Controls row - compact */}
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      {/* Left: Container selector */}
-                      <div className="flex items-center gap-2">
+                      {/* Left: Container selector with CBM input */}
+                      <div className="flex items-center gap-3">
                         <span className="text-xs text-muted-foreground">Container:</span>
                         <Select 
                           value={draft.containerType} 
-                          onValueChange={(v) => handleContainerChange(draft.monthKey, v as keyof typeof CONTAINER_SPECS)}
+                          onValueChange={(v) => {
+                            handleContainerChange(draft.monthKey, v as keyof typeof CONTAINER_SPECS);
+                            // Reset custom volume when changing container type
+                            setCustomContainerVolumes(prev => {
+                              const { [draft.monthKey]: _, ...rest } = prev;
+                              return rest;
+                            });
+                          }}
                         >
-                          <SelectTrigger className="w-[120px] h-8 text-sm">
+                          <SelectTrigger className="w-[100px] h-8 text-sm">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="20dry">20' Dry (33m³)</SelectItem>
-                            <SelectItem value="40dry">40' Dry (67m³)</SelectItem>
-                            <SelectItem value="40hq">40' HQ (76m³)</SelectItem>
+                            <SelectItem value="20dry">20' Dry</SelectItem>
+                            <SelectItem value="40dry">40' Dry</SelectItem>
+                            <SelectItem value="40hq">40' HQ</SelectItem>
                           </SelectContent>
                         </Select>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            value={getContainerVolume(draft.monthKey, draft.containerType)}
+                            onChange={(e) => {
+                              const value = parseFloat(e.target.value);
+                              if (!isNaN(value) && value > 0) {
+                                setCustomContainerVolumes(prev => ({
+                                  ...prev,
+                                  [draft.monthKey]: value
+                                }));
+                              }
+                            }}
+                            className="w-16 h-8 text-sm text-center"
+                            min={1}
+                            step={1}
+                          />
+                          <span className="text-xs text-muted-foreground">m³</span>
+                        </div>
                       </div>
 
                       {/* Center: Container visualization + Fill button */}
-                      <div className="flex-1 max-w-sm flex items-center gap-2">
+                      <div className="flex-1 max-w-md flex items-center gap-2">
                         <div className="flex-1">
                           {renderContainerVisualization(draft)}
                         </div>
@@ -585,72 +638,52 @@ export function OrderSimulationFooter({
                           </Button>
                         )}
                       </div>
-
-                      {/* Right: Weight utilization */}
-                      <div className="flex items-center gap-2">
-                        <Scale className="h-3.5 w-3.5 text-muted-foreground" />
-                        <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div 
-                            className={cn(
-                              "h-full transition-all",
-                              draft.isOverWeight ? 'bg-destructive' : 'bg-primary'
-                            )}
-                            style={{ width: `${draft.weightUtilization}%` }}
-                          />
-                        </div>
-                        <span className={cn(
-                          "text-xs",
-                          draft.isOverWeight && "text-destructive font-medium"
-                        )}>
-                          {draft.totalWeight.toFixed(0)} kg
-                        </span>
-                      </div>
                     </div>
 
                     {/* Items table - ONLY scroll area */}
                     <div className="border rounded-md">
                       <ScrollArea className="h-[40vh]">
-                        <Table className="text-sm">
+                        <Table>
                           <TableHeader>
-                            <TableRow className="h-8">
-                              <TableHead className="py-1.5 px-2">Produto</TableHead>
-                              <TableHead className="text-center py-1.5 px-2">ETD</TableHead>
-                              <TableHead className="text-right py-1.5 px-2">Qtd</TableHead>
-                              <TableHead className="text-right py-1.5 px-2">Caixas</TableHead>
-                              <TableHead className="text-right py-1.5 px-2">CBM</TableHead>
-                              <TableHead className="text-right py-1.5 px-2">Valor</TableHead>
+                            <TableRow className="h-9">
+                              <TableHead className="py-2 px-3">Produto</TableHead>
+                              <TableHead className="text-center py-2 px-3">ETD</TableHead>
+                              <TableHead className="text-right py-2 px-3">Qtd</TableHead>
+                              <TableHead className="text-right py-2 px-3">Caixas</TableHead>
+                              <TableHead className="text-right py-2 px-3">CBM</TableHead>
+                              <TableHead className="text-right py-2 px-3">Valor</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {draft.items.map((item, idx) => (
-                              <TableRow key={idx} className="h-10">
-                                <TableCell className="py-1 px-2">
-                                  <div className="font-medium text-sm leading-tight">{item.code}</div>
-                                  <div className="text-[10px] text-muted-foreground truncate max-w-[180px] leading-tight">
+                              <TableRow key={idx} className="h-11">
+                                <TableCell className="py-1.5 px-3">
+                                  <div className="font-medium text-base leading-tight">{item.code}</div>
+                                  <div className="text-xs text-muted-foreground truncate max-w-[200px] leading-tight">
                                     {item.description}
                                   </div>
                                 </TableCell>
-                                <TableCell className="text-center py-1 px-2">
+                                <TableCell className="text-center py-1.5 px-3">
                                   <div className={cn(
-                                    "text-xs",
+                                    "text-sm",
                                     item.isEtdCritical && 'text-destructive font-medium'
                                   )}>
                                     {format(item.etdDate, "dd/MM/yy")}
                                   </div>
                                   {item.isEtdCritical && (
-                                    <AlertTriangle className="h-2.5 w-2.5 text-destructive mx-auto" />
+                                    <AlertTriangle className="h-3 w-3 text-destructive mx-auto" />
                                   )}
                                 </TableCell>
-                                <TableCell className="text-right text-xs py-1 px-2">
+                                <TableCell className="text-right text-sm py-1.5 px-3">
                                   {item.quantity.toLocaleString('pt-BR')}
                                 </TableCell>
-                                <TableCell className="text-right text-xs text-muted-foreground py-1 px-2">
+                                <TableCell className="text-right text-sm text-muted-foreground py-1.5 px-3">
                                   {item.masterBoxes}
                                 </TableCell>
-                                <TableCell className="text-right text-xs py-1 px-2">
+                                <TableCell className="text-right text-sm py-1.5 px-3">
                                   {item.volume.toFixed(2)} m³
                                 </TableCell>
-                                <TableCell className="text-right text-xs py-1 px-2">
+                                <TableCell className="text-right text-sm py-1.5 px-3">
                                   ${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </TableCell>
                               </TableRow>
