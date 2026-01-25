@@ -50,6 +50,10 @@ interface Unit {
 interface Supplier {
   id: string;
   company_name: string;
+  country: string;
+  container_20_cbm: number | null;
+  container_40_cbm: number | null;
+  container_40hq_cbm: number | null;
 }
 
 interface MonthProjection {
@@ -105,11 +109,11 @@ export default function SupplierPlanning() {
       if (!supplierId) return null;
       const { data, error } = await supabase
         .from('suppliers')
-        .select('id, company_name, country')
+        .select('id, company_name, country, container_20_cbm, container_40_cbm, container_40hq_cbm')
         .eq('id', supplierId)
         .single();
       if (error) throw error;
-      return data as Supplier & { country: string };
+      return data as Supplier;
     },
     enabled: !!supplierId,
   });
@@ -743,6 +747,11 @@ export default function SupplierPlanning() {
         onClearMonth={clearPendingArrivalsForMonth}
         onUpdateArrivals={updateMultipleArrivals}
         onSuccess={handleRefreshData}
+        supplierContainerSpecs={{
+          container_20_cbm: supplier.container_20_cbm,
+          container_40_cbm: supplier.container_40_cbm,
+          container_40hq_cbm: supplier.container_40hq_cbm,
+        }}
       />
     </div>
   );

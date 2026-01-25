@@ -611,6 +611,9 @@ export type Database = {
           contact_email: string | null
           contact_name: string | null
           contact_phone: string | null
+          container_20_cbm: number | null
+          container_40_cbm: number | null
+          container_40hq_cbm: number | null
           country: string
           created_at: string
           id: string
@@ -633,6 +636,9 @@ export type Database = {
           contact_email?: string | null
           contact_name?: string | null
           contact_phone?: string | null
+          container_20_cbm?: number | null
+          container_40_cbm?: number | null
+          container_40hq_cbm?: number | null
           country: string
           created_at?: string
           id?: string
@@ -655,6 +661,9 @@ export type Database = {
           contact_email?: string | null
           contact_name?: string | null
           contact_phone?: string | null
+          container_20_cbm?: number | null
+          container_40_cbm?: number | null
+          container_40hq_cbm?: number | null
           country?: string
           created_at?: string
           id?: string
