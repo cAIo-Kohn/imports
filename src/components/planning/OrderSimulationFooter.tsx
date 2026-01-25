@@ -65,6 +65,12 @@ interface OrderDraft {
   hasCriticalETD: boolean;
 }
 
+interface SupplierContainerSpecs {
+  container_20_cbm: number | null;
+  container_40_cbm: number | null;
+  container_40hq_cbm: number | null;
+}
+
 interface OrderSimulationFooterProps {
   pendingArrivals: Record<string, number>;
   products: ProductWithDetails[];
@@ -76,6 +82,7 @@ interface OrderSimulationFooterProps {
   onClearMonth?: (monthKey: string) => void;
   onUpdateArrivals?: (updates: Record<string, number>) => void;
   onSuccess: () => void;
+  supplierContainerSpecs?: SupplierContainerSpecs;
 }
 
 const CONTAINER_SPECS = {
@@ -106,6 +113,7 @@ export function OrderSimulationFooter({
   onClearMonth,
   onUpdateArrivals,
   onSuccess,
+  supplierContainerSpecs,
 }: OrderSimulationFooterProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -116,6 +124,24 @@ export function OrderSimulationFooter({
   const [activeTab, setActiveTab] = useState<string>('');
 
   const sidebarWidth = isMobile ? '0px' : (sidebarState === 'expanded' ? 'var(--sidebar-width)' : 'var(--sidebar-width-icon)');
+
+  // Get the effective container volume considering supplier-specific settings
+  const getEffectiveContainerVolume = React.useCallback((containerType: keyof typeof CONTAINER_SPECS) => {
+    // First check supplier-specific settings
+    if (supplierContainerSpecs) {
+      if (containerType === '20dry' && supplierContainerSpecs.container_20_cbm) {
+        return supplierContainerSpecs.container_20_cbm;
+      }
+      if (containerType === '40dry' && supplierContainerSpecs.container_40_cbm) {
+        return supplierContainerSpecs.container_40_cbm;
+      }
+      if (containerType === '40hq' && supplierContainerSpecs.container_40hq_cbm) {
+        return supplierContainerSpecs.container_40hq_cbm;
+      }
+    }
+    // Fall back to default
+    return CONTAINER_SPECS[containerType].volume;
+  }, [supplierContainerSpecs]);
 
   // Group pending arrivals by month
   const ordersByMonth = useMemo(() => {
@@ -199,7 +225,8 @@ export function OrderSimulationFooter({
     // Calculate sequential container counting for each draft
     grouped.forEach((draft) => {
       const container = CONTAINER_SPECS[draft.containerType];
-      const effectiveVolume = customContainerVolumes[draft.monthKey] ?? container.volume;
+      // Priority: custom volume for this month > supplier setting > default
+      const effectiveVolume = customContainerVolumes[draft.monthKey] ?? getEffectiveContainerVolume(draft.containerType);
       
       // Sequential container counting
       const totalContainers = draft.totalVolume / effectiveVolume;
@@ -217,7 +244,7 @@ export function OrderSimulationFooter({
     });
 
     return Array.from(grouped.values()).sort((a, b) => a.monthKey.localeCompare(b.monthKey));
-  }, [pendingArrivals, products, selectedSupplier, containerTypes, customContainerVolumes]);
+  }, [pendingArrivals, products, selectedSupplier, containerTypes, customContainerVolumes, getEffectiveContainerVolume]);
 
   // Set initial active tab
   React.useEffect(() => {
@@ -233,7 +260,8 @@ export function OrderSimulationFooter({
   };
 
   const getContainerVolume = (monthKey: string, containerType: keyof typeof CONTAINER_SPECS) => {
-    return customContainerVolumes[monthKey] ?? CONTAINER_SPECS[containerType].volume;
+    // Priority: custom volume for this month > supplier setting > default
+    return customContainerVolumes[monthKey] ?? getEffectiveContainerVolume(containerType);
   };
 
   // Fill container function - distributes remaining volume EQUALLY among products
@@ -242,7 +270,8 @@ export function OrderSimulationFooter({
     if (draft.partialContainerPercent === 0) return;
     
     const container = CONTAINER_SPECS[draft.containerType];
-    const effectiveVolume = customContainerVolumes[draft.monthKey] ?? container.volume;
+    // Priority: custom volume for this month > supplier setting > default
+    const effectiveVolume = customContainerVolumes[draft.monthKey] ?? getEffectiveContainerVolume(draft.containerType);
     
     // Calculate how much volume is needed to fill the partial container
     const partialVolume = draft.totalVolume % effectiveVolume;
@@ -284,7 +313,7 @@ export function OrderSimulationFooter({
       onUpdateArrivals(updates);
       toast.success(`Container preenchido! +${volumePerProduct.toFixed(2)}m³ por produto`);
     }
-  }, [products, onUpdateArrivals, customContainerVolumes]);
+  }, [products, onUpdateArrivals, customContainerVolumes, getEffectiveContainerVolume]);
 
   const createOrderMutation = useMutation({
     mutationFn: async (draft: OrderDraft) => {

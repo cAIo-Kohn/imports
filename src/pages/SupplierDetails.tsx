@@ -48,6 +48,9 @@ interface Supplier {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  container_20_cbm: number | null;
+  container_40_cbm: number | null;
+  container_40hq_cbm: number | null;
 }
 
 interface Product {

@@ -28,6 +28,9 @@ const formSchema = z.object({
   payment_terms: z.string().max(200, 'Condições de pagamento muito longas').optional().or(z.literal('')),
   notes: z.string().max(1000, 'Observações muito longas').optional().or(z.literal('')),
   is_active: z.boolean(),
+  container_20_cbm: z.string().optional().or(z.literal('')),
+  container_40_cbm: z.string().optional().or(z.literal('')),
+  container_40hq_cbm: z.string().optional().or(z.literal('')),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -49,6 +52,9 @@ interface Supplier {
   payment_terms: string | null;
   notes: string | null;
   is_active: boolean;
+  container_20_cbm: number | null;
+  container_40_cbm: number | null;
+  container_40hq_cbm: number | null;
 }
 
 interface EditSupplierModalProps {
@@ -79,6 +85,9 @@ export function EditSupplierModal({ open, onOpenChange, supplier, onSuccess }: E
       payment_terms: supplier.payment_terms || '',
       notes: supplier.notes || '',
       is_active: supplier.is_active,
+      container_20_cbm: supplier.container_20_cbm?.toString() || '',
+      container_40_cbm: supplier.container_40_cbm?.toString() || '',
+      container_40hq_cbm: supplier.container_40hq_cbm?.toString() || '',
     },
   });
 
@@ -100,6 +109,9 @@ export function EditSupplierModal({ open, onOpenChange, supplier, onSuccess }: E
       payment_terms: supplier.payment_terms || '',
       notes: supplier.notes || '',
       is_active: supplier.is_active,
+      container_20_cbm: supplier.container_20_cbm?.toString() || '',
+      container_40_cbm: supplier.container_40_cbm?.toString() || '',
+      container_40hq_cbm: supplier.container_40hq_cbm?.toString() || '',
     });
   }, [supplier, form]);
 
@@ -124,6 +136,9 @@ export function EditSupplierModal({ open, onOpenChange, supplier, onSuccess }: E
           payment_terms: data.payment_terms?.trim() || null,
           notes: data.notes?.trim() || null,
           is_active: data.is_active,
+          container_20_cbm: data.container_20_cbm ? parseFloat(data.container_20_cbm) : null,
+          container_40_cbm: data.container_40_cbm ? parseFloat(data.container_40_cbm) : null,
+          container_40hq_cbm: data.container_40hq_cbm ? parseFloat(data.container_40hq_cbm) : null,
         })
         .eq('id', supplier.id);
 
@@ -368,6 +383,71 @@ export function EditSupplierModal({ open, onOpenChange, supplier, onSuccess }: E
                 </FormItem>
               )}
             />
+
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-muted-foreground">Configuração de Containers</h4>
+              <p className="text-xs text-muted-foreground">
+                Cubagem por tipo de container (deixe vazio para usar valores padrão)
+              </p>
+              <div className="grid grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="container_20_cbm"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>20' Dry (m³)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          step="0.1"
+                          placeholder="33" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="container_40_cbm"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>40' Dry (m³)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          step="0.1"
+                          placeholder="67" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="container_40hq_cbm"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>40' HQ (m³)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          step="0.1"
+                          placeholder="76" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
 
             <FormField
               control={form.control}
