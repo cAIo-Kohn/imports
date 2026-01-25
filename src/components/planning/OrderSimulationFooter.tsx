@@ -542,17 +542,17 @@ export function OrderSimulationFooter({
               
               return (
                 <TabsContent key={draft.monthKey} value={draft.monthKey} className="mt-0">
-                  <div className="p-4 space-y-4 max-h-[50vh] overflow-auto">
-                    {/* Controls row */}
-                    <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="p-3 space-y-3">
+                    {/* Controls row - compact */}
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                       {/* Left: Container selector */}
-                      <div className="flex items-center gap-4">
-                        <span className="text-sm text-muted-foreground">Container:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Container:</span>
                         <Select 
                           value={draft.containerType} 
                           onValueChange={(v) => handleContainerChange(draft.monthKey, v as keyof typeof CONTAINER_SPECS)}
                         >
-                          <SelectTrigger className="w-[140px]">
+                          <SelectTrigger className="w-[120px] h-8 text-sm">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -563,11 +563,13 @@ export function OrderSimulationFooter({
                         </Select>
                       </div>
 
-                      {/* Right: Container visualization + Fill button */}
-                      <div className="flex-1 max-w-md space-y-2">
-                        {renderContainerVisualization(draft)}
+                      {/* Center: Container visualization + Fill button */}
+                      <div className="flex-1 max-w-sm flex items-center gap-2">
+                        <div className="flex-1">
+                          {renderContainerVisualization(draft)}
+                        </div>
                         
-                        {/* Fill container button */}
+                        {/* Fill container button - inline */}
                         {draft.partialContainerPercent > 0 && onUpdateArrivals && (
                           <Button
                             variant="outline"
@@ -576,18 +578,18 @@ export function OrderSimulationFooter({
                               e.stopPropagation();
                               handleFillContainer(draft);
                             }}
-                            className="w-full"
+                            className="h-7 text-xs"
                           >
-                            <Plus className="mr-2 h-4 w-4" />
-                            Preencher Container (+{remainingVolume}m³)
+                            <Plus className="mr-1 h-3 w-3" />
+                            +{remainingVolume}m³
                           </Button>
                         )}
                       </div>
 
-                      {/* Weight utilization */}
-                      <div className="flex items-center gap-3">
-                        <Scale className="h-4 w-4 text-muted-foreground" />
-                        <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
+                      {/* Right: Weight utilization */}
+                      <div className="flex items-center gap-2">
+                        <Scale className="h-3.5 w-3.5 text-muted-foreground" />
+                        <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
                           <div 
                             className={cn(
                               "h-full transition-all",
@@ -597,7 +599,7 @@ export function OrderSimulationFooter({
                           />
                         </div>
                         <span className={cn(
-                          "text-sm",
+                          "text-xs",
                           draft.isOverWeight && "text-destructive font-medium"
                         )}>
                           {draft.totalWeight.toFixed(0)} kg
@@ -605,56 +607,58 @@ export function OrderSimulationFooter({
                       </div>
                     </div>
 
-                    {/* Items table - no fixed height limit */}
-                    <ScrollArea className="max-h-[35vh]">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Produto</TableHead>
-                            <TableHead className="text-center">ETD</TableHead>
-                            <TableHead className="text-right">Qtd</TableHead>
-                            <TableHead className="text-right">Caixas</TableHead>
-                            <TableHead className="text-right">CBM</TableHead>
-                            <TableHead className="text-right">Valor</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {draft.items.map((item, idx) => (
-                            <TableRow key={idx}>
-                              <TableCell>
-                                <div className="font-medium">{item.code}</div>
-                                <div className="text-xs text-muted-foreground truncate max-w-[200px]">
-                                  {item.description}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <div className={cn(
-                                  "text-xs",
-                                  item.isEtdCritical && 'text-destructive font-medium'
-                                )}>
-                                  {format(item.etdDate, "dd/MM/yy")}
-                                </div>
-                                {item.isEtdCritical && (
-                                  <AlertTriangle className="h-3 w-3 text-destructive mx-auto mt-0.5" />
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {item.quantity.toLocaleString('pt-BR')}
-                              </TableCell>
-                              <TableCell className="text-right text-muted-foreground">
-                                {item.masterBoxes}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {item.volume.toFixed(2)} m³
-                              </TableCell>
-                              <TableCell className="text-right">
-                                ${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </TableCell>
+                    {/* Items table - ONLY scroll area */}
+                    <div className="border rounded-md">
+                      <ScrollArea className="h-[40vh]">
+                        <Table className="text-sm">
+                          <TableHeader>
+                            <TableRow className="h-8">
+                              <TableHead className="py-1.5 px-2">Produto</TableHead>
+                              <TableHead className="text-center py-1.5 px-2">ETD</TableHead>
+                              <TableHead className="text-right py-1.5 px-2">Qtd</TableHead>
+                              <TableHead className="text-right py-1.5 px-2">Caixas</TableHead>
+                              <TableHead className="text-right py-1.5 px-2">CBM</TableHead>
+                              <TableHead className="text-right py-1.5 px-2">Valor</TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </ScrollArea>
+                          </TableHeader>
+                          <TableBody>
+                            {draft.items.map((item, idx) => (
+                              <TableRow key={idx} className="h-10">
+                                <TableCell className="py-1 px-2">
+                                  <div className="font-medium text-sm leading-tight">{item.code}</div>
+                                  <div className="text-[10px] text-muted-foreground truncate max-w-[180px] leading-tight">
+                                    {item.description}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-center py-1 px-2">
+                                  <div className={cn(
+                                    "text-xs",
+                                    item.isEtdCritical && 'text-destructive font-medium'
+                                  )}>
+                                    {format(item.etdDate, "dd/MM/yy")}
+                                  </div>
+                                  {item.isEtdCritical && (
+                                    <AlertTriangle className="h-2.5 w-2.5 text-destructive mx-auto" />
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right text-xs py-1 px-2">
+                                  {item.quantity.toLocaleString('pt-BR')}
+                                </TableCell>
+                                <TableCell className="text-right text-xs text-muted-foreground py-1 px-2">
+                                  {item.masterBoxes}
+                                </TableCell>
+                                <TableCell className="text-right text-xs py-1 px-2">
+                                  {item.volume.toFixed(2)} m³
+                                </TableCell>
+                                <TableCell className="text-right text-xs py-1 px-2">
+                                  ${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </ScrollArea>
+                    </div>
 
                     {/* Summary for this month */}
                     <div className="flex items-center justify-between pt-2 border-t text-sm">
