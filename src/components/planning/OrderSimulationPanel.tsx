@@ -400,9 +400,9 @@ export function OrderSimulationPanel({
             </Card>
           </div>
 
-          {/* Items table */}
-          <div className="flex-1 overflow-hidden">
-            <ScrollArea className="h-full max-h-[300px]">
+        {/* Items table */}
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <ScrollArea className="h-full">
               {hasItems ? (
                 <Table>
                   <TableHeader>
