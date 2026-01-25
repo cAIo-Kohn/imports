@@ -404,40 +404,40 @@ export function OrderSimulationPanel({
         <div className="flex-1 min-h-0 overflow-hidden">
           <ScrollArea className="h-full">
               {hasItems ? (
-                <Table>
+                <Table className="text-xs">
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Produto</TableHead>
-                      <TableHead className="text-center">Chegada</TableHead>
-                      <TableHead className="text-center">ETD</TableHead>
-                      <TableHead className="text-right">Qtd</TableHead>
-                      <TableHead className="text-right">Valor</TableHead>
+                    <TableRow className="h-8">
+                      <TableHead className="py-1">Produto</TableHead>
+                      <TableHead className="text-center py-1">Chegada</TableHead>
+                      <TableHead className="text-center py-1">ETD</TableHead>
+                      <TableHead className="text-right py-1">Qtd</TableHead>
+                      <TableHead className="text-right py-1">Valor</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {orderSummary.items.map((item, idx) => (
-                      <TableRow key={idx}>
+                      <TableRow key={idx} className="h-12">
                         <TableCell>
-                          <div className="font-medium">{item.code}</div>
-                          <div className="text-xs text-muted-foreground truncate max-w-[120px]">
+                          <div className="font-medium text-xs leading-tight">{item.code}</div>
+                          <div className="text-[10px] text-muted-foreground truncate max-w-[120px] leading-tight">
                             {item.description}
                           </div>
                         </TableCell>
-                        <TableCell className="text-center text-xs">
+                        <TableCell className="text-center text-[11px] py-1">
                           {format(parseDateString(item.monthKey), "MMM/yy", { locale: ptBR })}
                         </TableCell>
-                        <TableCell className="text-center">
-                          <div className={`text-xs ${item.isEtdCritical ? 'text-destructive font-medium' : ''}`}>
+                        <TableCell className="text-center py-1">
+                          <div className={`text-[11px] ${item.isEtdCritical ? 'text-destructive font-medium' : ''}`}>
                             {format(item.etdDate, "MMM/yy", { locale: ptBR })}
                           </div>
                           {item.isEtdCritical && (
                             <AlertTriangle className="h-3 w-3 text-destructive mx-auto mt-0.5" />
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right text-[11px] py-1">
                           {item.quantity.toLocaleString('pt-BR')}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right text-[11px] py-1">
                           ${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </TableCell>
                       </TableRow>
