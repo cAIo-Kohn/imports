@@ -277,168 +277,122 @@ export function OrderSimulationPanel({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 overflow-hidden flex flex-col gap-4 mt-4">
-          {/* ETD Summary by Month */}
+        <div className="flex-1 overflow-hidden flex flex-col gap-2 mt-2">
+          {/* Compact ETD Summary */}
           {hasItems && Object.keys(orderSummary.etdGroups).length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <CalendarClock className="h-4 w-4" />
-                Datas de Pedido Necessárias (ETD)
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                <CalendarClock className="h-3 w-3" />
+                ETD
               </div>
-              <div className="space-y-1">
+              <div className="flex flex-wrap gap-1">
                 {Object.entries(orderSummary.etdGroups)
                   .sort(([a], [b]) => a.localeCompare(b))
                   .map(([etdKey, { items, hasCritical }]) => {
                     const etdDate = parseDateString(`${etdKey}-01`);
-                    const totalValue = items.reduce((sum, i) => sum + i.price, 0);
                     return (
-                      <div key={etdKey} className="flex items-center gap-2 text-sm">
-                        <Badge variant={hasCritical ? "destructive" : "outline"}>
-                          {format(etdDate, "MMM/yy", { locale: ptBR })}
-                        </Badge>
-                        <span>{items.length} produto{items.length > 1 ? 's' : ''}</span>
-                        <span className="text-muted-foreground">
-                          (${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
-                        </span>
-                        {hasCritical && (
-                          <Badge variant="destructive" className="ml-auto flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3" />
-                            Crítico
-                          </Badge>
-                        )}
-                      </div>
+                      <Badge 
+                        key={etdKey} 
+                        variant={hasCritical ? "destructive" : "outline"}
+                        className="text-[10px] px-1.5 py-0 h-5"
+                      >
+                        {format(etdDate, "MMM/yy", { locale: ptBR })} ({items.length})
+                        {hasCritical && <AlertTriangle className="h-2.5 w-2.5 ml-0.5" />}
+                      </Badge>
                     );
                   })}
               </div>
             </div>
           )}
 
-          {/* Container selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Container:</span>
-            <Select value={containerType} onValueChange={(v) => setContainerType(v as keyof typeof CONTAINER_SPECS)}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="20dry">20' Dry (33m³)</SelectItem>
-                <SelectItem value="40dry">40' Dry (67m³)</SelectItem>
-                <SelectItem value="40hq">40' HQ (76m³)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Volume utilization */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="flex items-center gap-1">
-                <Box className="h-4 w-4" />
-                Ocupação (Volume)
-              </span>
-              <span className={`font-medium ${orderSummary.isOverVolume ? 'text-destructive' : ''}`}>
-                {orderSummary.volumeUtilization.toFixed(1)}%
+          {/* Compact summary line: Container + Value + Quantity */}
+          <div className="flex items-center gap-2 text-[11px] border rounded-md px-2 py-1.5 bg-muted/30">
+            <div className="flex items-center gap-1">
+              <Box className="h-3 w-3 text-muted-foreground" />
+              <Select value={containerType} onValueChange={(v) => setContainerType(v as keyof typeof CONTAINER_SPECS)}>
+                <SelectTrigger className="h-6 text-[11px] w-[90px] border-0 bg-transparent p-0 focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="20dry">20' (33m³)</SelectItem>
+                  <SelectItem value="40dry">40' (67m³)</SelectItem>
+                  <SelectItem value="40hq">40' HQ (76m³)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="h-3 w-px bg-border" />
+            <div className="flex items-center gap-1">
+              <DollarSign className="h-3 w-3 text-muted-foreground" />
+              <span className="font-semibold">
+                {orderSummary.totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
               </span>
             </div>
-            <Progress 
-              value={orderSummary.volumeUtilization} 
-              className={orderSummary.isOverVolume ? '[&>div]:bg-destructive' : ''}
-            />
-            <p className="text-xs text-muted-foreground">
-              {orderSummary.totalVolume.toFixed(2)} m³ de {container.volume} m³
-              {orderSummary.isOverVolume && (
-                <Badge variant="destructive" className="ml-2">Excedido!</Badge>
-              )}
-            </p>
+            <div className="h-3 w-px bg-border" />
+            <div className="flex items-center gap-1">
+              <Package className="h-3 w-3 text-muted-foreground" />
+              <span>{orderSummary.items.length} prod.</span>
+              <span className="text-muted-foreground">|</span>
+              <span>{orderSummary.totalQuantity.toLocaleString('pt-BR')} un.</span>
+            </div>
           </div>
 
-          {/* Weight utilization */}
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="flex items-center gap-1">
-                <Scale className="h-4 w-4" />
-                Ocupação (Peso)
-              </span>
-              <span className={`font-medium ${orderSummary.isOverWeight ? 'text-destructive' : ''}`}>
-                {orderSummary.weightUtilization.toFixed(1)}%
+          {/* Compact utilization bars */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground w-10">Vol.</span>
+              <Progress 
+                value={orderSummary.volumeUtilization} 
+                className={`h-1.5 flex-1 ${orderSummary.isOverVolume ? '[&>div]:bg-destructive' : ''}`}
+              />
+              <span className={`text-[10px] font-medium w-20 text-right ${orderSummary.isOverVolume ? 'text-destructive' : ''}`}>
+                {orderSummary.totalVolume.toFixed(1)}m³ ({orderSummary.volumeUtilization.toFixed(0)}%)
               </span>
             </div>
-            <Progress 
-              value={orderSummary.weightUtilization}
-              className={orderSummary.isOverWeight ? '[&>div]:bg-destructive' : ''}
-            />
-            <p className="text-xs text-muted-foreground">
-              {orderSummary.totalWeight.toFixed(0)} kg de {container.maxWeight.toLocaleString()} kg
-              {orderSummary.isOverWeight && (
-                <Badge variant="destructive" className="ml-2">Excedido!</Badge>
-              )}
-            </p>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground w-10">Peso</span>
+              <Progress 
+                value={orderSummary.weightUtilization}
+                className={`h-1.5 flex-1 ${orderSummary.isOverWeight ? '[&>div]:bg-destructive' : ''}`}
+              />
+              <span className={`text-[10px] font-medium w-20 text-right ${orderSummary.isOverWeight ? 'text-destructive' : ''}`}>
+                {(orderSummary.totalWeight/1000).toFixed(1)}t ({orderSummary.weightUtilization.toFixed(0)}%)
+              </span>
+            </div>
           </div>
 
-          {/* Summary cards */}
-          <div className="grid grid-cols-2 gap-3">
-            <Card>
-              <CardContent className="pt-4 pb-3">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <DollarSign className="h-4 w-4" />
-                  <span className="text-xs">Valor FOB</span>
-                </div>
-                <div className="text-xl font-bold">
-                  ${orderSummary.totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4 pb-3">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <Package className="h-4 w-4" />
-                  <span className="text-xs">Qtd. Total</span>
-                </div>
-                <div className="text-xl font-bold">
-                  {orderSummary.totalQuantity.toLocaleString('pt-BR')}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-        {/* Items table */}
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <ScrollArea className="h-full">
+          {/* Items table - much more compact */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <ScrollArea className="h-full">
               {hasItems ? (
-                <Table className="text-xs">
+                <Table className="text-[11px]">
                   <TableHeader>
-                    <TableRow className="h-8">
-                      <TableHead className="py-1">Produto</TableHead>
-                      <TableHead className="text-center py-1">Chegada</TableHead>
-                      <TableHead className="text-center py-1">ETD</TableHead>
-                      <TableHead className="text-right py-1">Qtd</TableHead>
-                      <TableHead className="text-right py-1">Valor</TableHead>
+                    <TableRow className="h-6">
+                      <TableHead className="py-0.5 px-1.5">Produto</TableHead>
+                      <TableHead className="text-center py-0.5 px-1">ETD</TableHead>
+                      <TableHead className="text-right py-0.5 px-1">Qtd</TableHead>
+                      <TableHead className="text-right py-0.5 px-1.5">Valor</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {orderSummary.items.map((item, idx) => (
-                      <TableRow key={idx} className="h-12">
-                        <TableCell>
-                          <div className="font-medium text-xs leading-tight">{item.code}</div>
-                          <div className="text-[10px] text-muted-foreground truncate max-w-[120px] leading-tight">
+                      <TableRow key={idx} className="h-8">
+                        <TableCell className="py-0.5 px-1.5">
+                          <div className="font-medium text-[11px] leading-none">{item.code}</div>
+                          <div className="text-[9px] text-muted-foreground truncate max-w-[130px] leading-none mt-0.5">
                             {item.description}
                           </div>
                         </TableCell>
-                        <TableCell className="text-center text-[11px] py-1">
-                          {format(parseDateString(item.monthKey), "MMM/yy", { locale: ptBR })}
-                        </TableCell>
-                        <TableCell className="text-center py-1">
-                          <div className={`text-[11px] ${item.isEtdCritical ? 'text-destructive font-medium' : ''}`}>
+                        <TableCell className="text-center py-0.5 px-1">
+                          <div className={`text-[10px] leading-none ${item.isEtdCritical ? 'text-destructive font-medium' : ''}`}>
                             {format(item.etdDate, "MMM/yy", { locale: ptBR })}
+                            {item.isEtdCritical && <AlertTriangle className="h-2.5 w-2.5 inline ml-0.5" />}
                           </div>
-                          {item.isEtdCritical && (
-                            <AlertTriangle className="h-3 w-3 text-destructive mx-auto mt-0.5" />
-                          )}
                         </TableCell>
-                        <TableCell className="text-right text-[11px] py-1">
+                        <TableCell className="text-right text-[10px] py-0.5 px-1">
                           {item.quantity.toLocaleString('pt-BR')}
                         </TableCell>
-                        <TableCell className="text-right text-[11px] py-1">
-                          ${item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <TableCell className="text-right text-[10px] py-0.5 px-1.5">
+                          ${item.price.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         </TableCell>
                       </TableRow>
                     ))}
