@@ -58,7 +58,7 @@ export function SmartOrderBuilder({
     const months = [];
     for (let i = 1; i <= 12; i++) {
       const date = addMonths(today, i);
-      const key = format(date, 'yyyy-MM');
+      const key = format(date, 'yyyy-MM-dd');
       const label = format(date, 'MMMM yyyy', { locale: ptBR });
       months.push({ key, label, date });
     }
