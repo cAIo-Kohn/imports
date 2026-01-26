@@ -146,6 +146,13 @@ export function HighlightedOrderItemsTable({
     return acc;
   }, { totalQty: 0, totalCartons: 0, totalAmount: 0, totalCbm: 0 });
 
+  // Sort items by product code to maintain stable order
+  const sortedItems = [...items].sort((a, b) => {
+    const codeA = a.products?.code || '';
+    const codeB = b.products?.code || '';
+    return codeA.localeCompare(codeB);
+  });
+
   // Count changes
   const criticalCount = Object.values(changesByItem).reduce((acc, itemChanges) => {
     return acc + Object.values(itemChanges).filter(c => c.is_critical && !c.approved_by).length;
@@ -197,7 +204,7 @@ export function HighlightedOrderItemsTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item, index) => {
+              {sortedItems.map((item, index) => {
                 const product = item.products;
                 const qty = item.quantity;
                 const price = item.unit_price_usd || product?.fob_price_usd || 0;
