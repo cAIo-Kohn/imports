@@ -373,36 +373,54 @@ export type Database = {
       }
       purchase_orders: {
         Row: {
+          crd: string | null
           created_at: string
           created_by: string | null
+          etd: string | null
           id: string
+          invoice_number: string | null
           notes: string | null
           order_date: string
           order_number: string
+          payment_terms: string | null
+          port_destination: string | null
+          port_origin: string | null
           status: string
           supplier_id: string
           total_value_usd: number | null
           updated_at: string
         }
         Insert: {
+          crd?: string | null
           created_at?: string
           created_by?: string | null
+          etd?: string | null
           id?: string
+          invoice_number?: string | null
           notes?: string | null
           order_date?: string
           order_number: string
+          payment_terms?: string | null
+          port_destination?: string | null
+          port_origin?: string | null
           status?: string
           supplier_id: string
           total_value_usd?: number | null
           updated_at?: string
         }
         Update: {
+          crd?: string | null
           created_at?: string
           created_by?: string | null
+          etd?: string | null
           id?: string
+          invoice_number?: string | null
           notes?: string | null
           order_date?: string
           order_number?: string
+          payment_terms?: string | null
+          port_destination?: string | null
+          port_origin?: string | null
           status?: string
           supplier_id?: string
           total_value_usd?: number | null
@@ -605,6 +623,10 @@ export type Database = {
         Row: {
           address: string | null
           avg_response_time_days: number | null
+          bank_account: string | null
+          bank_address: string | null
+          bank_name: string | null
+          bank_swift: string | null
           certifications: string[] | null
           city: string | null
           company_name: string
@@ -630,6 +652,10 @@ export type Database = {
         Insert: {
           address?: string | null
           avg_response_time_days?: number | null
+          bank_account?: string | null
+          bank_address?: string | null
+          bank_name?: string | null
+          bank_swift?: string | null
           certifications?: string[] | null
           city?: string | null
           company_name: string
@@ -655,6 +681,10 @@ export type Database = {
         Update: {
           address?: string | null
           avg_response_time_days?: number | null
+          bank_account?: string | null
+          bank_address?: string | null
+          bank_name?: string | null
+          bank_swift?: string | null
           certifications?: string[] | null
           city?: string | null
           company_name?: string
@@ -685,9 +715,11 @@ export type Database = {
           city: string | null
           cnpj: string | null
           created_at: string
+          fax: string | null
           id: string
           is_active: boolean
           name: string
+          phone: string | null
           responsible_email: string | null
           responsible_name: string | null
           responsible_phone: string | null
@@ -700,9 +732,11 @@ export type Database = {
           city?: string | null
           cnpj?: string | null
           created_at?: string
+          fax?: string | null
           id?: string
           is_active?: boolean
           name: string
+          phone?: string | null
           responsible_email?: string | null
           responsible_name?: string | null
           responsible_phone?: string | null
@@ -715,9 +749,11 @@ export type Database = {
           city?: string | null
           cnpj?: string | null
           created_at?: string
+          fax?: string | null
           id?: string
           is_active?: boolean
           name?: string
+          phone?: string | null
           responsible_email?: string | null
           responsible_name?: string | null
           responsible_phone?: string | null
