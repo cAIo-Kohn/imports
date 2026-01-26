@@ -5,6 +5,7 @@ import { useOrderChanges } from '@/hooks/useOrderChanges';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
@@ -58,8 +59,17 @@ interface EditableOrderItemsTableProps {
 
 interface EditingState {
   [itemId: string]: {
+    // Campos críticos (purchase_order_items)
     unit_price_usd: number;
     quantity: number;
+    // Campos não-críticos (products)
+    technical_description: string;
+    supplier_specs: string;
+    ncm: string;
+    master_box_volume: number;
+    master_box_length: number;
+    master_box_width: number;
+    master_box_height: number;
     isSaving: boolean;
   };
 }
@@ -108,11 +118,19 @@ export function EditableOrderItemsTable({
   const isEditing = (itemId: string) => itemId in editingItems;
 
   const startEditing = (item: OrderItem) => {
+    const product = item.products;
     setEditingItems(prev => ({
       ...prev,
       [item.id]: {
-        unit_price_usd: item.unit_price_usd || item.products?.fob_price_usd || 0,
+        unit_price_usd: item.unit_price_usd || product?.fob_price_usd || 0,
         quantity: item.quantity,
+        technical_description: product?.technical_description || '',
+        supplier_specs: product?.supplier_specs || '',
+        ncm: product?.ncm || '',
+        master_box_volume: product?.master_box_volume || 0,
+        master_box_length: product?.master_box_length || 0,
+        master_box_width: product?.master_box_width || 0,
+        master_box_height: product?.master_box_height || 0,
         isSaving: false,
       }
     }));
@@ -126,7 +144,7 @@ export function EditableOrderItemsTable({
     });
   };
 
-  const updateEditingValue = (itemId: string, field: 'unit_price_usd' | 'quantity', value: number) => {
+  const updateEditingValue = (itemId: string, field: keyof EditingState[string], value: number | string) => {
     setEditingItems(prev => ({
       ...prev,
       [itemId]: {
@@ -167,54 +185,139 @@ export function EditableOrderItemsTable({
   const saveItemMutation = useMutation({
     mutationFn: async ({ 
       item, 
-      newPrice, 
-      newQty 
+      editingData 
     }: { 
       item: OrderItem; 
-      newPrice: number; 
-      newQty: number; 
+      editingData: EditingState[string];
     }) => {
+      const product = item.products;
       const oldPrice = item.unit_price_usd;
       const oldQty = item.quantity;
 
-      // Update the item in database
-      const { error } = await supabase
+      // 1. Update purchase_order_items (campos críticos)
+      const { error: itemError } = await supabase
         .from('purchase_order_items')
         .update({ 
-          unit_price_usd: newPrice,
-          quantity: newQty,
+          unit_price_usd: editingData.unit_price_usd,
+          quantity: editingData.quantity,
         })
         .eq('id', item.id);
 
-      if (error) throw error;
+      if (itemError) throw itemError;
 
-      // Log price change if different
-      if (oldPrice !== newPrice) {
-        await logChange({
-          orderId,
-          itemId: item.id,
-          changeType: 'item_field',
-          fieldName: 'unit_price_usd',
-          oldValue: String(oldPrice || 0),
-          newValue: String(newPrice),
+      // 2. Update products table (campos não-críticos)
+      if (product) {
+        const { error: productError } = await supabase
+          .from('products')
+          .update({
+            technical_description: editingData.technical_description,
+            supplier_specs: editingData.supplier_specs,
+            ncm: editingData.ncm,
+            master_box_volume: editingData.master_box_volume,
+            master_box_length: editingData.master_box_length,
+            master_box_width: editingData.master_box_width,
+            master_box_height: editingData.master_box_height,
+          })
+          .eq('id', product.id);
+
+        if (productError) throw productError;
+      }
+
+      // 3. Log all changes
+      const changes: Array<{field: string; oldVal: string | null; newVal: string; isCritical: boolean}> = [];
+
+      // Critical changes
+      if (oldPrice !== editingData.unit_price_usd) {
+        changes.push({
+          field: 'unit_price_usd',
+          oldVal: String(oldPrice || 0),
+          newVal: String(editingData.unit_price_usd),
+          isCritical: true,
+        });
+      }
+      if (oldQty !== editingData.quantity) {
+        changes.push({
+          field: 'quantity',
+          oldVal: String(oldQty),
+          newVal: String(editingData.quantity),
           isCritical: true,
         });
       }
 
-      // Log quantity change if different
-      if (oldQty !== newQty) {
+      // Non-critical changes
+      if (product) {
+        if (product.technical_description !== editingData.technical_description) {
+          changes.push({
+            field: 'technical_description',
+            oldVal: product.technical_description,
+            newVal: editingData.technical_description,
+            isCritical: false,
+          });
+        }
+        if ((product.supplier_specs || '') !== editingData.supplier_specs) {
+          changes.push({
+            field: 'supplier_specs',
+            oldVal: product.supplier_specs,
+            newVal: editingData.supplier_specs,
+            isCritical: false,
+          });
+        }
+        if ((product.ncm || '') !== editingData.ncm) {
+          changes.push({
+            field: 'ncm',
+            oldVal: product.ncm,
+            newVal: editingData.ncm,
+            isCritical: false,
+          });
+        }
+        if ((product.master_box_volume || 0) !== editingData.master_box_volume) {
+          changes.push({
+            field: 'master_box_volume',
+            oldVal: String(product.master_box_volume || 0),
+            newVal: String(editingData.master_box_volume),
+            isCritical: false,
+          });
+        }
+        if ((product.master_box_length || 0) !== editingData.master_box_length) {
+          changes.push({
+            field: 'master_box_length',
+            oldVal: String(product.master_box_length || 0),
+            newVal: String(editingData.master_box_length),
+            isCritical: false,
+          });
+        }
+        if ((product.master_box_width || 0) !== editingData.master_box_width) {
+          changes.push({
+            field: 'master_box_width',
+            oldVal: String(product.master_box_width || 0),
+            newVal: String(editingData.master_box_width),
+            isCritical: false,
+          });
+        }
+        if ((product.master_box_height || 0) !== editingData.master_box_height) {
+          changes.push({
+            field: 'master_box_height',
+            oldVal: String(product.master_box_height || 0),
+            newVal: String(editingData.master_box_height),
+            isCritical: false,
+          });
+        }
+      }
+
+      // Log each change
+      for (const change of changes) {
         await logChange({
           orderId,
           itemId: item.id,
           changeType: 'item_field',
-          fieldName: 'quantity',
-          oldValue: String(oldQty),
-          newValue: String(newQty),
-          isCritical: true,
+          fieldName: change.field,
+          oldValue: change.oldVal,
+          newValue: change.newVal,
+          isCritical: change.isCritical,
         });
       }
 
-      // Recalculate order total
+      // 4. Recalculate order total
       const { data: allItems } = await supabase
         .from('purchase_order_items')
         .select('quantity, unit_price_usd')
@@ -230,7 +333,7 @@ export function EditableOrderItemsTable({
           .eq('id', orderId);
       }
 
-      return { item, newPrice, newQty };
+      return { item, changesCount: changes.length };
     },
     onMutate: async ({ item }) => {
       setEditingItems(prev => ({
@@ -238,8 +341,11 @@ export function EditableOrderItemsTable({
         [item.id]: { ...prev[item.id], isSaving: true }
       }));
     },
-    onSuccess: ({ item }) => {
-      toast({ title: `Item ${item.products?.code} atualizado!` });
+    onSuccess: ({ item, changesCount }) => {
+      toast({ 
+        title: `Item ${item.products?.code} atualizado!`,
+        description: changesCount > 0 ? `${changesCount} alteração(ões) registrada(s)` : undefined
+      });
       cancelEditing(item.id);
       queryClient.invalidateQueries({ queryKey: ['purchase-order', orderId] });
       onTotalsChanged();
@@ -259,8 +365,7 @@ export function EditableOrderItemsTable({
     
     saveItemMutation.mutate({
       item,
-      newPrice: editing.unit_price_usd,
-      newQty: editing.quantity,
+      editingData: editing,
     });
   };
 
@@ -280,7 +385,7 @@ export function EditableOrderItemsTable({
     const qty = editing ? editing.quantity : item.quantity;
     const price = editing ? editing.unit_price_usd : (item.unit_price_usd || product?.fob_price_usd || 0);
     const qtyMasterBox = product?.qty_master_box || 1;
-    const masterVolume = product?.master_box_volume || 0;
+    const masterVolume = editing ? editing.master_box_volume : (product?.master_box_volume || 0);
     const cartons = Math.ceil(qty / qtyMasterBox);
     const amount = qty * price;
     const cbm = cartons * masterVolume;
@@ -302,13 +407,13 @@ export function EditableOrderItemsTable({
               <TableHead className="text-center w-12">#</TableHead>
               {showImages && <TableHead className="w-16">PIC</TableHead>}
               <TableHead>CODE</TableHead>
-              <TableHead>MASTER CTN</TableHead>
-              <TableHead className="text-right">m³</TableHead>
-              <TableHead className="max-w-[150px]">DESCRIPTION</TableHead>
-              <TableHead>NCM</TableHead>
-              <TableHead className="text-right">PCS/CTN</TableHead>
-              <TableHead className="text-right">CTN</TableHead>
-              <TableHead className="text-right w-28">Q'TY</TableHead>
+              <TableHead className="w-32">MASTER CTN (L×W×H)</TableHead>
+              <TableHead className="text-right w-20">m³</TableHead>
+              <TableHead className="w-48">DESCRIPTION / SPECS</TableHead>
+              <TableHead className="w-28">NCM</TableHead>
+              <TableHead className="text-right w-16">PCS/CTN</TableHead>
+              <TableHead className="text-right w-16">CTN</TableHead>
+              <TableHead className="text-right w-24">Q'TY</TableHead>
               <TableHead className="text-center w-10">☐</TableHead>
               <TableHead className="text-right w-28">FOB USD</TableHead>
               <TableHead className="text-center w-10">☐</TableHead>
@@ -324,7 +429,7 @@ export function EditableOrderItemsTable({
               const qty = editing ? editing.quantity : item.quantity;
               const price = editing ? editing.unit_price_usd : (item.unit_price_usd || product?.fob_price_usd || 0);
               const qtyMasterBox = product?.qty_master_box || 1;
-              const masterVolume = product?.master_box_volume || 0;
+              const masterVolume = editing ? editing.master_box_volume : (product?.master_box_volume || 0);
               const cartons = Math.ceil(qty / qtyMasterBox);
               const amount = qty * price;
               const cbm = cartons * masterVolume;
@@ -348,22 +453,101 @@ export function EditableOrderItemsTable({
                     </TableCell>
                   )}
                   <TableCell className="font-mono">{product?.code}</TableCell>
+                  
+                  {/* Master CTN Dimensions - Editable */}
                   <TableCell className="text-sm">
-                    {formatDimensions(
-                      product?.master_box_length,
-                      product?.master_box_width,
-                      product?.master_box_height
+                    {isEditing(item.id) ? (
+                      <div className="flex gap-1 text-xs">
+                        <Input
+                          type="number"
+                          value={editing.master_box_length}
+                          onChange={(e) => updateEditingValue(item.id, 'master_box_length', Number(e.target.value))}
+                          className="w-12 h-6 text-xs px-1"
+                          min={0}
+                          step={0.1}
+                        />
+                        ×
+                        <Input
+                          type="number"
+                          value={editing.master_box_width}
+                          onChange={(e) => updateEditingValue(item.id, 'master_box_width', Number(e.target.value))}
+                          className="w-12 h-6 text-xs px-1"
+                          min={0}
+                          step={0.1}
+                        />
+                        ×
+                        <Input
+                          type="number"
+                          value={editing.master_box_height}
+                          onChange={(e) => updateEditingValue(item.id, 'master_box_height', Number(e.target.value))}
+                          className="w-12 h-6 text-xs px-1"
+                          min={0}
+                          step={0.1}
+                        />
+                      </div>
+                    ) : (
+                      formatDimensions(
+                        product?.master_box_length,
+                        product?.master_box_width,
+                        product?.master_box_height
+                      )
                     )}
                   </TableCell>
-                  <TableCell className="text-right">{masterVolume?.toFixed(3) || '-'}</TableCell>
-                  <TableCell className="max-w-[150px] text-xs">
-                    {product?.supplier_specs || product?.technical_description || '-'}
+                  
+                  {/* Volume - Editable */}
+                  <TableCell className="text-right">
+                    {isEditing(item.id) ? (
+                      <Input
+                        type="number"
+                        value={editing.master_box_volume}
+                        onChange={(e) => updateEditingValue(item.id, 'master_box_volume', Number(e.target.value))}
+                        className="w-20 h-6 text-xs text-right px-1"
+                        min={0}
+                        step={0.001}
+                      />
+                    ) : (
+                      masterVolume?.toFixed(3) || '-'
+                    )}
                   </TableCell>
-                  <TableCell className="font-mono text-sm">{product?.ncm || '-'}</TableCell>
+                  
+                  {/* Description / Specs - Editable */}
+                  <TableCell className="w-48">
+                    {isEditing(item.id) ? (
+                      <Textarea
+                        value={editing.supplier_specs || editing.technical_description}
+                        onChange={(e) => {
+                          // Update both fields to keep in sync
+                          updateEditingValue(item.id, 'supplier_specs', e.target.value);
+                        }}
+                        className="text-xs min-h-[60px] resize-none"
+                        placeholder="Descrição técnica..."
+                      />
+                    ) : (
+                      <span className="text-xs line-clamp-3">
+                        {product?.supplier_specs || product?.technical_description || '-'}
+                      </span>
+                    )}
+                  </TableCell>
+                  
+                  {/* NCM - Editable */}
+                  <TableCell>
+                    {isEditing(item.id) ? (
+                      <Input
+                        type="text"
+                        value={editing.ncm}
+                        onChange={(e) => updateEditingValue(item.id, 'ncm', e.target.value)}
+                        className="w-24 h-6 text-xs font-mono px-1"
+                        placeholder="0000.00.00"
+                      />
+                    ) : (
+                      <span className="font-mono text-sm">{product?.ncm || '-'}</span>
+                    )}
+                  </TableCell>
+                  
                   <TableCell className="text-right">{qtyMasterBox}</TableCell>
                   <TableCell className="text-right">{cartons.toLocaleString()}</TableCell>
                   
-                  {/* Editable Quantity */}
+                  {/* Editable Quantity - CRITICAL */}
                   <TableCell className="text-right">
                     {isEditing(item.id) ? (
                       <Input
@@ -393,7 +577,7 @@ export function EditableOrderItemsTable({
                     />
                   </TableCell>
                   
-                  {/* Editable Price */}
+                  {/* Editable Price - CRITICAL */}
                   <TableCell className="text-right">
                     {isEditing(item.id) ? (
                       <Input
