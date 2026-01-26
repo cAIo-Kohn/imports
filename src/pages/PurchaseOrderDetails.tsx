@@ -19,8 +19,10 @@ import { AddOrderItemModal } from '@/components/planning/AddOrderItemModal';
 import { PurchaseOrderInvoice } from '@/components/orders/PurchaseOrderInvoice';
 import { TraderHeaderApprovals } from '@/components/orders/TraderHeaderApprovals';
 import { EditableOrderItemsTable } from '@/components/orders/EditableOrderItemsTable';
+import { HighlightedOrderItemsTable } from '@/components/orders/HighlightedOrderItemsTable';
 import { OrderChangeSummary } from '@/components/orders/OrderChangeSummary';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useOrderChanges } from '@/hooks/useOrderChanges';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -232,10 +234,14 @@ export default function PurchaseOrderDetails() {
   const totalQuantity = items.reduce((sum: number, item: any) => sum + item.quantity, 0);
   const totalValue = items.reduce((sum: number, item: any) => sum + (item.quantity * (item.unit_price_usd || 0)), 0);
 
+  // Fetch order changes for highlighting
+  const { changesByItem, isLoading: changesLoading } = useOrderChanges(order.id);
+
   // Check if supplier is Chinese
   const isChineseSupplier = order.suppliers?.country?.toLowerCase() === 'china';
   const showTraderApproval = (isTrader || isAdmin) && isChineseSupplier && order.status === 'pending_trader_review';
   const showBuyerApproval = canManageOrders && order.status === 'pending_buyer_approval';
+  const showHighlightedTable = showBuyerApproval || (order.status === 'confirmed' && isChineseSupplier);
 
   return (
     <div className="space-y-6">
@@ -348,6 +354,13 @@ export default function PurchaseOrderDetails() {
                 setItemsWithPriceApproved(priceCount);
                 setItemsWithQtyApproved(qtyCount);
               }}
+            />
+          ) : showHighlightedTable ? (
+            <HighlightedOrderItemsTable
+              orderId={order.id}
+              items={items}
+              changesByItem={changesByItem}
+              showImages={showImages}
             />
           ) : (
             <PurchaseOrderInvoice order={order as any} showImages={showImages} />

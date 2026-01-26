@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -97,11 +98,43 @@ export function useOrderChanges(orderId: string) {
   const pendingApprovalChanges = changes.filter(c => c.is_critical && c.requires_approval && !c.approved_by);
   const informationalChanges = changes.filter(c => !c.is_critical);
 
+  // Agrupar alterações por item (mantém apenas a mais recente por campo)
+  const changesByItem = useMemo(() => {
+    const grouped: Record<string, Record<string, OrderChange>> = {};
+    changes.forEach(c => {
+      if (c.purchase_order_item_id) {
+        if (!grouped[c.purchase_order_item_id]) {
+          grouped[c.purchase_order_item_id] = {};
+        }
+        // Manter apenas a alteração mais recente por campo
+        const existing = grouped[c.purchase_order_item_id][c.field_name];
+        if (!existing || new Date(c.changed_at) > new Date(existing.changed_at)) {
+          grouped[c.purchase_order_item_id][c.field_name] = c;
+        }
+      }
+    });
+    return grouped;
+  }, [changes]);
+
+  // Alterações no nível do pedido (não itens)
+  const orderLevelChanges = useMemo(() => {
+    const grouped: Record<string, OrderChange> = {};
+    changes.filter(c => !c.purchase_order_item_id).forEach(c => {
+      const existing = grouped[c.field_name];
+      if (!existing || new Date(c.changed_at) > new Date(existing.changed_at)) {
+        grouped[c.field_name] = c;
+      }
+    });
+    return grouped;
+  }, [changes]);
+
   return {
     changes,
     criticalChanges,
     pendingApprovalChanges,
     informationalChanges,
+    changesByItem,
+    orderLevelChanges,
     isLoading,
     logChange: logChangeMutation.mutateAsync,
     approveChange: approveChangeMutation.mutateAsync,
