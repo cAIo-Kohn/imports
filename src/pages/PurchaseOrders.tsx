@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Search, FileText, Package, DollarSign, Calendar, Truck, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Plus, Search, FileText, Package, DollarSign, Calendar, Truck, Clock, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
 import { CreatePurchaseOrderModal } from '@/components/planning/CreatePurchaseOrderModal';
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -47,11 +48,53 @@ export default function PurchaseOrders() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { isTrader, canManageOrders } = useUserRole();
+  const { isAdmin, isTrader, canManageOrders } = useUserRole();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [createModalOpen, setCreateModalOpen] = useState(false);
+
+  const deleteOrderMutation = useMutation({
+    mutationFn: async (orderId: string) => {
+      // Primeiro deletar os itens do pedido
+      const { error: itemsError } = await supabase
+        .from('purchase_order_items')
+        .delete()
+        .eq('purchase_order_id', orderId);
+      
+      if (itemsError) throw itemsError;
+
+      // Deletar histórico de alterações
+      const { error: historyError } = await supabase
+        .from('purchase_order_change_history')
+        .delete()
+        .eq('purchase_order_id', orderId);
+      
+      if (historyError) throw historyError;
+
+      // Deletar o pedido
+      const { error: orderError } = await supabase
+        .from('purchase_orders')
+        .delete()
+        .eq('id', orderId);
+      
+      if (orderError) throw orderError;
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Pedido excluído',
+        description: 'O pedido foi removido com sucesso.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Erro ao excluir',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['purchase-orders', statusFilter],
@@ -228,12 +271,13 @@ export default function PurchaseOrders() {
                 <TableHead>Itens</TableHead>
                 <TableHead>Valor FOB</TableHead>
                 <TableHead>Status</TableHead>
+                {isAdmin && <TableHead className="w-[50px]"></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredOrders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-muted-foreground">
                     {orders.length === 0 
                       ? 'Nenhum pedido de compra registrado. Crie o primeiro!'
                       : 'Nenhum pedido encontrado com os filtros aplicados.'
@@ -279,6 +323,39 @@ export default function PurchaseOrders() {
                         {STATUS_CONFIG[order.status]?.label || order.status}
                       </Badge>
                     </TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Excluir pedido {order.order_number}?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Esta ação não pode ser desfeita. O pedido e todos os seus itens serão permanentemente removidos.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                onClick={() => deleteOrderMutation.mutate(order.id)}
+                              >
+                                Excluir
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}
