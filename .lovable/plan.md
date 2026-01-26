@@ -1,225 +1,296 @@
 
 
-## Plano: Correção do Bug Visual do Simulador + Lógica Automática de Unidade
+## Plano: Sistema de Gerenciamento de Usuários e Roles
 
-### Problema 1: Bug Visual - Números Aparecendo Atrás das Abas
+### Objetivo
 
-No screenshot, o número "14" aparece parcialmente visível atrás/sobreposto à aba "jul/26". O problema está no `Badge` dentro do `TabsTrigger`:
-
-```tsx
-<TabsTrigger>
-  <Calendar className="h-3 w-3 mr-1.5" />
-  {draft.monthLabel}
-  <Badge variant="outline" className="ml-1.5 px-1.5 py-0 text-xs">
-    {draft.items.length}
-  </Badge>
-</TabsTrigger>
-```
-
-A causa provável é que o `TabsList` com `bg-transparent` está permitindo que elementos de abas adjacentes fiquem visíveis por trás da aba ativa, especialmente quando há navegação horizontal (setas de scroll).
-
-**Solução**: Adicionar `relative z-10` ao TabsTrigger ativo e garantir que os badges tenham fundo opaco.
+Criar nova seção "Cadastros" no menu lateral (visível apenas para Admin) com funcionalidade para:
+1. Listar todos os usuários do sistema
+2. Criar novos usuários
+3. Atribuir roles (Admin, Comprador, Trader)
 
 ---
 
-### Problema 2: Unidade Definida pelo Cadastro do Produto
+### Estrutura de Roles
 
-Atualmente, a unidade é selecionada manualmente pelo usuário no filtro de SupplierPlanning. A nova lógica deve ser:
+| Role | Descrição | Acesso |
+|------|-----------|--------|
+| **Admin** | Acesso irrestrito | Tudo + Gerenciamento de usuários |
+| **Buyer** (Comprador) | Operações do dia-a-dia | Produtos, Fornecedores, Planejamento, Pedidos (exceto Painel Trader) |
+| **Trader** | Gestão de pedidos China | Painel Trader + edição de dados em pedidos |
 
-1. Buscar quais unidades estão vinculadas aos produtos do fornecedor via `product_units`
-2. Se TODOS os produtos têm apenas 1 unidade comum -> usar automaticamente
-3. Se há produtos com múltiplas unidades -> mostrar seletor para escolher
-
----
-
-## Arquivos a Modificar
-
-### 1. `src/components/planning/OrderSimulationFooter.tsx`
-
-#### 1.1 Corrigir TabsTrigger (linhas 661-681)
-
-**De:**
-```tsx
-<TabsTrigger
-  key={draft.monthKey}
-  value={draft.monthKey}
-  className={cn(
-    "data-[state=active]:bg-primary data-[state=active]:text-primary-foreground",
-    "px-3 py-1.5 text-sm rounded-t-md border-b-2 border-transparent",
-    "data-[state=active]:border-primary",
-    draft.hasCriticalETD && "text-destructive data-[state=active]:bg-destructive"
-  )}
->
-  <Calendar className="h-3 w-3 mr-1.5" />
-  {draft.monthLabel}
-  <Badge variant="outline" className="ml-1.5 px-1.5 py-0 text-xs">
-    {draft.items.length}
-  </Badge>
-  {draft.hasCriticalETD && (
-    <AlertTriangle className="h-3 w-3 ml-1 text-destructive" />
-  )}
-</TabsTrigger>
-```
-
-**Para:**
-```tsx
-<TabsTrigger
-  key={draft.monthKey}
-  value={draft.monthKey}
-  className={cn(
-    "relative bg-background data-[state=active]:bg-primary data-[state=active]:text-primary-foreground",
-    "px-3 py-1.5 text-sm rounded-t-md border-b-2 border-transparent",
-    "data-[state=active]:border-primary data-[state=active]:z-10",
-    draft.hasCriticalETD && "text-destructive data-[state=active]:bg-destructive"
-  )}
->
-  {draft.monthLabel}
-  {draft.hasCriticalETD && (
-    <AlertTriangle className="h-3 w-3 ml-1.5 text-destructive" />
-  )}
-</TabsTrigger>
-```
-
-**Mudanças:**
-- Adicionado `relative bg-background` para garantir fundo opaco
-- Adicionado `z-10` ao estado ativo para sobreposição correta
-- Removido o ícone Calendar e o Badge de dentro das abas para simplificar
-- A contagem de produtos já aparece no summary bar superior
+Nota: O enum `app_role` atual já inclui: `admin`, `buyer`, `viewer`, `trader`
 
 ---
 
-### 2. `src/pages/SupplierPlanning.tsx`
+### Arquivos a Criar
 
-#### 2.1 Adicionar query para buscar unidades vinculadas aos produtos (após linha 138)
+#### 1. `src/pages/Users.tsx` - Página de Gerenciamento de Usuários
+
+Componente principal com:
+- Lista de usuários com suas roles
+- Botão "Novo Usuário"
+- Ações de editar role e excluir usuário
 
 ```typescript
-// Fetch product_units to determine which units are linked to products
-const { data: productUnitsData = [] } = useQuery({
-  queryKey: ['product-units-for-supplier', productIds],
-  queryFn: async () => {
-    if (productIds.length === 0) return [];
-    const { data, error } = await supabase
-      .from('product_units')
-      .select('product_id, unit_id, units:unit_id(id, name)')
-      .in('product_id', productIds);
-    if (error) throw error;
-    return data;
-  },
-  enabled: productIds.length > 0,
-});
-```
-
-#### 2.2 Calcular unidades disponíveis e auto-seleção (após o query acima)
-
-```typescript
-// Determine available units for this supplier's products
-const { availableUnits, autoSelectedUnit } = useMemo(() => {
-  if (!productUnitsData.length) return { availableUnits: [], autoSelectedUnit: null };
-  
-  // Get unique unit IDs from product_units
-  const unitIds = new Set<string>();
-  productUnitsData.forEach(pu => {
-    if (pu.unit_id) unitIds.add(pu.unit_id);
-  });
-  
-  // Map to unit objects
-  const unitsForProducts = units.filter(u => unitIds.has(u.id));
-  
-  // If all products share the same single unit, auto-select it
-  if (unitsForProducts.length === 1) {
-    return { availableUnits: unitsForProducts, autoSelectedUnit: unitsForProducts[0].id };
-  }
-  
-  return { availableUnits: unitsForProducts, autoSelectedUnit: null };
-}, [productUnitsData, units]);
-
-// Auto-set unit when supplier has products all in one unit
-useEffect(() => {
-  if (autoSelectedUnit && selectedUnit === 'all') {
-    setSelectedUnit(autoSelectedUnit);
-  }
-}, [autoSelectedUnit, selectedUnit]);
-```
-
-#### 2.3 Modificar o seletor de unidade para mostrar apenas unidades relevantes (linhas ~677-695)
-
-Substituir o seletor atual de unidades para:
-
-```tsx
-{/* Unit Filter - only show relevant units */}
-<Select value={selectedUnit} onValueChange={setSelectedUnit}>
-  <SelectTrigger className="w-[180px]">
-    <SelectValue placeholder="Unidade" />
-  </SelectTrigger>
-  <SelectContent>
-    {availableUnits.length > 1 && (
-      <SelectItem value="all">Todas as Unidades</SelectItem>
-    )}
-    {availableUnits.map((unit) => (
-      <SelectItem key={unit.id} value={unit.id}>
-        {unit.name}
-      </SelectItem>
-    ))}
-    {availableUnits.length === 0 && units.map((unit) => (
-      <SelectItem key={unit.id} value={unit.id}>
-        {unit.name}
-      </SelectItem>
-    ))}
-  </SelectContent>
-</Select>
-```
-
----
-
-### 3. `src/components/planning/OrderSimulationFooter.tsx` - Validação de Unidade
-
-#### 3.1 Adicionar prop para unidades disponíveis
-
-Modificar a interface para receber as unidades disponíveis:
-
-```typescript
-interface OrderSimulationFooterProps {
-  // ... props existentes
-  availableUnits?: { id: string; name: string }[];
-  requiresUnitSelection?: boolean;
+interface UserWithRole {
+  id: string;
+  user_id: string;
+  email: string;
+  full_name: string;
+  roles: AppRole[];
+  created_at: string;
 }
 ```
 
-#### 3.2 Mostrar aviso quando há múltiplas unidades e nenhuma foi selecionada
+Funcionalidades:
+- Query para buscar profiles + user_roles
+- Tabela com colunas: Nome, Email, Roles, Data Criação, Ações
+- Badge colorido por role (Admin=vermelho, Comprador=azul, Trader=verde)
 
-Na área de validação/ações, adicionar:
+#### 2. `src/components/users/CreateUserModal.tsx` - Modal de Criação
 
-```tsx
-{selectedUnit === 'all' && props.requiresUnitSelection && (
-  <Badge variant="destructive" className="text-xs">
-    Selecione a unidade de destino
-  </Badge>
-)}
+Formulário com:
+- Nome completo (obrigatório)
+- Email (obrigatório)
+- Senha (obrigatório, min 6 caracteres)
+- Seleção de Role (checkboxes múltiplos)
+
+#### 3. `src/components/users/EditUserRoleModal.tsx` - Modal de Edição de Role
+
+Permite alterar as roles de um usuário existente sem alterar senha/email.
+
+#### 4. `supabase/functions/create-user/index.ts` - Edge Function
+
+Necessária porque criar usuários via Admin API requer `service_role_key`:
+
+```typescript
+// Usa supabase.auth.admin.createUser() com service_role_key
+// Cria usuário + profile + role inicial
 ```
 
 ---
 
-## Resultado Esperado
+### Arquivos a Modificar
 
-| Cenário | Antes | Depois |
-|---------|-------|--------|
-| Bug visual tabs | Números "14" aparecendo atrás | Abas limpas sem sobreposição |
-| Fornecedor só Matriz | Seleção manual | Auto-seleciona Matriz |
-| Fornecedor Matriz + RJ | Seleção manual | Mostra seletor com opções relevantes |
-| Criação de pedido | Permite "Todas unidades" | Bloqueia se não selecionou unidade |
+#### 1. `src/components/layout/AppSidebar.tsx`
+
+Adicionar nova seção "Cadastros" visível apenas para admin:
+
+```tsx
+{isAdmin && (
+  <SidebarGroup>
+    <SidebarGroupLabel>Cadastros</SidebarGroupLabel>
+    <SidebarGroupContent>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton asChild isActive={location.pathname === '/users'}>
+            <NavLink to="/users">
+              <Users className="h-4 w-4" />
+              <span>Usuários</span>
+            </NavLink>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarGroupContent>
+  </SidebarGroup>
+)}
+```
+
+#### 2. `src/App.tsx`
+
+Adicionar nova rota:
+
+```tsx
+import Users from "./pages/Users";
+
+// Na área de rotas
+<Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
+```
 
 ---
 
-## Seção Técnica
+### Edge Function: create-user
 
-### Arquivos Modificados
-1. `src/components/planning/OrderSimulationFooter.tsx` - Correção visual das abas
-2. `src/pages/SupplierPlanning.tsx` - Query de product_units e lógica de auto-seleção
+Como a criação de usuários requer a `service_role_key` (não disponível no cliente), precisamos de uma edge function:
 
-### Novas Queries
-- `product-units-for-supplier`: Busca vínculos produto-unidade para determinar unidades disponíveis
+```typescript
+// supabase/functions/create-user/index.ts
+import { createClient } from '@supabase/supabase-js'
 
-### Dependências
-- Usa tabela `product_units` existente
-- Mantém compatibilidade com fluxo atual
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders })
+  }
+
+  try {
+    // Verificar se o usuário que está chamando é admin
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      throw new Error('Missing authorization header')
+    }
+
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    )
+
+    const { data: { user: callingUser } } = await supabaseClient.auth.getUser()
+    if (!callingUser) throw new Error('Not authenticated')
+
+    // Verificar se é admin
+    const { data: roleCheck } = await supabaseClient
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', callingUser.id)
+      .eq('role', 'admin')
+      .single()
+
+    if (!roleCheck) throw new Error('Not authorized - admin only')
+
+    // Criar usuário com service_role
+    const { email, password, fullName, roles } = await req.json()
+
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    )
+
+    const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true, // Auto-confirma o email
+      user_metadata: { full_name: fullName }
+    })
+
+    if (createError) throw createError
+
+    // Profile é criado automaticamente pelo trigger handle_new_user
+    // Mas precisamos adicionar as roles adicionais se houver
+    if (roles && roles.length > 0 && newUser.user) {
+      // Remover role padrão 'viewer' e adicionar as selecionadas
+      await supabaseAdmin
+        .from('user_roles')
+        .delete()
+        .eq('user_id', newUser.user.id)
+
+      const roleInserts = roles.map((role: string) => ({
+        user_id: newUser.user.id,
+        role
+      }))
+
+      await supabaseAdmin.from('user_roles').insert(roleInserts)
+    }
+
+    return new Response(
+      JSON.stringify({ user: newUser.user }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+})
+```
+
+---
+
+### Componente Users.tsx - Estrutura Detalhada
+
+```tsx
+// Queries
+const { data: usersData } = useQuery({
+  queryKey: ['all-users'],
+  queryFn: async () => {
+    // Buscar profiles com suas roles
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    const { data: allRoles } = await supabase
+      .from('user_roles')
+      .select('user_id, role')
+
+    // Combinar dados
+    return profiles.map(p => ({
+      ...p,
+      roles: allRoles.filter(r => r.user_id === p.user_id).map(r => r.role)
+    }))
+  }
+})
+```
+
+---
+
+### Interface Visual
+
+```text
+┌─────────────────────────────────────────────────────┐
+│ Usuários                        [+ Novo Usuário]    │
+├─────────────────────────────────────────────────────┤
+│ Nome          │ Email              │ Roles    │ ... │
+├───────────────┼────────────────────┼──────────┼─────┤
+│ Caio Kohn     │ caio@mor.com.br    │ [Admin]  │ ... │
+│ João Silva    │ joao@empresa.com   │ [Buyer]  │ ... │
+│ Maria Trader  │ maria@trading.com  │ [Trader] │ ... │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+### Proteção de Rota
+
+A página `/users` será acessível apenas para admin. Adicionar verificação na página:
+
+```tsx
+const { isAdmin, isLoading } = useUserRole();
+
+if (!isAdmin && !isLoading) {
+  return <Navigate to="/" replace />;
+}
+```
+
+---
+
+### Resumo das Alterações
+
+| Arquivo | Ação |
+|---------|------|
+| `src/pages/Users.tsx` | Criar |
+| `src/components/users/CreateUserModal.tsx` | Criar |
+| `src/components/users/EditUserRoleModal.tsx` | Criar |
+| `supabase/functions/create-user/index.ts` | Criar |
+| `src/components/layout/AppSidebar.tsx` | Modificar - adicionar seção Cadastros |
+| `src/App.tsx` | Modificar - adicionar rota /users |
+
+### Seção Técnica
+
+#### Segurança
+- Edge function valida que apenas admins podem criar usuários
+- RLS existente na `user_roles` já protege: apenas admin pode gerenciar roles
+- RLS existente na `profiles` permite que admin veja todos os perfis
+
+#### Fluxo de Criação de Usuário
+1. Admin preenche formulário
+2. Frontend chama edge function `create-user`
+3. Edge function valida que chamador é admin
+4. Cria usuário via Admin API com email auto-confirmado
+5. Trigger `handle_new_user` cria profile e role padrão
+6. Edge function substitui role padrão pelas selecionadas
+7. Retorna sucesso
+
+#### Labels de Role no UI
+- **Admin**: Badge vermelho
+- **Comprador** (buyer): Badge azul
+- **Trader**: Badge verde
 
