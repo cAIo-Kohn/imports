@@ -8,8 +8,8 @@ export default function Settings() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
-        <p className="text-muted-foreground">Gerencie as configurações do sistema</p>
+        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+        <p className="text-muted-foreground">Manage system settings</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -17,9 +17,9 @@ export default function Settings() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5" />
-              Meu Perfil
+              My Profile
             </CardTitle>
-            <CardDescription>Informações da sua conta</CardDescription>
+            <CardDescription>Your account information</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2 text-sm">
@@ -39,15 +39,15 @@ export default function Settings() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5" />
-              Permissões
+              Permissions
             </CardTitle>
-            <CardDescription>Níveis de acesso do sistema</CardDescription>
+            <CardDescription>System access levels</CardDescription>
           </CardHeader>
           <CardContent>
             <ul className="space-y-2 text-sm">
-              <li><strong>Admin:</strong> Acesso total ao sistema</li>
-              <li><strong>Comprador:</strong> Gerencia produtos, fornecedores e pedidos</li>
-              <li><strong>Visualizador:</strong> Apenas visualização</li>
+              <li><strong>Admin:</strong> Full system access</li>
+              <li><strong>Buyer:</strong> Manages products, suppliers and orders</li>
+              <li><strong>Viewer:</strong> View only</li>
             </ul>
           </CardContent>
         </Card>

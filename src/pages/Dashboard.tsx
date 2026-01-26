@@ -53,34 +53,34 @@ export default function Dashboard() {
 
   const stats = [
     { 
-      title: 'Produtos', 
+      title: 'Products', 
       value: productCount, 
       loading: loadingProducts,
-      description: 'cadastrados', 
+      description: 'registered', 
       icon: Package, 
       color: 'text-primary' 
     },
     { 
-      title: 'Fornecedores', 
+      title: 'Suppliers', 
       value: supplierCount, 
       loading: loadingSuppliers,
-      description: 'ativos', 
+      description: 'active', 
       icon: Factory, 
       color: 'text-green-600' 
     },
     { 
-      title: 'Unidades', 
+      title: 'Units', 
       value: unitCount, 
       loading: loadingUnits,
-      description: 'configuradas', 
+      description: 'configured', 
       icon: Building2, 
       color: 'text-orange-600' 
     },
     { 
-      title: 'Categorias', 
+      title: 'Categories', 
       value: categoryCount, 
       loading: loadingCategories,
-      description: 'criadas', 
+      description: 'created', 
       icon: FolderTree, 
       color: 'text-purple-600' 
     },
@@ -90,7 +90,7 @@ export default function Dashboard() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Visão geral do sistema de gestão de importados</p>
+        <p className="text-muted-foreground">Overview of the import management system</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -117,27 +117,27 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
-              Próximos Passos
+              Next Steps
             </CardTitle>
-            <CardDescription>Complete a configuração do sistema</CardDescription>
+            <CardDescription>Complete the system setup</CardDescription>
           </CardHeader>
           <CardContent>
             <ul className="space-y-3 text-sm">
               <li className="flex items-center gap-2">
                 <div className={`h-2 w-2 rounded-full ${unitCount && unitCount > 0 ? 'bg-green-500' : 'bg-muted'}`} />
-                Cadastre suas unidades de destino
+                Register your destination units
               </li>
               <li className="flex items-center gap-2">
                 <div className={`h-2 w-2 rounded-full ${supplierCount && supplierCount > 0 ? 'bg-green-500' : 'bg-muted'}`} />
-                Adicione seus fornecedores
+                Add your suppliers
               </li>
               <li className="flex items-center gap-2">
                 <div className={`h-2 w-2 rounded-full ${categoryCount && categoryCount > 0 ? 'bg-green-500' : 'bg-muted'}`} />
-                Crie categorias para organizar produtos
+                Create categories to organize products
               </li>
               <li className="flex items-center gap-2">
                 <div className={`h-2 w-2 rounded-full ${productCount && productCount > 0 ? 'bg-green-500' : 'bg-muted'}`} />
-                Cadastre seus produtos importados
+                Register your imported products
               </li>
             </ul>
           </CardContent>
@@ -147,13 +147,13 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ShoppingCart className="h-5 w-5 text-primary" />
-              Pedidos de Compra
+              Purchase Orders
             </CardTitle>
-            <CardDescription>Funcionalidade em breve</CardDescription>
+            <CardDescription>Coming soon</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Na próxima fase, você poderá criar pedidos de compra, acompanhar embarques e analisar o desempenho dos fornecedores.
+              In the next phase, you will be able to create purchase orders, track shipments and analyze supplier performance.
             </p>
           </CardContent>
         </Card>

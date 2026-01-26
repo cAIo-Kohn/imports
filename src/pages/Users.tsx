@@ -28,7 +28,6 @@ import { useToast } from '@/hooks/use-toast';
 import { CreateUserModal } from '@/components/users/CreateUserModal';
 import { EditUserRoleModal } from '@/components/users/EditUserRoleModal';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 interface UserWithRoles {
   id: string;
@@ -41,9 +40,9 @@ interface UserWithRoles {
 
 const roleConfig: Record<AppRole, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof Shield }> = {
   admin: { label: 'Admin', variant: 'destructive', icon: Shield },
-  buyer: { label: 'Comprador', variant: 'default', icon: ShoppingCart },
+  buyer: { label: 'Buyer', variant: 'default', icon: ShoppingCart },
   trader: { label: 'Trader', variant: 'secondary', icon: TrendingUp },
-  viewer: { label: 'Visualizador', variant: 'outline', icon: Eye },
+  viewer: { label: 'Viewer', variant: 'outline', icon: Eye },
 };
 
 export default function Users() {
@@ -107,14 +106,14 @@ export default function Users() {
       if (response.error) throw response.error;
 
       toast({
-        title: 'Usuário excluído',
-        description: `${selectedUser.full_name || selectedUser.email} foi removido do sistema.`,
+        title: 'User deleted',
+        description: `${selectedUser.full_name || selectedUser.email} was removed from the system.`,
       });
 
       refetch();
     } catch (error: any) {
       toast({
-        title: 'Erro ao excluir usuário',
+        title: 'Error deleting user',
         description: error.message,
         variant: 'destructive',
       });
@@ -140,14 +139,14 @@ export default function Users() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Usuários</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Users</h1>
           <p className="text-muted-foreground">
-            Gerencie os usuários e suas permissões no sistema.
+            Manage users and their system permissions.
           </p>
         </div>
         <Button onClick={() => setCreateModalOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
-          Novo Usuário
+          New User
         </Button>
       </div>
 
@@ -160,18 +159,18 @@ export default function Users() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Nome</TableHead>
+                <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Roles</TableHead>
-                <TableHead>Criado em</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
+                <TableHead>Created at</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {users.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                    Nenhum usuário encontrado.
+                    No users found.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -194,12 +193,12 @@ export default function Users() {
                           );
                         })}
                         {user.roles.length === 0 && (
-                          <span className="text-muted-foreground text-sm">Sem roles</span>
+                          <span className="text-muted-foreground text-sm">No roles</span>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      {format(new Date(user.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                      {format(new Date(user.created_at), "dd/MM/yyyy")}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
@@ -250,20 +249,20 @@ export default function Users() {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
+            <AlertDialogTitle>Delete user?</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir{' '}
+              Are you sure you want to delete{' '}
               <strong>{selectedUser?.full_name || selectedUser?.email}</strong>?
-              Esta ação não pode ser desfeita.
+              This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Excluir
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

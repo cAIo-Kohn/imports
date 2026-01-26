@@ -380,25 +380,25 @@ export default function Products() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Produtos</h1>
-          <p className="text-muted-foreground">Gerencie seus produtos importados</p>
+          <h1 className="text-3xl font-bold tracking-tight">Products</h1>
+          <p className="text-muted-foreground">Manage your imported products</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setImportModalOpen(true)}>
             <Upload className="mr-2 h-4 w-4" />
-            Importar Produtos
+            Import Products
           </Button>
           <Button variant="outline" onClick={() => setImportDetailsModalOpen(true)}>
             <FileSpreadsheet className="mr-2 h-4 w-4" />
-            Importar Detalhes
+            Import Details
           </Button>
           <Button variant="outline" onClick={() => setImportCadastralModalOpen(true)}>
             <FileSpreadsheet className="mr-2 h-4 w-4" />
-            Dados Cadastrais
+            Cadastral Data
           </Button>
           <Button onClick={() => setCreateModalOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            Novo Produto
+            New Product
           </Button>
         </div>
       </div>
@@ -410,7 +410,7 @@ export default function Products() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar por código ou descrição..."
+              placeholder="Search by code or description..."
               value={search}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-10 w-[260px]"
@@ -423,7 +423,7 @@ export default function Products() {
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os status</SelectItem>
+              <SelectItem value="all">All statuses</SelectItem>
               {warehouseStatuses?.map((status) => (
                 <SelectItem key={status} value={status}>{status}</SelectItem>
               ))}
@@ -432,11 +432,11 @@ export default function Products() {
 
           <Select value={supplierFilter} onValueChange={handleSupplierChange}>
             <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Fornecedor" />
+              <SelectValue placeholder="Supplier" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os fornecedores</SelectItem>
-              <SelectItem value="none">Sem fornecedor</SelectItem>
+              <SelectItem value="all">All suppliers</SelectItem>
+              <SelectItem value="none">No supplier</SelectItem>
               {suppliersForFilter?.map((supplier) => (
                 <SelectItem key={supplier.id} value={supplier.id}>
                   {supplier.trade_name || supplier.company_name}
@@ -450,7 +450,7 @@ export default function Products() {
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
                 <SlidersHorizontal className="h-4 w-4" />
-                Mais filtros
+                More filters
                 {advancedFilterCount > 0 && (
                   <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-xs">
                     {advancedFilterCount}
@@ -460,7 +460,7 @@ export default function Products() {
             </PopoverTrigger>
             <PopoverContent className="w-80" align="start">
               <div className="space-y-4">
-                <h4 className="font-medium text-sm">Filtros Avançados</h4>
+                <h4 className="font-medium text-sm">Advanced Filters</h4>
                 
                 <div className="flex items-center space-x-2">
                   <Checkbox 
@@ -472,21 +472,21 @@ export default function Products() {
                     }}
                   />
                   <Label htmlFor="incomplete" className="text-sm cursor-pointer">
-                    Apenas dados incompletos
+                    Incomplete data only
                   </Label>
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-sm">Marca</Label>
+                  <Label className="text-sm">Brand</Label>
                   <Select value={brandFilter} onValueChange={(value) => {
                     setBrandFilter(value);
                     setCurrentPage(1);
                   }}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Todas as marcas" />
+                      <SelectValue placeholder="All brands" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Todas as marcas</SelectItem>
+                      <SelectItem value="all">All brands</SelectItem>
                       {brandsForFilter?.map((brand) => (
                         <SelectItem key={brand} value={brand}>{brand}</SelectItem>
                       ))}
@@ -495,7 +495,7 @@ export default function Products() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-sm">Prefixo NCM</Label>
+                  <Label className="text-sm">NCM Prefix</Label>
                   <Input
                     placeholder="Ex: 9503, 8471..."
                     value={ncmPrefixFilter}
@@ -513,7 +513,7 @@ export default function Products() {
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" onClick={clearAllFilters} className="gap-1 text-muted-foreground hover:text-foreground">
               <X className="h-4 w-4" />
-              Limpar filtros
+              Clear filters
             </Button>
           )}
         </div>
@@ -521,8 +521,8 @@ export default function Products() {
         {/* Right side: Count + Pagination */}
         <div className="flex items-center gap-4">
           <span className="text-sm text-muted-foreground whitespace-nowrap">
-            {totalCount !== undefined ? `${totalCount} produtos` : 'Carregando...'} 
-            {totalPages > 1 && ` | Pág. ${currentPage}/${totalPages}`}
+            {totalCount !== undefined ? `${totalCount} products` : 'Loading...'} 
+            {totalPages > 1 && ` | Page ${currentPage}/${totalPages}`}
           </span>
           {totalPages > 1 && (
             <div className="flex items-center gap-1">
@@ -533,7 +533,7 @@ export default function Products() {
                 disabled={currentPage === 1}
               >
                 <ChevronLeft className="h-4 w-4" />
-                <span className="hidden sm:inline ml-1">Anterior</span>
+                <span className="hidden sm:inline ml-1">Previous</span>
               </Button>
               <Button
                 variant="outline"
@@ -541,7 +541,7 @@ export default function Products() {
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
               >
-                <span className="hidden sm:inline mr-1">Próxima</span>
+                <span className="hidden sm:inline mr-1">Next</span>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -551,7 +551,7 @@ export default function Products() {
 
       <Card>
         <CardHeader className="py-3">
-          <CardTitle className="text-lg">Lista de Produtos</CardTitle>
+          <CardTitle className="text-lg">Product List</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -565,34 +565,34 @@ export default function Products() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-8 sticky left-0 bg-background z-10"></TableHead>
-                      <SortableHeader column="code" label="Código" className="sticky left-8 bg-background z-10 min-w-[100px]" />
-                      <SortableHeader column="technical_description" label="Descrição" className="min-w-[250px]" />
+                      <SortableHeader column="code" label="Code" className="sticky left-8 bg-background z-10 min-w-[100px]" />
+                      <SortableHeader column="technical_description" label="Description" className="min-w-[250px]" />
                       <SortableHeader column="ncm" label="NCM" />
                       <TableHead>EAN-13</TableHead>
                       <TableHead>DUN-14</TableHead>
-                      <TableHead>Tipo Item</TableHead>
-                      <TableHead>Origem</TableHead>
-                      <SortableHeader column="brand" label="Marca" />
-                      <TableHead>Fornecedor</TableHead>
-                      <SortableHeader column="qty_master_box" label="Qt. Master" className="text-right" />
-                      <TableHead className="text-right">Qt. Inner</TableHead>
-                      <TableHead className="text-right">C. Master (m)</TableHead>
+                      <TableHead>Item Type</TableHead>
+                      <TableHead>Origin</TableHead>
+                      <SortableHeader column="brand" label="Brand" />
+                      <TableHead>Supplier</TableHead>
+                      <SortableHeader column="qty_master_box" label="Qty. Master" className="text-right" />
+                      <TableHead className="text-right">Qty. Inner</TableHead>
                       <TableHead className="text-right">L. Master (m)</TableHead>
-                      <TableHead className="text-right">A. Master (m)</TableHead>
+                      <TableHead className="text-right">W. Master (m)</TableHead>
+                      <TableHead className="text-right">H. Master (m)</TableHead>
                       <TableHead className="text-right">Volume (m³)</TableHead>
-                      <SortableHeader column="gross_weight" label="Peso Bruto (kg)" className="text-right" />
-                      <TableHead className="text-right">Peso Líquido (kg)</TableHead>
-                      <TableHead className="text-right">P. Individual (kg)</TableHead>
-                      <TableHead className="text-right">C. Individual (m)</TableHead>
-                      <TableHead className="text-right">L. Individual (m)</TableHead>
-                      <TableHead className="text-right">A. Individual (m)</TableHead>
-                      <TableHead className="text-right">C. Produto (m)</TableHead>
-                      <TableHead className="text-right">L. Produto (m)</TableHead>
-                      <TableHead className="text-right">A. Produto (m)</TableHead>
-                      <TableHead>Embalagem</TableHead>
+                      <SortableHeader column="gross_weight" label="Gross Weight (kg)" className="text-right" />
+                      <TableHead className="text-right">Net Weight (kg)</TableHead>
+                      <TableHead className="text-right">Ind. Weight (kg)</TableHead>
+                      <TableHead className="text-right">Ind. Length (m)</TableHead>
+                      <TableHead className="text-right">Ind. Width (m)</TableHead>
+                      <TableHead className="text-right">Ind. Height (m)</TableHead>
+                      <TableHead className="text-right">Prod. Length (m)</TableHead>
+                      <TableHead className="text-right">Prod. Width (m)</TableHead>
+                      <TableHead className="text-right">Prod. Height (m)</TableHead>
+                      <TableHead>Packaging</TableHead>
                       <SortableHeader column="warehouse_status" label="Status" />
-                      <TableHead>Unidades</TableHead>
-                      <TableHead className="w-16 text-center">Ações</TableHead>
+                      <TableHead>Units</TableHead>
+                      <TableHead className="w-16 text-center">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -619,7 +619,7 @@ export default function Products() {
                                     <AlertCircle className="h-4 w-4 text-destructive" />
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>Dados Partner incompletos</p>
+                                    <p>Incomplete Partner data</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
@@ -628,10 +628,10 @@ export default function Products() {
                           <TableCell className="font-mono font-medium sticky left-8 bg-background z-10">{product.code}</TableCell>
                           <TableCell className="max-w-[250px] truncate">{product.technical_description}</TableCell>
                           <TableCell className={!product.ncm ? 'text-destructive bg-destructive/10' : ''}>
-                            {product.ncm || <span className="text-xs italic">Vazio</span>}
+                            {product.ncm || <span className="text-xs italic">Empty</span>}
                           </TableCell>
                           <TableCell className={!product.ean_13 ? 'text-destructive bg-destructive/10' : ''}>
-                            {product.ean_13 || <span className="text-xs italic">Vazio</span>}
+                            {product.ean_13 || <span className="text-xs italic">Empty</span>}
                           </TableCell>
                           <TableCell>{formatText(product.dun_14)}</TableCell>
                           <TableCell>{formatText(product.item_type)}</TableCell>
@@ -698,7 +698,7 @@ export default function Products() {
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  <p>Excluir produto</p>
+                                  <p>Delete product</p>
                                 </TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
@@ -716,21 +716,21 @@ export default function Products() {
               <div className="p-4 rounded-full bg-muted mb-4">
                 <Package className="h-8 w-8 text-muted-foreground" />
               </div>
-              <h3 className="font-semibold mb-1">Nenhum produto encontrado</h3>
+              <h3 className="font-semibold mb-1">No products found</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {hasActiveFilters 
-                  ? 'Tente ajustar os filtros para encontrar produtos'
-                  : 'Comece importando seus produtos de um arquivo Excel'}
+                  ? 'Try adjusting the filters to find products'
+                  : 'Start by importing your products from an Excel file'}
               </p>
               {hasActiveFilters ? (
                 <Button variant="outline" onClick={clearAllFilters}>
                   <X className="mr-2 h-4 w-4" />
-                  Limpar filtros
+                  Clear filters
                 </Button>
               ) : (
                 <Button onClick={() => setImportModalOpen(true)}>
                   <Upload className="mr-2 h-4 w-4" />
-                  Importar Produtos
+                  Import Products
                 </Button>
               )}
             </div>

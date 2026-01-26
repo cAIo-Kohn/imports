@@ -25,26 +25,26 @@ interface CreateUserModalProps {
 const roleOptions: { value: AppRole; label: string; description: string; icon: typeof Shield }[] = [
   {
     value: 'admin',
-    label: 'Administrador',
-    description: 'Acesso irrestrito a todas as funcionalidades',
+    label: 'Administrator',
+    description: 'Unrestricted access to all features',
     icon: Shield,
   },
   {
     value: 'buyer',
-    label: 'Comprador',
-    description: 'Produtos, fornecedores, planejamento e pedidos',
+    label: 'Buyer',
+    description: 'Products, suppliers, planning and orders',
     icon: ShoppingCart,
   },
   {
     value: 'trader',
     label: 'Trader',
-    description: 'Painel do trader e edição de pedidos',
+    description: 'Trader dashboard and order editing',
     icon: TrendingUp,
   },
   {
     value: 'viewer',
-    label: 'Visualizador',
-    description: 'Apenas visualização de dados',
+    label: 'Viewer',
+    description: 'View-only access to data',
     icon: Eye,
   },
 ];
@@ -69,8 +69,8 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
 
     if (!fullName || !email || !password) {
       toast({
-        title: 'Campos obrigatórios',
-        description: 'Preencha todos os campos obrigatórios.',
+        title: 'Required fields',
+        description: 'Fill in all required fields.',
         variant: 'destructive',
       });
       return;
@@ -78,8 +78,8 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
 
     if (password.length < 6) {
       toast({
-        title: 'Senha muito curta',
-        description: 'A senha deve ter pelo menos 6 caracteres.',
+        title: 'Password too short',
+        description: 'Password must have at least 6 characters.',
         variant: 'destructive',
       });
       return;
@@ -87,8 +87,8 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
 
     if (selectedRoles.length === 0) {
       toast({
-        title: 'Selecione uma role',
-        description: 'O usuário precisa ter pelo menos uma role.',
+        title: 'Select a role',
+        description: 'User needs at least one role.',
         variant: 'destructive',
       });
       return;
@@ -117,15 +117,15 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
       if (data?.error) throw new Error(data.error);
 
       toast({
-        title: 'Usuário criado',
-        description: `${fullName} foi adicionado ao sistema.`,
+        title: 'User created',
+        description: `${fullName} was added to the system.`,
       });
 
       resetForm();
       onSuccess();
     } catch (error: any) {
       toast({
-        title: 'Erro ao criar usuário',
+        title: 'Error creating user',
         description: error.message,
         variant: 'destructive',
       });
@@ -138,20 +138,20 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Novo Usuário</DialogTitle>
+          <DialogTitle>New User</DialogTitle>
           <DialogDescription>
-            Crie um novo usuário e defina suas permissões.
+            Create a new user and set their permissions.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="fullName">Nome completo *</Label>
+            <Label htmlFor="fullName">Full name *</Label>
             <Input
               id="fullName"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="Digite o nome completo"
+              placeholder="Enter full name"
             />
           </div>
 
@@ -162,23 +162,23 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="usuario@empresa.com"
+              placeholder="user@company.com"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Senha *</Label>
+            <Label htmlFor="password">Password *</Label>
             <Input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Mínimo 6 caracteres"
+              placeholder="Minimum 6 characters"
             />
           </div>
 
           <div className="space-y-3">
-            <Label>Permissões *</Label>
+            <Label>Permissions *</Label>
             <div className="space-y-2">
               {roleOptions.map((option) => {
                 const Icon = option.icon;
@@ -215,10 +215,10 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
+              Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Criando...' : 'Criar Usuário'}
+              {loading ? 'Creating...' : 'Create User'}
             </Button>
           </DialogFooter>
         </form>

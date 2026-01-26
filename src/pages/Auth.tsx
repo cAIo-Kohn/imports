@@ -11,15 +11,15 @@ import { Package, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 
 const loginSchema = z.object({
-  email: z.string().email('Email inválido'),
-  password: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres'),
+  email: z.string().email('Invalid email'),
+  password: z.string().min(6, 'Password must have at least 6 characters'),
 });
 
 const signupSchema = loginSchema.extend({
-  fullName: z.string().min(2, 'Nome deve ter no mínimo 2 caracteres'),
+  fullName: z.string().min(2, 'Name must have at least 2 characters'),
   confirmPassword: z.string(),
 }).refine(data => data.password === data.confirmPassword, {
-  message: 'As senhas não coincidem',
+  message: 'Passwords do not match',
   path: ['confirmPassword'],
 });
 
@@ -36,7 +36,7 @@ export default function Auth() {
     e.preventDefault();
     const result = loginSchema.safeParse(loginForm);
     if (!result.success) {
-      toast({ title: 'Erro', description: result.error.errors[0].message, variant: 'destructive' });
+      toast({ title: 'Error', description: result.error.errors[0].message, variant: 'destructive' });
       return;
     }
 
@@ -45,7 +45,7 @@ export default function Auth() {
     setLoading(false);
 
     if (error) {
-      toast({ title: 'Erro ao entrar', description: error.message, variant: 'destructive' });
+      toast({ title: 'Login error', description: error.message, variant: 'destructive' });
     } else {
       navigate('/');
     }
@@ -55,7 +55,7 @@ export default function Auth() {
     e.preventDefault();
     const result = signupSchema.safeParse(signupForm);
     if (!result.success) {
-      toast({ title: 'Erro', description: result.error.errors[0].message, variant: 'destructive' });
+      toast({ title: 'Error', description: result.error.errors[0].message, variant: 'destructive' });
       return;
     }
 
@@ -65,11 +65,11 @@ export default function Auth() {
 
     if (error) {
       const message = error.message.includes('already registered') 
-        ? 'Este email já está cadastrado' 
+        ? 'This email is already registered' 
         : error.message;
-      toast({ title: 'Erro ao cadastrar', description: message, variant: 'destructive' });
+      toast({ title: 'Signup error', description: message, variant: 'destructive' });
     } else {
-      toast({ title: 'Conta criada!', description: 'Você já pode fazer login.' });
+      toast({ title: 'Account created!', description: 'You can now sign in.' });
       navigate('/');
     }
   };
@@ -83,14 +83,14 @@ export default function Auth() {
               <Package className="h-10 w-10 text-primary" />
             </div>
           </div>
-          <CardTitle className="text-2xl">ImportFlow</CardTitle>
-          <CardDescription>Gestão de Produtos Importados</CardDescription>
+          <CardTitle className="text-2xl">MOR Imports</CardTitle>
+          <CardDescription>Import Products Management</CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="login">
             <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value="login">Entrar</TabsTrigger>
-              <TabsTrigger value="signup">Cadastrar</TabsTrigger>
+              <TabsTrigger value="login">Sign In</TabsTrigger>
+              <TabsTrigger value="signup">Sign Up</TabsTrigger>
             </TabsList>
 
             <TabsContent value="login">
@@ -100,13 +100,13 @@ export default function Auth() {
                   <Input
                     id="login-email"
                     type="email"
-                    placeholder="seu@email.com"
+                    placeholder="your@email.com"
                     value={loginForm.email}
                     onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="login-password">Senha</Label>
+                  <Label htmlFor="login-password">Password</Label>
                   <Input
                     id="login-password"
                     type="password"
@@ -117,7 +117,7 @@ export default function Auth() {
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Entrar
+                  Sign In
                 </Button>
               </form>
             </TabsContent>
@@ -125,10 +125,10 @@ export default function Auth() {
             <TabsContent value="signup">
               <form onSubmit={handleSignup} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="signup-name">Nome completo</Label>
+                  <Label htmlFor="signup-name">Full name</Label>
                   <Input
                     id="signup-name"
-                    placeholder="Seu nome"
+                    placeholder="Your name"
                     value={signupForm.fullName}
                     onChange={(e) => setSignupForm({ ...signupForm, fullName: e.target.value })}
                   />
@@ -138,13 +138,13 @@ export default function Auth() {
                   <Input
                     id="signup-email"
                     type="email"
-                    placeholder="seu@email.com"
+                    placeholder="your@email.com"
                     value={signupForm.email}
                     onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signup-password">Senha</Label>
+                  <Label htmlFor="signup-password">Password</Label>
                   <Input
                     id="signup-password"
                     type="password"
@@ -154,7 +154,7 @@ export default function Auth() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signup-confirm">Confirmar senha</Label>
+                  <Label htmlFor="signup-confirm">Confirm password</Label>
                   <Input
                     id="signup-confirm"
                     type="password"
@@ -165,7 +165,7 @@ export default function Auth() {
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Criar conta
+                  Create account
                 </Button>
               </form>
             </TabsContent>
