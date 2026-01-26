@@ -17,7 +17,8 @@ import { ArrowLeft, Calendar, Package, DollarSign, Building2, Plus, Trash2, File
 import { useToast } from '@/hooks/use-toast';
 import { AddOrderItemModal } from '@/components/planning/AddOrderItemModal';
 import { PurchaseOrderInvoice } from '@/components/orders/PurchaseOrderInvoice';
-import { TraderApprovalPanel } from '@/components/orders/TraderApprovalPanel';
+import { TraderHeaderApprovals } from '@/components/orders/TraderHeaderApprovals';
+import { EditableOrderItemsTable } from '@/components/orders/EditableOrderItemsTable';
 import { OrderChangeSummary } from '@/components/orders/OrderChangeSummary';
 import { useUserRole } from '@/hooks/useUserRole';
 import {
@@ -276,11 +277,12 @@ export default function PurchaseOrderDetails() {
         </div>
       </div>
 
-      {/* Trader Approval Panel */}
+      {/* Trader Header Approvals */}
       {showTraderApproval && (
         <div className="print:hidden">
-          <TraderApprovalPanel 
+          <TraderHeaderApprovals 
             order={order as any} 
+            totalValue={totalValue}
             totalQuantity={totalQuantity}
             onOrderUpdated={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
           />
@@ -325,7 +327,18 @@ export default function PurchaseOrderDetails() {
               </Button>
             </div>
           )}
-          <PurchaseOrderInvoice order={order as any} showImages={showImages} />
+          
+          {/* Editable table for trader reviewing orders */}
+          {showTraderApproval ? (
+            <EditableOrderItemsTable
+              orderId={order.id}
+              items={items}
+              showImages={showImages}
+              onTotalsChanged={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
+            />
+          ) : (
+            <PurchaseOrderInvoice order={order as any} showImages={showImages} />
+          )}
         </TabsContent>
 
         <TabsContent value="shipping" className="mt-4">
