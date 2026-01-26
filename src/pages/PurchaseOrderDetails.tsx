@@ -68,6 +68,9 @@ export default function PurchaseOrderDetails() {
     notes: '',
   });
 
+  // Fetch order changes for highlighting - MUST be before conditional returns
+  const { changesByItem, isLoading: changesLoading } = useOrderChanges(id || '');
+
   const { data: order, isLoading } = useQuery({
     queryKey: ['purchase-order', id],
     queryFn: async () => {
@@ -239,8 +242,6 @@ export default function PurchaseOrderDetails() {
         .sort()[0] || null
     : null;
 
-  // Fetch order changes for highlighting
-  const { changesByItem, isLoading: changesLoading } = useOrderChanges(order.id);
 
   // Check if supplier is Chinese
   const isChineseSupplier = order.suppliers?.country?.toLowerCase() === 'china';
