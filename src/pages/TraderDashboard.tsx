@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useUserRole } from '@/hooks/useUserRole';
 import { Clock, Package, CheckCircle, AlertTriangle, ExternalLink, Factory } from 'lucide-react';
 import { format } from 'date-fns';
+import { extractContainerInfo } from '@/lib/utils';
 import { ptBR } from 'date-fns/locale';
 
 export default function TraderDashboard() {
@@ -56,9 +57,6 @@ export default function TraderDashboard() {
     return items?.reduce((sum, item) => sum + (item.quantity * (item.unit_price_usd || 0)), 0) || 0;
   };
 
-  const calculateTotalQty = (items: any[]) => {
-    return items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
-  };
 
   if (rolesLoading) {
     return (
@@ -176,9 +174,8 @@ export default function TraderDashboard() {
                   <TableHead>Fornecedor</TableHead>
                   <TableHead>Data Criação</TableHead>
                   <TableHead>ETD</TableHead>
-                  <TableHead className="text-right">Itens</TableHead>
-                  <TableHead className="text-right">Qtd Total</TableHead>
-                  <TableHead className="text-right">Valor Total</TableHead>
+                  <TableHead>Containers</TableHead>
+                  <TableHead className="text-right">Total Amount</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -219,11 +216,10 @@ export default function TraderDashboard() {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
-                      {order.purchase_order_items?.length || 0}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {calculateTotalQty(order.purchase_order_items).toLocaleString('pt-BR')}
+                    <TableCell>
+                      <span className="text-sm">
+                        {extractContainerInfo(order.notes)}
+                      </span>
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       ${calculateOrderTotal(order.purchase_order_items).toLocaleString('en-US', {
