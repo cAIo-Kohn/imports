@@ -11,12 +11,12 @@ export default function Units() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Unidades</h1>
-          <p className="text-muted-foreground">Configure as unidades de destino no Brasil</p>
+          <h1 className="text-3xl font-bold tracking-tight">Units</h1>
+          <p className="text-muted-foreground">Configure destination units in Brazil</p>
         </div>
         <Button>
           <Plus className="mr-2 h-4 w-4" />
-          Nova Unidade
+          New Unit
         </Button>
       </div>
 
@@ -24,7 +24,7 @@ export default function Units() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar unidades..."
+            placeholder="Search units..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-10"
@@ -34,21 +34,21 @@ export default function Units() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Lista de Unidades</CardTitle>
-          <CardDescription>Nenhuma unidade cadastrada ainda</CardDescription>
+          <CardTitle>Unit List</CardTitle>
+          <CardDescription>No units registered yet</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="p-4 rounded-full bg-muted mb-4">
               <Building2 className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h3 className="font-semibold mb-1">Nenhuma unidade encontrada</h3>
+            <h3 className="font-semibold mb-1">No units found</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Cadastre as unidades de destino para os produtos
+              Register destination units for products
             </p>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
-              Cadastrar Unidade
+              Register Unit
             </Button>
           </div>
         </CardContent>

@@ -10,7 +10,6 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { Clock, Package, CheckCircle, AlertTriangle, ExternalLink, Factory } from 'lucide-react';
 import { format } from 'date-fns';
 import { extractContainerInfo } from '@/lib/utils';
-import { ptBR } from 'date-fns/locale';
 
 export default function TraderDashboard() {
   const navigate = useNavigate();
@@ -70,11 +69,11 @@ export default function TraderDashboard() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
         <AlertTriangle className="h-12 w-12 text-destructive" />
-        <h2 className="text-xl font-semibold">Acesso Restrito</h2>
+        <h2 className="text-xl font-semibold">Restricted Access</h2>
         <p className="text-muted-foreground">
-          Esta página é exclusiva para traders.
+          This page is for traders only.
         </p>
-        <Button onClick={() => navigate('/')}>Voltar ao Início</Button>
+        <Button onClick={() => navigate('/')}>Back to Home</Button>
       </div>
     );
   }
@@ -85,10 +84,10 @@ export default function TraderDashboard() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
           <Factory className="h-8 w-8 text-primary" />
-          Painel do Trader
+          Trader Dashboard
         </h1>
         <p className="text-muted-foreground">
-          Pedidos de fornecedores chineses aguardando sua revisão e aprovação
+          Orders from Chinese suppliers awaiting your review and approval
         </p>
       </div>
 
@@ -96,7 +95,7 @@ export default function TraderDashboard() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pedidos Pendentes</CardTitle>
+            <CardTitle className="text-sm font-medium">Pending Orders</CardTitle>
             <Clock className="h-5 w-5 text-yellow-600" />
           </CardHeader>
           <CardContent>
@@ -105,13 +104,13 @@ export default function TraderDashboard() {
             ) : (
               <div className="text-2xl font-bold">{stats.total}</div>
             )}
-            <p className="text-xs text-muted-foreground">aguardando revisão</p>
+            <p className="text-xs text-muted-foreground">awaiting review</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Com ETD Definido</CardTitle>
+            <CardTitle className="text-sm font-medium">With ETD Set</CardTitle>
             <CheckCircle className="h-5 w-5 text-green-600" />
           </CardHeader>
           <CardContent>
@@ -120,13 +119,13 @@ export default function TraderDashboard() {
             ) : (
               <div className="text-2xl font-bold">{stats.withEtd}</div>
             )}
-            <p className="text-xs text-muted-foreground">prontos para aprovar</p>
+            <p className="text-xs text-muted-foreground">ready to approve</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Sem ETD</CardTitle>
+            <CardTitle className="text-sm font-medium">Without ETD</CardTitle>
             <AlertTriangle className="h-5 w-5 text-orange-600" />
           </CardHeader>
           <CardContent>
@@ -135,7 +134,7 @@ export default function TraderDashboard() {
             ) : (
               <div className="text-2xl font-bold">{stats.withoutEtd}</div>
             )}
-            <p className="text-xs text-muted-foreground">precisam de data</p>
+            <p className="text-xs text-muted-foreground">need date</p>
           </CardContent>
         </Card>
       </div>
@@ -145,10 +144,10 @@ export default function TraderDashboard() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Pedidos Aguardando Aprovação
+            Orders Awaiting Approval
           </CardTitle>
           <CardDescription>
-            Clique em um pedido para revisar, editar e aprovar ETD, preços e quantidades
+            Click on an order to review, edit and approve ETD, prices and quantities
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -161,18 +160,18 @@ export default function TraderDashboard() {
           ) : orders.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
-              <h3 className="text-lg font-semibold">Nenhum pedido pendente</h3>
+              <h3 className="text-lg font-semibold">No pending orders</h3>
               <p className="text-muted-foreground">
-                Todos os pedidos de fornecedores chineses foram revisados
+                All orders from Chinese suppliers have been reviewed
               </p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Pedido</TableHead>
-                  <TableHead>Fornecedor</TableHead>
-                  <TableHead>Data Criação</TableHead>
+                  <TableHead>Order</TableHead>
+                  <TableHead>Supplier</TableHead>
+                  <TableHead>Created Date</TableHead>
                   <TableHead>ETD</TableHead>
                   <TableHead>Containers</TableHead>
                   <TableHead className="text-right">Total Amount</TableHead>
@@ -203,16 +202,16 @@ export default function TraderDashboard() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {format(new Date(order.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                      {format(new Date(order.created_at), 'dd/MM/yyyy')}
                     </TableCell>
                     <TableCell>
                       {order.etd ? (
                         <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                          {format(new Date(order.etd), 'dd/MM/yyyy', { locale: ptBR })}
+                          {format(new Date(order.etd), 'dd/MM/yyyy')}
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                          Não definido
+                          Not set
                         </Badge>
                       )}
                     </TableCell>

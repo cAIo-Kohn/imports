@@ -33,26 +33,26 @@ interface EditUserRoleModalProps {
 const roleOptions: { value: AppRole; label: string; description: string; icon: typeof Shield }[] = [
   {
     value: 'admin',
-    label: 'Administrador',
-    description: 'Acesso irrestrito a todas as funcionalidades',
+    label: 'Administrator',
+    description: 'Unrestricted access to all features',
     icon: Shield,
   },
   {
     value: 'buyer',
-    label: 'Comprador',
-    description: 'Produtos, fornecedores, planejamento e pedidos',
+    label: 'Buyer',
+    description: 'Products, suppliers, planning and orders',
     icon: ShoppingCart,
   },
   {
     value: 'trader',
     label: 'Trader',
-    description: 'Painel do trader e edição de pedidos',
+    description: 'Trader dashboard and order editing',
     icon: TrendingUp,
   },
   {
     value: 'viewer',
-    label: 'Visualizador',
-    description: 'Apenas visualização de dados',
+    label: 'Viewer',
+    description: 'View-only access to data',
     icon: Eye,
   },
 ];
@@ -76,8 +76,8 @@ export function EditUserRoleModal({ open, onOpenChange, user, onSuccess }: EditU
 
     if (selectedRoles.length === 0) {
       toast({
-        title: 'Selecione uma role',
-        description: 'O usuário precisa ter pelo menos uma role.',
+        title: 'Select a role',
+        description: 'User needs at least one role.',
         variant: 'destructive',
       });
       return;
@@ -107,14 +107,14 @@ export function EditUserRoleModal({ open, onOpenChange, user, onSuccess }: EditU
       if (insertError) throw insertError;
 
       toast({
-        title: 'Permissões atualizadas',
-        description: `As permissões de ${user.full_name || user.email} foram atualizadas.`,
+        title: 'Permissions updated',
+        description: `Permissions for ${user.full_name || user.email} were updated.`,
       });
 
       onSuccess();
     } catch (error: any) {
       toast({
-        title: 'Erro ao atualizar permissões',
+        title: 'Error updating permissions',
         description: error.message,
         variant: 'destructive',
       });
@@ -129,15 +129,15 @@ export function EditUserRoleModal({ open, onOpenChange, user, onSuccess }: EditU
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Editar Permissões</DialogTitle>
+          <DialogTitle>Edit Permissions</DialogTitle>
           <DialogDescription>
-            Altere as permissões de {user.full_name || user.email}.
+            Change permissions for {user.full_name || user.email}.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-3">
-            <Label>Permissões</Label>
+            <Label>Permissions</Label>
             <div className="space-y-2">
               {roleOptions.map((option) => {
                 const Icon = option.icon;
@@ -174,10 +174,10 @@ export function EditUserRoleModal({ open, onOpenChange, user, onSuccess }: EditU
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
+              Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? 'Salvando...' : 'Salvar Alterações'}
+              {loading ? 'Saving...' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </form>

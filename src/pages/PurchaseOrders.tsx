@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,13 +38,13 @@ interface PurchaseOrder {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: typeof Clock }> = {
-  draft: { label: 'Rascunho', variant: 'secondary' },
-  pending_trader_review: { label: 'Aguard. Trader', variant: 'outline', icon: Clock },
-  pending_buyer_approval: { label: 'Mudanças Pendentes', variant: 'outline', icon: AlertTriangle },
-  confirmed: { label: 'Confirmado', variant: 'default', icon: CheckCircle },
-  shipped: { label: 'Embarcado', variant: 'outline', icon: Truck },
-  received: { label: 'Recebido', variant: 'default', icon: Container },
-  cancelled: { label: 'Cancelado', variant: 'destructive' },
+  draft: { label: 'Draft', variant: 'secondary' },
+  pending_trader_review: { label: 'Awaiting Trader', variant: 'outline', icon: Clock },
+  pending_buyer_approval: { label: 'Pending Changes', variant: 'outline', icon: AlertTriangle },
+  confirmed: { label: 'Confirmed', variant: 'default', icon: CheckCircle },
+  shipped: { label: 'Shipped', variant: 'outline', icon: Truck },
+  received: { label: 'Received', variant: 'default', icon: Container },
+  cancelled: { label: 'Cancelled', variant: 'destructive' },
 };
 
 export default function PurchaseOrders() {
@@ -60,7 +59,7 @@ export default function PurchaseOrders() {
 
   const deleteOrderMutation = useMutation({
     mutationFn: async (orderId: string) => {
-      // Primeiro deletar os itens do pedido
+      // First delete order items
       const { error: itemsError } = await supabase
         .from('purchase_order_items')
         .delete()
@@ -68,7 +67,7 @@ export default function PurchaseOrders() {
       
       if (itemsError) throw itemsError;
 
-      // Deletar histórico de alterações
+      // Delete change history
       const { error: historyError } = await supabase
         .from('purchase_order_change_history')
         .delete()
@@ -76,7 +75,7 @@ export default function PurchaseOrders() {
       
       if (historyError) throw historyError;
 
-      // Deletar o pedido
+      // Delete the order
       const { error: orderError } = await supabase
         .from('purchase_orders')
         .delete()
@@ -86,14 +85,14 @@ export default function PurchaseOrders() {
     },
     onSuccess: () => {
       toast({
-        title: 'Pedido excluído',
-        description: 'O pedido foi removido com sucesso.',
+        title: 'Order deleted',
+        description: 'The order was successfully removed.',
       });
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
     },
     onError: (error: any) => {
       toast({
-        title: 'Erro ao excluir',
+        title: 'Error deleting',
         description: error.message,
         variant: 'destructive',
       });
@@ -167,15 +166,15 @@ export default function PurchaseOrders() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Pedidos de Compra</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Purchase Orders</h1>
           <p className="text-muted-foreground">
-            Gerencie seus pedidos de importação
+            Manage your import orders
           </p>
         </div>
         {canManageOrders && (
           <Button onClick={() => setCreateModalOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            Novo Pedido
+            New Order
           </Button>
         )}
       </div>
@@ -184,37 +183,37 @@ export default function PurchaseOrders() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Pedidos</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">pedidos registrados</p>
+            <p className="text-xs text-muted-foreground">orders registered</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Aguard. Trader</CardTitle>
+            <CardTitle className="text-sm font-medium">Awaiting Trader</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.pendingTrader}</div>
-            <p className="text-xs text-muted-foreground">aguardando aprovação</p>
+            <p className="text-xs text-muted-foreground">awaiting approval</p>
           </CardContent>
         </Card>
         <Card className={stats.pendingBuyer > 0 ? "border-yellow-500/50 bg-yellow-500/5" : ""}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Mudanças Pendentes</CardTitle>
+            <CardTitle className="text-sm font-medium">Pending Changes</CardTitle>
             <AlertTriangle className={`h-4 w-4 ${stats.pendingBuyer > 0 ? 'text-yellow-600' : 'text-muted-foreground'}`} />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.pendingBuyer}</div>
-            <p className="text-xs text-muted-foreground">requerem aprovação</p>
+            <p className="text-xs text-muted-foreground">require approval</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Value</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -234,7 +233,7 @@ export default function PurchaseOrders() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar por número ou fornecedor..."
+                  placeholder="Search by number or supplier..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9"
@@ -246,14 +245,14 @@ export default function PurchaseOrders() {
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os Status</SelectItem>
-                <SelectItem value="draft">Rascunho</SelectItem>
-                <SelectItem value="pending_trader_review">Aguard. Trader</SelectItem>
-                <SelectItem value="pending_buyer_approval">Mudanças Pendentes</SelectItem>
-                <SelectItem value="confirmed">Confirmado</SelectItem>
-                <SelectItem value="shipped">Embarcado</SelectItem>
-                <SelectItem value="received">Recebido</SelectItem>
-                <SelectItem value="cancelled">Cancelado</SelectItem>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="pending_trader_review">Awaiting Trader</SelectItem>
+                <SelectItem value="pending_buyer_approval">Pending Changes</SelectItem>
+                <SelectItem value="confirmed">Confirmed</SelectItem>
+                <SelectItem value="shipped">Shipped</SelectItem>
+                <SelectItem value="received">Received</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -263,17 +262,17 @@ export default function PurchaseOrders() {
       {/* Orders Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Lista de Pedidos</CardTitle>
+          <CardTitle>Order List</CardTitle>
           <CardDescription>
-            Clique em um pedido para ver os detalhes
+            Click on an order to see details
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Número</TableHead>
-                <TableHead>Fornecedor</TableHead>
+                <TableHead>Number</TableHead>
+                <TableHead>Supplier</TableHead>
                 <TableHead>ETD</TableHead>
                 <TableHead>Containers</TableHead>
                 <TableHead>Total Amount</TableHead>
@@ -286,8 +285,8 @@ export default function PurchaseOrders() {
                 <TableRow>
                   <TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-muted-foreground">
                     {orders.length === 0 
-                      ? 'Nenhum pedido de compra registrado. Crie o primeiro!'
-                      : 'Nenhum pedido encontrado com os filtros aplicados.'
+                      ? 'No purchase orders registered. Create the first one!'
+                      : 'No orders found with the applied filters.'
                     }
                   </TableCell>
                 </TableRow>
@@ -309,7 +308,7 @@ export default function PurchaseOrders() {
                     <TableCell>{order.suppliers.company_name}</TableCell>
                     <TableCell>
                       {order.etd 
-                        ? format(new Date(order.etd + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR })
+                        ? format(new Date(order.etd + 'T12:00:00'), 'dd/MM/yyyy')
                         : '-'
                       }
                     </TableCell>
@@ -365,18 +364,18 @@ export default function PurchaseOrders() {
                           </AlertDialogTrigger>
                           <AlertDialogContent onClick={(e) => e.stopPropagation()}>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Excluir pedido {order.order_number}?</AlertDialogTitle>
+                              <AlertDialogTitle>Delete order {order.order_number}?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Esta ação não pode ser desfeita. O pedido e todos os seus itens serão permanentemente removidos.
+                                This action cannot be undone. The order and all its items will be permanently removed.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
                               <AlertDialogAction
                                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                 onClick={() => deleteOrderMutation.mutate(order.id)}
                               >
-                                Excluir
+                                Delete
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>

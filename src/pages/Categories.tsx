@@ -11,12 +11,12 @@ export default function Categories() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Categorias</h1>
-          <p className="text-muted-foreground">Organize seus produtos por categoria</p>
+          <h1 className="text-3xl font-bold tracking-tight">Categories</h1>
+          <p className="text-muted-foreground">Organize your products by category</p>
         </div>
         <Button>
           <Plus className="mr-2 h-4 w-4" />
-          Nova Categoria
+          New Category
         </Button>
       </div>
 
@@ -24,7 +24,7 @@ export default function Categories() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar categorias..."
+            placeholder="Search categories..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-10"
@@ -34,21 +34,21 @@ export default function Categories() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Lista de Categorias</CardTitle>
-          <CardDescription>Nenhuma categoria cadastrada ainda</CardDescription>
+          <CardTitle>Category List</CardTitle>
+          <CardDescription>No categories registered yet</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="p-4 rounded-full bg-muted mb-4">
               <FolderTree className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h3 className="font-semibold mb-1">Nenhuma categoria encontrada</h3>
+            <h3 className="font-semibold mb-1">No categories found</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Crie categorias para organizar seus produtos
+              Create categories to organize your products
             </p>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
-              Criar Categoria
+              Create Category
             </Button>
           </div>
         </CardContent>

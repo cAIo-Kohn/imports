@@ -310,10 +310,10 @@ export default function DemandPlanning() {
       });
 
       const periods = {
-        threeMonths: createPeriodStats('3 meses', rupturesIn3m, 'critical'),
-        sixMonths: createPeriodStats('6 meses', rupturesIn6m, 'alert'),
-        nineMonths: createPeriodStats('9 meses', rupturesIn9m, 'attention'),
-        twelveMonths: createPeriodStats('12 meses', rupturesIn12m, 'ok'),
+        threeMonths: createPeriodStats('3 months', rupturesIn3m, 'critical'),
+        sixMonths: createPeriodStats('6 months', rupturesIn6m, 'alert'),
+        nineMonths: createPeriodStats('9 months', rupturesIn9m, 'attention'),
+        twelveMonths: createPeriodStats('12 months', rupturesIn12m, 'ok'),
       };
 
       // Determine overall status (based on earliest rupture)
@@ -380,7 +380,7 @@ export default function DemandPlanning() {
     refetchInventory();
     refetchArrivals();
     refetchPurchaseItems();
-    toast({ title: 'Dados atualizados', description: 'Os indicadores foram recalculados com base nos dados mais recentes.' });
+    toast({ title: 'Data updated', description: 'The indicators were recalculated based on the latest data.' });
   }, [refetchSuppliers, refetchForecasts, refetchInventory, refetchArrivals, refetchPurchaseItems, toast]);
 
   // Handle import success
@@ -407,9 +407,9 @@ export default function DemandPlanning() {
           {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
         <div className="space-y-3">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
+        {[1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
-        <p className="text-sm text-muted-foreground text-center">Carregando dados e calculando indicadores...</p>
+        <p className="text-sm text-muted-foreground text-center">Loading data and calculating indicators...</p>
       </div>
     );
   }
@@ -419,9 +419,9 @@ export default function DemandPlanning() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Planejamento de Demanda</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Demand Planning</h1>
           <p className="text-muted-foreground">
-            Selecione um fornecedor para analisar a projeção de estoque
+            Select a supplier to analyze stock projection
           </p>
         </div>
         <div className="flex gap-2">
@@ -429,28 +429,28 @@ export default function DemandPlanning() {
             variant={debugMode ? "default" : "outline"} 
             size="icon" 
             onClick={toggleDebug} 
-            title={debugMode ? "Desativar modo debug" : "Ativar modo debug"}
+            title={debugMode ? "Disable debug mode" : "Enable debug mode"}
           >
             <Bug className="h-4 w-4" />
           </Button>
-          <Button variant="outline" size="icon" onClick={handleRefreshData} title="Atualizar dados">
+          <Button variant="outline" size="icon" onClick={handleRefreshData} title="Refresh data">
             <RefreshCw className="h-4 w-4" />
           </Button>
           <Button variant="outline" onClick={() => setImportInventoryOpen(true)}>
             <Upload className="mr-2 h-4 w-4" />
-            Estoque
+            Inventory
           </Button>
           <Button variant="outline" onClick={() => setImportHistoryOpen(true)}>
             <FileSpreadsheet className="mr-2 h-4 w-4" />
-            Histórico
+            History
           </Button>
           <Button variant="outline" onClick={() => setImportArrivalsOpen(true)}>
             <Ship className="mr-2 h-4 w-4" />
-            Chegadas
+            Arrivals
           </Button>
           <Button onClick={() => setImportForecastOpen(true)}>
             <TrendingUp className="mr-2 h-4 w-4" />
-            Previsão
+            Forecast
           </Button>
         </div>
       </div>
@@ -461,34 +461,34 @@ export default function DemandPlanning() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Bug className="h-4 w-4 text-amber-500" />
-              Modo Diagnóstico
+              Diagnostic Mode
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="flex flex-wrap gap-2 text-xs">
-              <Badge variant="outline">Período: {startMonthStr} → {endMonthStr}</Badge>
+              <Badge variant="outline">Period: {startMonthStr} → {endMonthStr}</Badge>
               <Badge variant={forecasts.length < forecastsTotal ? "destructive" : "secondary"}>
-                Previsões: {forecasts.length.toLocaleString()} / {forecastsTotal.toLocaleString()}
-                {forecasts.length < forecastsTotal && " (INCOMPLETO!)"}
+                Forecasts: {forecasts.length.toLocaleString()} / {forecastsTotal.toLocaleString()}
+                {forecasts.length < forecastsTotal && " (INCOMPLETE!)"}
               </Badge>
               <Badge variant={scheduledArrivals.length < arrivalsTotal ? "destructive" : "secondary"}>
-                Chegadas: {scheduledArrivals.length.toLocaleString()} / {arrivalsTotal.toLocaleString()}
-                {scheduledArrivals.length < arrivalsTotal && " (INCOMPLETO!)"}
+                Arrivals: {scheduledArrivals.length.toLocaleString()} / {arrivalsTotal.toLocaleString()}
+                {scheduledArrivals.length < arrivalsTotal && " (INCOMPLETE!)"}
               </Badge>
               <Badge variant={inventorySnapshots.length < inventoryTotal ? "destructive" : "secondary"}>
-                Estoque: {inventorySnapshots.length.toLocaleString()} / {inventoryTotal.toLocaleString()}
-                {inventorySnapshots.length < inventoryTotal && " (INCOMPLETO!)"}
+                Inventory: {inventorySnapshots.length.toLocaleString()} / {inventoryTotal.toLocaleString()}
+                {inventorySnapshots.length < inventoryTotal && " (INCOMPLETE!)"}
               </Badge>
-              <Badge variant="secondary">Produtos: {products.length.toLocaleString()}</Badge>
-              <Badge variant="secondary">Fornecedores: {suppliers.length}</Badge>
+              <Badge variant="secondary">Products: {products.length.toLocaleString()}</Badge>
+              <Badge variant="secondary">Suppliers: {suppliers.length}</Badge>
             </div>
             {(forecasts.length === forecastsTotal && scheduledArrivals.length === arrivalsTotal && inventorySnapshots.length === inventoryTotal) ? (
-              <p className="text-xs text-green-600">✓ Todos os dados foram carregados com sucesso via paginação.</p>
+              <p className="text-xs text-green-600">✓ All data was successfully loaded via pagination.</p>
             ) : (
-              <p className="text-xs text-destructive">⚠ Alguns dados podem estar incompletos. Verifique os badges acima.</p>
+              <p className="text-xs text-destructive">⚠ Some data may be incomplete. Check the badges above.</p>
             )}
             <p className="text-xs text-muted-foreground">
-              Passe o mouse nos indicadores de período (3m, 6m...) para ver os produtos com ruptura.
+              Hover over the period indicators (3m, 6m...) to see products with rupture.
             </p>
           </CardContent>
         </Card>
@@ -497,8 +497,8 @@ export default function DemandPlanning() {
       {/* Overall Stats */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Resumo Geral</CardTitle>
-          <CardDescription>Visão consolidada por horizonte de planejamento</CardDescription>
+          <CardTitle className="text-lg">General Summary</CardTitle>
+          <CardDescription>Consolidated view by planning horizon</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -508,7 +508,7 @@ export default function DemandPlanning() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{overallStats.totalProducts}</p>
-                <p className="text-xs text-muted-foreground">produtos</p>
+                <p className="text-xs text-muted-foreground">products</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -517,7 +517,7 @@ export default function DemandPlanning() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-destructive">{overallStats.totalCritical}</p>
-                <p className="text-xs text-muted-foreground">crítico (3m)</p>
+                <p className="text-xs text-muted-foreground">critical (3m)</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -526,7 +526,7 @@ export default function DemandPlanning() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-orange-500">{overallStats.totalAlert}</p>
-                <p className="text-xs text-muted-foreground">alerta (6m)</p>
+                <p className="text-xs text-muted-foreground">alert (6m)</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -535,7 +535,7 @@ export default function DemandPlanning() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-yellow-500">{overallStats.totalAttention}</p>
-                <p className="text-xs text-muted-foreground">atenção (9m)</p>
+                <p className="text-xs text-muted-foreground">attention (9m)</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -563,9 +563,9 @@ export default function DemandPlanning() {
           <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
             <Building2 className="h-12 w-12 text-muted-foreground" />
             <div className="text-center">
-              <p className="font-medium">Nenhum fornecedor com produtos</p>
+              <p className="font-medium">No suppliers with products</p>
               <p className="text-sm text-muted-foreground">
-                Cadastre produtos e associe a fornecedores para visualizar o planejamento
+                Register products and associate them with suppliers to view planning
               </p>
             </div>
           </CardContent>
