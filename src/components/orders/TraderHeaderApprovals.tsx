@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { format, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CheckCircle, Calendar, DollarSign, Package, Send, AlertTriangle, Edit2, X, Save, Loader2 } from 'lucide-react';
+import { CheckCircle, Calendar, DollarSign, Container, Send, AlertTriangle, Edit2, X, Save, Loader2 } from 'lucide-react';
 
 interface PurchaseOrder {
   id: string;
@@ -30,10 +30,7 @@ interface PurchaseOrder {
 interface TraderHeaderApprovalsProps {
   order: PurchaseOrder;
   totalValue: number;
-  totalQuantity: number;
-  itemsCount: number;
-  itemsWithPriceApproved: number;
-  itemsWithQtyApproved: number;
+  containerInfo: string;
   earliestArrival: string | null;
   onOrderUpdated: () => void;
 }
@@ -58,10 +55,7 @@ function calculateSuggestedEtd(expectedArrival: string): string {
 export function TraderHeaderApprovals({ 
   order, 
   totalValue, 
-  totalQuantity,
-  itemsCount,
-  itemsWithPriceApproved,
-  itemsWithQtyApproved,
+  containerInfo,
   earliestArrival,
   onOrderUpdated 
 }: TraderHeaderApprovalsProps) {
@@ -271,27 +265,21 @@ export function TraderHeaderApprovals({
             )}
           </div>
 
-          {/* Prices Info Badge (no checkbox) */}
+          {/* Total Amount Badge */}
           <div className="flex items-center gap-2 p-2 rounded-lg bg-background border">
             <DollarSign className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm">
-              <span className="font-medium">Preços:</span>{' '}
+              <span className="font-medium">Total Amount:</span>{' '}
               {formatCurrency(totalValue)}
-              <span className="text-xs text-muted-foreground ml-1">
-                ({itemsWithPriceApproved}/{itemsCount})
-              </span>
             </span>
           </div>
 
-          {/* Quantities Info Badge (no checkbox) */}
+          {/* Containers Badge */}
           <div className="flex items-center gap-2 p-2 rounded-lg bg-background border">
-            <Package className="h-4 w-4 text-muted-foreground" />
+            <Container className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm">
-              <span className="font-medium">Qtd:</span>{' '}
-              {totalQuantity.toLocaleString('pt-BR')} pcs
-              <span className="text-xs text-muted-foreground ml-1">
-                ({itemsWithQtyApproved}/{itemsCount})
-              </span>
+              <span className="font-medium">Containers:</span>{' '}
+              {containerInfo}
             </span>
           </div>
 

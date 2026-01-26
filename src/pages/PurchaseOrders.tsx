@@ -12,15 +12,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Plus, Search, FileText, Package, DollarSign, Calendar, Truck, Clock, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
+import { Plus, Search, FileText, Container, DollarSign, Calendar, Truck, Clock, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
 import { CreatePurchaseOrderModal } from '@/components/planning/CreatePurchaseOrderModal';
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole } from '@/hooks/useUserRole';
+import { extractContainerInfo } from '@/lib/utils';
 
 interface PurchaseOrder {
   id: string;
   order_number: string;
   order_date: string;
+  etd: string | null;
   status: string;
   notes: string | null;
   total_value_usd: number | null;
@@ -40,7 +42,7 @@ const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secon
   pending_buyer_approval: { label: 'Mudanças Pendentes', variant: 'outline', icon: AlertTriangle },
   confirmed: { label: 'Confirmado', variant: 'default', icon: CheckCircle },
   shipped: { label: 'Embarcado', variant: 'outline', icon: Truck },
-  received: { label: 'Recebido', variant: 'default', icon: Package },
+  received: { label: 'Recebido', variant: 'default', icon: Container },
   cancelled: { label: 'Cancelado', variant: 'destructive' },
 };
 
@@ -105,6 +107,7 @@ export default function PurchaseOrders() {
           id,
           order_number,
           order_date,
+          etd,
           status,
           notes,
           total_value_usd,
@@ -267,9 +270,9 @@ export default function PurchaseOrders() {
               <TableRow>
                 <TableHead>Número</TableHead>
                 <TableHead>Fornecedor</TableHead>
-                <TableHead>Data</TableHead>
-                <TableHead>Itens</TableHead>
-                <TableHead>Valor FOB</TableHead>
+                <TableHead>ETD</TableHead>
+                <TableHead>Containers</TableHead>
+                <TableHead>Total Amount</TableHead>
                 <TableHead>Status</TableHead>
                 {isAdmin && <TableHead className="w-[50px]"></TableHead>}
               </TableRow>
@@ -294,13 +297,13 @@ export default function PurchaseOrders() {
                     <TableCell className="font-medium">{order.order_number}</TableCell>
                     <TableCell>{order.suppliers.company_name}</TableCell>
                     <TableCell>
-                      {format(new Date(order.order_date), 'dd/MM/yyyy', { locale: ptBR })}
+                      {order.etd 
+                        ? format(new Date(order.etd + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR })
+                        : '-'
+                      }
                     </TableCell>
                     <TableCell>
-                      {order.purchase_order_items.length} itens
-                      <span className="text-muted-foreground ml-1">
-                        ({order.purchase_order_items.reduce((sum, i) => sum + i.quantity, 0)} un)
-                      </span>
+                      {extractContainerInfo(order.notes)}
                     </TableCell>
                     <TableCell>
                       {order.total_value_usd 
