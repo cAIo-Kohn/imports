@@ -9,7 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { Edit2, Save, X, Loader2 } from 'lucide-react';
+import { Edit2, Save, X, Loader2, CheckCheck } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface Product {
   id: string;
@@ -181,6 +182,45 @@ export function EditableOrderItemsTable({
       toast({ title: 'Erro ao aprovar item', description: error.message, variant: 'destructive' });
     },
   });
+
+  // Batch approval mutation
+  const batchApproveMutation = useMutation({
+    mutationFn: async ({ field }: { field: 'price' | 'quantity' }) => {
+      const columnName = field === 'price' ? 'trader_price_approved' : 'trader_quantity_approved';
+      const itemIds = items.map(item => item.id);
+      
+      const { error } = await supabase
+        .from('purchase_order_items')
+        .update({ [columnName]: true })
+        .in('id', itemIds);
+
+      if (error) throw error;
+      return { field, itemIds };
+    },
+    onSuccess: ({ field, itemIds }) => {
+      setItemApprovals(prev => {
+        const updated = { ...prev };
+        itemIds.forEach(id => {
+          updated[id] = {
+            ...updated[id],
+            [field === 'price' ? 'priceApproved' : 'qtyApproved']: true,
+          };
+        });
+        return updated;
+      });
+      toast({ 
+        title: field === 'price' ? 'Todos os preços aprovados!' : 'Todas as quantidades aprovadas!'
+      });
+      queryClient.invalidateQueries({ queryKey: ['purchase-order', orderId] });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Erro ao aprovar em lote', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  // Check if all items are already approved
+  const allPricesApproved = items.length > 0 && items.every(item => itemApprovals[item.id]?.priceApproved);
+  const allQtysApproved = items.length > 0 && items.every(item => itemApprovals[item.id]?.qtyApproved);
 
   const saveItemMutation = useMutation({
     mutationFn: async ({ 
@@ -421,9 +461,59 @@ export function EditableOrderItemsTable({
               <TableHead className="text-right w-16">PCS/CTN</TableHead>
               <TableHead className="text-right w-16">CTN</TableHead>
               <TableHead className="text-right w-24">Q'TY</TableHead>
-              <TableHead className="text-center w-10">☐</TableHead>
+              <TableHead className="text-center w-14">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant={allQtysApproved ? "ghost" : "outline"}
+                        className="h-6 px-1.5 text-xs"
+                        onClick={() => !allQtysApproved && batchApproveMutation.mutate({ field: 'quantity' })}
+                        disabled={allQtysApproved || batchApproveMutation.isPending}
+                      >
+                        {batchApproveMutation.isPending && batchApproveMutation.variables?.field === 'quantity' ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : allQtysApproved ? (
+                          <CheckCheck className="h-3 w-3 text-green-600" />
+                        ) : (
+                          <CheckCheck className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {allQtysApproved ? 'Todas qtds aprovadas' : 'Aprovar todas quantidades'}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </TableHead>
               <TableHead className="text-right w-28">FOB USD</TableHead>
-              <TableHead className="text-center w-10">☐</TableHead>
+              <TableHead className="text-center w-14">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant={allPricesApproved ? "ghost" : "outline"}
+                        className="h-6 px-1.5 text-xs"
+                        onClick={() => !allPricesApproved && batchApproveMutation.mutate({ field: 'price' })}
+                        disabled={allPricesApproved || batchApproveMutation.isPending}
+                      >
+                        {batchApproveMutation.isPending && batchApproveMutation.variables?.field === 'price' ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : allPricesApproved ? (
+                          <CheckCheck className="h-3 w-3 text-green-600" />
+                        ) : (
+                          <CheckCheck className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {allPricesApproved ? 'Todos preços aprovados' : 'Aprovar todos preços'}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </TableHead>
               <TableHead className="text-right">AMOUNT</TableHead>
               <TableHead className="text-right">CBM</TableHead>
               <TableHead className="w-24">AÇÃO</TableHead>
