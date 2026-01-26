@@ -23,6 +23,7 @@ import { HighlightedOrderItemsTable } from '@/components/orders/HighlightedOrder
 import { OrderChangeSummary } from '@/components/orders/OrderChangeSummary';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useOrderChanges } from '@/hooks/useOrderChanges';
+import { extractContainerInfo } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,10 +56,6 @@ export default function PurchaseOrderDetails() {
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
   const [isEditingShipping, setIsEditingShipping] = useState(false);
   const [showImages, setShowImages] = useState(true);
-  
-  // Item approval counts
-  const [itemsWithPriceApproved, setItemsWithPriceApproved] = useState(0);
-  const [itemsWithQtyApproved, setItemsWithQtyApproved] = useState(0);
   
   // Shipping form state
   const [shippingForm, setShippingForm] = useState({
@@ -303,10 +300,7 @@ export default function PurchaseOrderDetails() {
           <TraderHeaderApprovals 
             order={order as any} 
             totalValue={totalValue}
-            totalQuantity={totalQuantity}
-            itemsCount={items.length}
-            itemsWithPriceApproved={itemsWithPriceApproved}
-            itemsWithQtyApproved={itemsWithQtyApproved}
+            containerInfo={extractContainerInfo(order.notes)}
             earliestArrival={earliestArrival}
             onOrderUpdated={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
           />
@@ -359,10 +353,6 @@ export default function PurchaseOrderDetails() {
               items={items}
               showImages={showImages}
               onTotalsChanged={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
-              onApprovalsChanged={(priceCount, qtyCount) => {
-                setItemsWithPriceApproved(priceCount);
-                setItemsWithQtyApproved(qtyCount);
-              }}
             />
           ) : showHighlightedTable ? (
             <HighlightedOrderItemsTable
