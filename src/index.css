@@ -105,3 +105,28 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+@layer utilities {
+  /* Fallback for line-clamp utilities (so we don't depend on an extra Tailwind plugin) */
+  .line-clamp-1,
+  .line-clamp-2,
+  .line-clamp-3,
+  .line-clamp-4 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+  }
+
+  .line-clamp-1 {
+    -webkit-line-clamp: 1;
+  }
+  .line-clamp-2 {
+    -webkit-line-clamp: 2;
+  }
+  .line-clamp-3 {
+    -webkit-line-clamp: 3;
+  }
+  .line-clamp-4 {
+    -webkit-line-clamp: 4;
+  }
+}
