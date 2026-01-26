@@ -68,13 +68,6 @@ export function EditUserRoleModal({ open, onOpenChange, user, onSuccess }: EditU
     }
   }, [user]);
 
-  const handleRoleToggle = (role: AppRole) => {
-    setSelectedRoles((prev) =>
-      prev.includes(role)
-        ? prev.filter((r) => r !== role)
-        : [...prev, role]
-    );
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,16 +141,23 @@ export function EditUserRoleModal({ open, onOpenChange, user, onSuccess }: EditU
             <div className="space-y-2">
               {roleOptions.map((option) => {
                 const Icon = option.icon;
+                const isChecked = selectedRoles.includes(option.value);
                 return (
-                  <div
+                  <label
                     key={option.value}
+                    htmlFor={`edit-${option.value}`}
                     className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer"
-                    onClick={() => handleRoleToggle(option.value)}
                   >
                     <Checkbox
                       id={`edit-${option.value}`}
-                      checked={selectedRoles.includes(option.value)}
-                      onCheckedChange={() => handleRoleToggle(option.value)}
+                      checked={isChecked}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedRoles((prev) => [...prev, option.value]);
+                        } else {
+                          setSelectedRoles((prev) => prev.filter((r) => r !== option.value));
+                        }
+                      }}
                     />
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -166,7 +166,7 @@ export function EditUserRoleModal({ open, onOpenChange, user, onSuccess }: EditU
                       </div>
                       <p className="text-sm text-muted-foreground">{option.description}</p>
                     </div>
-                  </div>
+                  </label>
                 );
               })}
             </div>
