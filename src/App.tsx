@@ -19,6 +19,7 @@ import SupplierPlanning from "./pages/SupplierPlanning";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import PurchaseOrderDetails from "./pages/PurchaseOrderDetails";
 import TraderDashboard from "./pages/TraderDashboard";
+import Users from "./pages/Users";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -75,6 +76,7 @@ const AppRoutes = () => (
     <Route path="/purchase-orders" element={<ProtectedRoute><PurchaseOrders /></ProtectedRoute>} />
     <Route path="/purchase-orders/:id" element={<ProtectedRoute><PurchaseOrderDetails /></ProtectedRoute>} />
     <Route path="/trader" element={<ProtectedRoute><TraderDashboard /></ProtectedRoute>} />
+    <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );
