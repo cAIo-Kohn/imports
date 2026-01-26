@@ -671,6 +671,7 @@ export default function SupplierPlanning() {
         productProjections={productProjections}
         selectedSupplier={supplierId || ''}
         supplierName={supplier.company_name}
+        supplierCountry={supplier.country}
         selectedUnit={selectedUnit}
         onClear={clearPendingArrivals}
         onClearMonth={clearPendingArrivalsForMonth}
