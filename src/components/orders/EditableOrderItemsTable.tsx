@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrderChanges } from '@/hooks/useOrderChanges';
@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { Edit2, Save, X, Loader2 } from 'lucide-react';
 
@@ -43,6 +44,8 @@ interface OrderItem {
   expected_arrival: string | null;
   products: Product | null;
   units: Unit | null;
+  trader_price_approved?: boolean;
+  trader_quantity_approved?: boolean;
 }
 
 interface EditableOrderItemsTableProps {
@@ -50,6 +53,7 @@ interface EditableOrderItemsTableProps {
   items: OrderItem[];
   showImages?: boolean;
   onTotalsChanged: () => void;
+  onApprovalsChanged?: (priceCount: number, qtyCount: number) => void;
 }
 
 interface EditingState {
@@ -60,16 +64,46 @@ interface EditingState {
   };
 }
 
+interface ItemApprovals {
+  [itemId: string]: {
+    priceApproved: boolean;
+    qtyApproved: boolean;
+  };
+}
+
 export function EditableOrderItemsTable({ 
   orderId, 
   items, 
   showImages = true,
-  onTotalsChanged 
+  onTotalsChanged,
+  onApprovalsChanged 
 }: EditableOrderItemsTableProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { logChange } = useOrderChanges(orderId);
   const [editingItems, setEditingItems] = useState<EditingState>({});
+  const [itemApprovals, setItemApprovals] = useState<ItemApprovals>({});
+
+  // Initialize approvals from items
+  useEffect(() => {
+    const approvals: ItemApprovals = {};
+    items.forEach(item => {
+      approvals[item.id] = {
+        priceApproved: item.trader_price_approved || false,
+        qtyApproved: item.trader_quantity_approved || false,
+      };
+    });
+    setItemApprovals(approvals);
+  }, [items]);
+
+  // Notify parent when approvals change
+  useEffect(() => {
+    if (onApprovalsChanged) {
+      const priceCount = Object.values(itemApprovals).filter(a => a.priceApproved).length;
+      const qtyCount = Object.values(itemApprovals).filter(a => a.qtyApproved).length;
+      onApprovalsChanged(priceCount, qtyCount);
+    }
+  }, [itemApprovals, onApprovalsChanged]);
 
   const isEditing = (itemId: string) => itemId in editingItems;
 
@@ -101,6 +135,34 @@ export function EditableOrderItemsTable({
       }
     }));
   };
+
+  // Mutation for item approval checkboxes
+  const approveItemMutation = useMutation({
+    mutationFn: async ({ itemId, field, value }: { itemId: string; field: 'price' | 'quantity'; value: boolean }) => {
+      const columnName = field === 'price' ? 'trader_price_approved' : 'trader_quantity_approved';
+      
+      const { error } = await supabase
+        .from('purchase_order_items')
+        .update({ [columnName]: value })
+        .eq('id', itemId);
+
+      if (error) throw error;
+      return { itemId, field, value };
+    },
+    onSuccess: ({ itemId, field, value }) => {
+      setItemApprovals(prev => ({
+        ...prev,
+        [itemId]: {
+          ...prev[itemId],
+          [field === 'price' ? 'priceApproved' : 'qtyApproved']: value,
+        }
+      }));
+      queryClient.invalidateQueries({ queryKey: ['purchase-order', orderId] });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Erro ao aprovar item', description: error.message, variant: 'destructive' });
+    },
+  });
 
   const saveItemMutation = useMutation({
     mutationFn: async ({ 
@@ -247,7 +309,9 @@ export function EditableOrderItemsTable({
               <TableHead className="text-right">PCS/CTN</TableHead>
               <TableHead className="text-right">CTN</TableHead>
               <TableHead className="text-right w-28">Q'TY</TableHead>
+              <TableHead className="text-center w-10">☐</TableHead>
               <TableHead className="text-right w-28">FOB USD</TableHead>
+              <TableHead className="text-center w-10">☐</TableHead>
               <TableHead className="text-right">AMOUNT</TableHead>
               <TableHead className="text-right">CBM</TableHead>
               <TableHead className="w-24">AÇÃO</TableHead>
@@ -313,6 +377,21 @@ export function EditableOrderItemsTable({
                       <span className="font-medium">{qty.toLocaleString()}</span>
                     )}
                   </TableCell>
+
+                  {/* Quantity Approval Checkbox */}
+                  <TableCell className="text-center">
+                    <Checkbox
+                      checked={itemApprovals[item.id]?.qtyApproved || false}
+                      onCheckedChange={(checked) => 
+                        approveItemMutation.mutate({ 
+                          itemId: item.id, 
+                          field: 'quantity', 
+                          value: checked === true 
+                        })
+                      }
+                      disabled={approveItemMutation.isPending}
+                    />
+                  </TableCell>
                   
                   {/* Editable Price */}
                   <TableCell className="text-right">
@@ -328,6 +407,21 @@ export function EditableOrderItemsTable({
                     ) : (
                       <span>${price.toFixed(4)}</span>
                     )}
+                  </TableCell>
+
+                  {/* Price Approval Checkbox */}
+                  <TableCell className="text-center">
+                    <Checkbox
+                      checked={itemApprovals[item.id]?.priceApproved || false}
+                      onCheckedChange={(checked) => 
+                        approveItemMutation.mutate({ 
+                          itemId: item.id, 
+                          field: 'price', 
+                          value: checked === true 
+                        })
+                      }
+                      disabled={approveItemMutation.isPending}
+                    />
                   </TableCell>
                   
                   <TableCell className="text-right font-medium">${formatCurrency(amount)}</TableCell>
