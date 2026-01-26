@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -139,6 +139,49 @@ export default function SupplierPlanning() {
 
   // Fetch forecasts - filtered by supplier's products to avoid 1000 record limit
   const productIds = useMemo(() => products.map(p => p.id), [products]);
+
+  // Fetch product_units to determine which units are linked to products
+  const { data: productUnitsData = [] } = useQuery({
+    queryKey: ['product-units-for-supplier', productIds],
+    queryFn: async () => {
+      if (productIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('product_units')
+        .select('product_id, unit_id')
+        .in('product_id', productIds);
+      if (error) throw error;
+      return data;
+    },
+    enabled: productIds.length > 0,
+  });
+
+  // Determine available units for this supplier's products
+  const { availableUnits, autoSelectedUnit } = useMemo(() => {
+    if (!productUnitsData.length || units.length === 0) return { availableUnits: [], autoSelectedUnit: null };
+    
+    // Get unique unit IDs from product_units
+    const unitIds = new Set<string>();
+    productUnitsData.forEach(pu => {
+      if (pu.unit_id) unitIds.add(pu.unit_id);
+    });
+    
+    // Map to unit objects
+    const unitsForProducts = units.filter(u => unitIds.has(u.id));
+    
+    // If all products share the same single unit, auto-select it
+    if (unitsForProducts.length === 1) {
+      return { availableUnits: unitsForProducts, autoSelectedUnit: unitsForProducts[0].id };
+    }
+    
+    return { availableUnits: unitsForProducts, autoSelectedUnit: null };
+  }, [productUnitsData, units]);
+
+  // Auto-set unit when supplier has products all in one unit
+  useEffect(() => {
+    if (autoSelectedUnit && selectedUnit === 'all') {
+      setSelectedUnit(autoSelectedUnit);
+    }
+  }, [autoSelectedUnit, selectedUnit]);
   
   const { data: forecasts = [], refetch: refetchForecasts } = useQuery({
     queryKey: ['sales-forecasts', selectedUnit, supplierId, productIds],
@@ -676,10 +719,18 @@ export default function SupplierPlanning() {
             <SelectValue placeholder="Unidade" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todas as Unidades</SelectItem>
-            {units.map(unit => (
-              <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>
-            ))}
+            {availableUnits.length > 1 && (
+              <SelectItem value="all">Todas as Unidades</SelectItem>
+            )}
+            {availableUnits.length > 0 ? (
+              availableUnits.map(unit => (
+                <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>
+              ))
+            ) : (
+              units.map(unit => (
+                <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
         <Select value={monthsAhead.toString()} onValueChange={(v) => setMonthsAhead(Number(v))}>

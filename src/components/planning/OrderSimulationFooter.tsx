@@ -663,19 +663,15 @@ export function OrderSimulationFooter({
                     key={draft.monthKey}
                     value={draft.monthKey}
                     className={cn(
-                      "data-[state=active]:bg-primary data-[state=active]:text-primary-foreground",
+                      "relative bg-background data-[state=active]:bg-primary data-[state=active]:text-primary-foreground",
                       "px-3 py-1.5 text-sm rounded-t-md border-b-2 border-transparent",
-                      "data-[state=active]:border-primary",
+                      "data-[state=active]:border-primary data-[state=active]:z-10",
                       draft.hasCriticalETD && "text-destructive data-[state=active]:bg-destructive"
                     )}
                   >
-                    <Calendar className="h-3 w-3 mr-1.5" />
                     {draft.monthLabel}
-                    <Badge variant="outline" className="ml-1.5 px-1.5 py-0 text-xs">
-                      {draft.items.length}
-                    </Badge>
                     {draft.hasCriticalETD && (
-                      <AlertTriangle className="h-3 w-3 ml-1 text-destructive" />
+                      <AlertTriangle className="h-3 w-3 ml-1.5 text-destructive" />
                     )}
                   </TabsTrigger>
                 ))}
