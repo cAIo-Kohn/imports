@@ -147,11 +147,54 @@ export function TraderHeaderApprovals({
           isCritical: true,
         });
       }
+
+      // Check if trader accepted buyer's suggestion
+      if (buyerEtdSuggestion && editedEtd === buyerEtdSuggestion) {
+        // Mark all ETD changes as approved
+        const etdChanges = changeTimeline['order-etd'] || [];
+        for (const change of etdChanges) {
+          if (change.requires_approval && !change.approved_by) {
+            await supabase
+              .from('purchase_order_change_history')
+              .update({
+                approved_by: user?.id,
+                approved_at: new Date().toISOString(),
+                requires_approval: false,
+              })
+              .eq('id', change.id);
+          }
+        }
+
+        // Check if all critical fields are resolved
+        const remainingPending = pendingApprovalChanges.filter(
+          c => c.field_name !== 'etd'
+        );
+        
+        if (remainingPending.length === 0) {
+          // All resolved! Auto-confirm order
+          await supabase
+            .from('purchase_orders')
+            .update({
+              status: 'confirmed',
+              requires_buyer_approval: false,
+            })
+            .eq('id', order.id);
+        }
+      }
     },
     onSuccess: () => {
-      toast({ title: 'ETD atualizado!' });
+      const accepted = buyerEtdSuggestion && editedEtd === buyerEtdSuggestion;
+      const wasAutoConfirmed = accepted && pendingApprovalChanges.filter(c => c.field_name !== 'etd').length === 0;
+      toast({ 
+        title: wasAutoConfirmed 
+          ? 'Sugestão do Buyer aceita! Pedido confirmado automaticamente.'
+          : accepted 
+            ? 'Sugestão do Buyer aceita! ETD atualizado.' 
+            : 'ETD atualizado!' 
+      });
       setIsEditingEtd(false);
       onOrderUpdated();
+      queryClient.invalidateQueries({ queryKey: ['order-changes', order.id] });
     },
     onError: (error: Error) => {
       toast({ title: 'Erro ao atualizar ETD', description: error.message, variant: 'destructive' });

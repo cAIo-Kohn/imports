@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { useOrderChanges, OrderChange } from '@/hooks/useOrderChanges';
+import { useOrderChanges, ConsolidatedChange } from '@/hooks/useOrderChanges';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -34,10 +34,8 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { 
-    criticalChanges, 
-    pendingApprovalChanges, 
+    consolidatedCriticalChanges,
     informationalChanges,
-    changeTimeline,
     isLoading,
     approveChange,
     logCounterProposal,
@@ -47,9 +45,40 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
   const [counterProposalFor, setCounterProposalFor] = useState<string | null>(null);
   const [hasCounterProposals, setHasCounterProposals] = useState(false);
 
-  const approveMutation = useMutation({
-    mutationFn: async (changeId: string) => {
-      await approveChange(changeId);
+  // Auto-confirm order if all consolidated changes are agreed or approved
+  useEffect(() => {
+    const allResolved = consolidatedCriticalChanges.length > 0 && 
+      consolidatedCriticalChanges.every(c => c.isAgreed || !c.needsApproval);
+    
+    if (allResolved && consolidatedCriticalChanges.some(c => c.isAgreed)) {
+      // Auto-confirm the order
+      const autoConfirm = async () => {
+        const { error } = await supabase
+          .from('purchase_orders')
+          .update({
+            status: 'confirmed',
+            requires_buyer_approval: false,
+          })
+          .eq('id', orderId);
+        
+        if (!error) {
+          toast({ title: 'Pedido confirmado automaticamente - acordo alcançado!' });
+          queryClient.invalidateQueries({ queryKey: ['purchase-order', orderId] });
+          onChangesApproved?.();
+        }
+      };
+      autoConfirm();
+    }
+  }, [consolidatedCriticalChanges, orderId, queryClient, toast, onChangesApproved]);
+
+  const approveConsolidatedMutation = useMutation({
+    mutationFn: async (consolidated: ConsolidatedChange) => {
+      // Approve all pending changes in the timeline
+      for (const change of consolidated.timeline) {
+        if (change.requires_approval && !change.approved_by) {
+          await approveChange(change.id);
+        }
+      }
     },
     onSuccess: () => {
       toast({ title: 'Alteração aprovada!' });
@@ -62,8 +91,13 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
 
   const approveAllMutation = useMutation({
     mutationFn: async () => {
-      for (const change of pendingApprovalChanges) {
-        await approveChange(change.id);
+      // Approve all pending changes from all consolidated entries
+      for (const consolidated of consolidatedCriticalChanges) {
+        for (const change of consolidated.timeline) {
+          if (change.requires_approval && !change.approved_by) {
+            await approveChange(change.id);
+          }
+        }
       }
       
       // Update order status to confirmed
@@ -113,12 +147,12 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
     },
   });
 
-  const handleCounterProposal = async (change: OrderChange, suggestedValue: string, justification: string) => {
+  const handleCounterProposal = async (consolidated: ConsolidatedChange, suggestedValue: string, justification: string) => {
     await logCounterProposal({
       orderId,
-      itemId: change.purchase_order_item_id || undefined,
-      fieldName: change.field_name,
-      traderValue: change.new_value,
+      itemId: consolidated.itemId || undefined,
+      fieldName: consolidated.fieldName,
+      traderValue: consolidated.currentValue,
       suggestedValue,
       justification,
     });
@@ -131,7 +165,7 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
     return null;
   }
 
-  const hasChanges = criticalChanges.length > 0 || informationalChanges.length > 0;
+  const hasChanges = consolidatedCriticalChanges.length > 0 || informationalChanges.length > 0;
 
   if (!hasChanges) {
     return null;
@@ -162,42 +196,38 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
     return value;
   };
 
-  // Get timeline key for a change
-  const getTimelineKey = (change: OrderChange) => {
-    return `${change.purchase_order_item_id || 'order'}-${change.field_name}`;
-  };
+  // Count pending approvals by consolidated field (not individual changes)
+  const pendingConsolidatedCount = consolidatedCriticalChanges.filter(c => c.needsApproval).length;
 
-  const renderChange = (change: OrderChange, showApproval = false) => {
-    const timelineKey = getTimelineKey(change);
-    const timeline = changeTimeline[timelineKey] || [];
-    const hasNegotiationHistory = timeline.length > 1;
-
+  const renderConsolidatedChange = (consolidated: ConsolidatedChange) => {
     return (
       <div 
-        key={change.id} 
+        key={consolidated.key} 
         className="py-3 px-4 rounded-lg bg-muted/50 space-y-2"
       >
         <div className="flex items-center justify-between">
           <div className="flex-1">
-            <span className="font-medium text-sm">{formatFieldLabel(change.field_name)}</span>
+            <span className="font-medium text-sm">{formatFieldLabel(consolidated.fieldName)}</span>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="line-through">{formatValue(change.field_name, change.old_value)}</span>
+              <span className="line-through">{formatValue(consolidated.fieldName, consolidated.originalValue)}</span>
               <ArrowRight className="h-3 w-3" />
-              <span className="text-foreground font-medium">{formatValue(change.field_name, change.new_value)}</span>
+              <span className="text-foreground font-medium">{formatValue(consolidated.fieldName, consolidated.currentValue)}</span>
             </div>
-            <span className="text-xs text-muted-foreground">
-              {format(new Date(change.changed_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-            </span>
           </div>
           
-          {showApproval && change.requires_approval && !change.approved_by && (
+          {consolidated.isAgreed ? (
+            <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50">
+              <CheckCircle className="h-3 w-3 mr-1" />
+              Acordo
+            </Badge>
+          ) : consolidated.needsApproval ? (
             <div className="flex gap-2">
               <Button 
                 size="sm" 
                 variant="outline"
                 className="h-8"
-                onClick={() => approveMutation.mutate(change.id)}
-                disabled={approveMutation.isPending}
+                onClick={() => approveConsolidatedMutation.mutate(consolidated)}
+                disabled={approveConsolidatedMutation.isPending}
               >
                 <CheckCircle className="h-4 w-4 mr-1" />
                 Aprovar
@@ -206,15 +236,13 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
                 size="sm" 
                 variant="ghost"
                 className="h-8"
-                onClick={() => setCounterProposalFor(change.id)}
+                onClick={() => setCounterProposalFor(consolidated.key)}
               >
                 <MessageSquare className="h-4 w-4 mr-1" />
                 Sugerir
               </Button>
             </div>
-          )}
-          
-          {change.approved_by && (
+          ) : (
             <Badge variant="outline" className="text-green-600">
               <CheckCircle className="h-3 w-3 mr-1" />
               Aprovado
@@ -222,17 +250,21 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
           )}
         </div>
 
-        {/* Show negotiation timeline if there are multiple changes */}
-        {hasNegotiationHistory && (
-          <NegotiationTimeline changes={timeline} fieldName={change.field_name} />
+        {/* Always show negotiation timeline inside the card */}
+        {consolidated.timeline.length > 0 && (
+          <NegotiationTimeline 
+            changes={consolidated.timeline} 
+            fieldName={consolidated.fieldName}
+            isAgreed={consolidated.isAgreed}
+          />
         )}
 
         {/* Counter-proposal form */}
-        {counterProposalFor === change.id && (
+        {counterProposalFor === consolidated.key && (
           <CounterProposalForm
-            fieldName={change.field_name}
-            currentValue={change.new_value}
-            onSubmit={(value, justification) => handleCounterProposal(change, value, justification)}
+            fieldName={consolidated.fieldName}
+            currentValue={consolidated.currentValue}
+            onSubmit={(value, justification) => handleCounterProposal(consolidated, value, justification)}
             onCancel={() => setCounterProposalFor(null)}
             isSubmitting={isLoggingCounterProposal}
           />
@@ -241,22 +273,20 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
     );
   };
 
-  const showReturnButton = hasCounterProposals || pendingApprovalChanges.some(c => 
-    changeTimeline[getTimelineKey(c)]?.some(tc => tc.change_type === 'buyer_counter_proposal')
-  );
+  const showReturnButton = hasCounterProposals || consolidatedCriticalChanges.some(c => c.hasCounterProposal);
 
   return (
-    <Card className={pendingApprovalChanges.length > 0 ? "border-yellow-500/50" : ""}>
+    <Card className={pendingConsolidatedCount > 0 ? "border-yellow-500/50" : ""}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <History className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-lg">Alterações do Trader</CardTitle>
           </div>
-          {pendingApprovalChanges.length > 0 && (
+          {pendingConsolidatedCount > 0 && (
             <Badge variant="outline" className="border-yellow-500 text-yellow-700">
               <AlertTriangle className="h-3 w-3 mr-1" />
-              {pendingApprovalChanges.length} pendente(s)
+              {pendingConsolidatedCount} campo(s) pendente(s)
             </Badge>
           )}
         </div>
@@ -265,8 +295,8 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Critical Changes */}
-        {criticalChanges.length > 0 && (
+        {/* Consolidated Critical Changes */}
+        {consolidatedCriticalChanges.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium">
               <AlertTriangle className="h-4 w-4 text-yellow-600" />
@@ -274,7 +304,7 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
               <span className="text-muted-foreground font-normal">(requerem aprovação)</span>
             </div>
             <div className="space-y-2">
-              {criticalChanges.map(change => renderChange(change, true))}
+              {consolidatedCriticalChanges.map(consolidated => renderConsolidatedChange(consolidated))}
             </div>
           </div>
         )}
@@ -287,13 +317,25 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
               <span>Alterações Informativas</span>
             </div>
             <div className="space-y-2">
-              {informationalChanges.map(change => renderChange(change, false))}
+              {informationalChanges.map(change => (
+                <div 
+                  key={change.id} 
+                  className="py-2 px-3 rounded-lg bg-muted/30 text-sm"
+                >
+                  <span className="font-medium">{formatFieldLabel(change.field_name)}</span>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <span className="line-through">{formatValue(change.field_name, change.old_value)}</span>
+                    <ArrowRight className="h-3 w-3" />
+                    <span className="text-foreground">{formatValue(change.field_name, change.new_value)}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
         {/* Action Buttons */}
-        {pendingApprovalChanges.length > 0 && (
+        {pendingConsolidatedCount > 0 && (
           <div className="pt-3 border-t space-y-2">
             {showReturnButton ? (
               <div className="flex gap-2">

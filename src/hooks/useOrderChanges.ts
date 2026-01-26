@@ -19,6 +19,19 @@ export interface OrderChange {
   approved_at: string | null;
 }
 
+export interface ConsolidatedChange {
+  key: string;                    // "order-etd" or "item-uuid-unit_price_usd"
+  fieldName: string;
+  itemId: string | null;
+  originalValue: string | null;   // First value before any change
+  currentValue: string | null;    // Last value
+  timeline: OrderChange[];        // All changes for this field
+  hasCounterProposal: boolean;
+  counterProposalValue: string | null;
+  isAgreed: boolean;              // Trader accepted buyer's suggestion?
+  needsApproval: boolean;         // Still needs approval?
+}
+
 interface LogChangeParams {
   orderId: string;
   itemId?: string;
@@ -149,6 +162,58 @@ export function useOrderChanges(orderId: string) {
     return grouped;
   }, [changes]);
 
+  // Consolidated critical changes - 1 card per field/item
+  const consolidatedCriticalChanges = useMemo(() => {
+    const result: ConsolidatedChange[] = [];
+    
+    Object.entries(changeTimeline).forEach(([key, timeline]) => {
+      // Filter only critical changes
+      const criticalInTimeline = timeline.filter(c => c.is_critical);
+      if (criticalInTimeline.length === 0) return;
+      
+      const parts = key.split('-');
+      const scope = parts[0];
+      const fieldName = parts.slice(1).join('-'); // Handle field names with dashes
+      const itemId = scope === 'order' ? null : scope;
+      
+      // Original value (first old_value in timeline)
+      const originalValue = criticalInTimeline[0].old_value;
+      
+      // Current value (last new_value in timeline)
+      const currentValue = criticalInTimeline[criticalInTimeline.length - 1].new_value;
+      
+      // Check if there's a counter-proposal
+      const counterProposal = criticalInTimeline.find(c => c.change_type === 'buyer_counter_proposal');
+      
+      // Check if trader accepted buyer's suggestion
+      const isAgreed = (() => {
+        if (!counterProposal) return false;
+        const lastChange = criticalInTimeline[criticalInTimeline.length - 1];
+        // Trader accepted if the last change is NOT a counter-proposal and has the same value
+        return lastChange.change_type !== 'buyer_counter_proposal' && 
+               lastChange.new_value === counterProposal.new_value;
+      })();
+      
+      // If agreed, no approval needed; otherwise check for pending approvals
+      const needsApproval = !isAgreed && criticalInTimeline.some(c => c.requires_approval && !c.approved_by);
+      
+      result.push({
+        key,
+        fieldName,
+        itemId,
+        originalValue,
+        currentValue,
+        timeline: criticalInTimeline,
+        hasCounterProposal: !!counterProposal,
+        counterProposalValue: counterProposal?.new_value || null,
+        isAgreed,
+        needsApproval,
+      });
+    });
+    
+    return result;
+  }, [changeTimeline]);
+
   // Agrupar alterações por item (mantém apenas a mais recente por campo)
   const changesByItem = useMemo(() => {
     const grouped: Record<string, Record<string, OrderChange>> = {};
@@ -187,6 +252,7 @@ export function useOrderChanges(orderId: string) {
     counterProposals,
     pendingCounterProposals,
     changeTimeline,
+    consolidatedCriticalChanges,
     changesByItem,
     orderLevelChanges,
     isLoading,
