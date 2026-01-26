@@ -1,368 +1,282 @@
 
-## Plan: Rename Dashboard to "MOR Imports" and Translate UI to English
+## Plan: PV vs Actual Performance Card + Month Rollover System
 
-### Objective
+### Overview
 
-1. Change the app name from "ImportFlow" to "MOR Imports"
-2. Translate all menu names, column headers, labels, and UI text to English
+This plan adds two key features to the Demand Planning system:
+1. **Performance Indicator Card** - A small card next to "ESTOQUE" showing PV vs Actual sales for the last 3 months with completed history
+2. **Month Rollover Button ("Virar")** - A workflow to advance the 12-month projection window, requiring mandatory uploads
 
 ---
 
-### Files to Modify
+### Feature 1: Performance Card (PV vs Actual)
 
-#### 1. `index.html` - App Title and Meta Tags
+#### Visual Design
+
+The performance card will appear in the product header area, next to the stock (ESTOQUE) indicator:
+
 ```
-Lines 7-12: Change title and meta tags from "Lovable App" to "MOR Imports"
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 007727                       ESTOQUE     PERFORMANCE (Last 3M)         │
+│ CHALEIRA ELETRICA INOX...       0        ▲ 105.2% (+520 units)         │
+│                                           Jan: 98% | Feb: 112% | Mar: - │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### 2. `src/components/layout/AppSidebar.tsx` - Sidebar Menu
-| Portuguese | English |
-|------------|---------|
-| ImportFlow | MOR Imports |
-| Gestão de Importados | Import Management |
-| Menu Principal | Main Menu |
-| Dashboard | Dashboard |
-| Produtos | Products |
-| Fornecedores | Suppliers |
-| Unidades | Units |
-| Categorias | Categories |
-| Planejamento | Planning |
-| Pedidos de Compra | Purchase Orders |
-| Trader | Trader |
-| Painel do Trader | Trader Dashboard |
-| Cadastros | Registry |
-| Usuários | Users |
-| Configurações | Settings |
-| Sair | Sign Out |
+**Display Logic:**
+- Shows only months where we have both PV (forecast) AND Actual (history) data
+- Calculates: `Actual / PV * 100` for each month
+- Color coding:
+  - **Green (▲)**: Actual > PV (selling more than expected)
+  - **Red (▼)**: Actual < PV (selling less than expected)  
+  - **Yellow (-)**: Within 5% of target
+- Shows overall average and per-month breakdown on hover
 
-#### 3. `src/pages/Auth.tsx` - Login Page
-| Portuguese | English |
-|------------|---------|
-| ImportFlow | MOR Imports |
-| Gestão de Produtos Importados | Import Products Management |
-| Entrar | Sign In |
-| Cadastrar | Sign Up |
-| Email inválido | Invalid email |
-| Senha deve ter no mínimo 6 caracteres | Password must have at least 6 characters |
-| As senhas não coincidem | Passwords don't match |
-| Nome deve ter no mínimo 2 caracteres | Name must have at least 2 characters |
-| Erro ao entrar | Login error |
-| Erro ao cadastrar | Signup error |
-| Nome completo | Full name |
-| Senha | Password |
-| Confirmar senha | Confirm password |
-| Criar conta | Create account |
+#### Files to Create/Modify
 
-#### 4. `src/pages/Dashboard.tsx` - Main Dashboard
-| Portuguese | English |
-|------------|---------|
-| Dashboard | Dashboard |
-| Visão geral do sistema de gestão de importados | Overview of the import management system |
-| Produtos | Products |
-| cadastrados | registered |
-| Fornecedores | Suppliers |
-| ativos | active |
-| Unidades | Units |
-| configuradas | configured |
-| Categorias | Categories |
-| criadas | created |
-| Próximos Passos | Next Steps |
-| Complete a configuração do sistema | Complete the system setup |
-| Cadastre suas unidades de destino | Register your destination units |
-| Adicione seus fornecedores | Add your suppliers |
-| Crie categorias para organizar produtos | Create categories to organize products |
-| Cadastre seus produtos importados | Register your imported products |
-| Pedidos de Compra | Purchase Orders |
-| Funcionalidade em breve | Coming soon |
+| File | Action | Description |
+|------|--------|-------------|
+| `src/components/planning/PerformanceIndicator.tsx` | Create | New component for the mini performance card |
+| `src/components/planning/ProductProjectionCard.tsx` | Modify | Add the performance indicator in the header |
+| `src/components/planning/ProductProjectionRow.tsx` | Modify | Add performance data to the row layout |
+| `src/pages/SupplierPlanning.tsx` | Modify | Fetch history data for PV months and calculate performance |
 
-#### 5. `src/pages/Products.tsx` - Products List
-| Portuguese | English |
-|------------|---------|
-| Produtos | Products |
-| Gerencie seus produtos importados | Manage your imported products |
-| Importar Produtos | Import Products |
-| Importar Detalhes | Import Details |
-| Dados Cadastrais | Cadastral Data |
-| Novo Produto | New Product |
-| Buscar por código ou descrição... | Search by code or description... |
-| Status | Status |
-| Todos os status | All statuses |
-| Fornecedor | Supplier |
-| Todos os fornecedores | All suppliers |
-| Sem fornecedor | No supplier |
-| Mais filtros | More filters |
-| Filtros Avançados | Advanced Filters |
-| Apenas incompletos | Incomplete only |
-| Marca | Brand |
-| Todas as marcas | All brands |
-| Prefixo NCM | NCM Prefix |
-| Limpar filtros | Clear filters |
-| Código | Code |
-| Descrição | Description |
-| NCM | NCM |
-| Qtd/Caixa | Qty/Box |
-| Peso Bruto | Gross Weight |
-| Unidades | Units |
-| (table column headers and all tooltips) |
+#### Data Requirements
 
-#### 6. `src/pages/Suppliers.tsx` - Suppliers List
-| Portuguese | English |
-|------------|---------|
-| Fornecedores | Suppliers |
-| Gerencie seus fornecedores internacionais | Manage your international suppliers |
-| Importar | Import |
-| Novo Fornecedor | New Supplier |
-| Buscar fornecedores... | Search suppliers... |
-| fornecedor(es) | supplier(s) |
-| Lista de Fornecedores | Supplier List |
-| Nenhum fornecedor cadastrado ainda | No suppliers registered yet |
-| Localização | Location |
-| Contato | Contact |
-| Produtos | Products |
-| Status | Status |
-| Ações | Actions |
-| Ativo | Active |
-| Inativo | Inactive |
-| Excluir fornecedor | Delete supplier |
-| Nenhum fornecedor encontrado | No suppliers found |
-| Comece cadastrando seu primeiro fornecedor | Start by registering your first supplier |
-| Cadastrar Fornecedor | Register Supplier |
+The performance calculation needs:
+1. **Sales Forecast (PV)** for past months (already loaded)
+2. **Sales History (Actual)** for same months (need to extend query)
 
-#### 7. `src/pages/TraderDashboard.tsx` - Trader Dashboard
-| Portuguese | English |
-|------------|---------|
-| Painel do Trader | Trader Dashboard |
-| Pedidos de fornecedores chineses aguardando sua revisão e aprovação | Orders from Chinese suppliers awaiting your review and approval |
-| Pedidos Pendentes | Pending Orders |
-| aguardando revisão | awaiting review |
-| Com ETD Definido | With ETD Set |
-| prontos para aprovar | ready to approve |
-| Sem ETD | Without ETD |
-| precisam de data | need date |
-| Pedidos Aguardando Aprovação | Orders Awaiting Approval |
-| Clique em um pedido para revisar, editar e aprovar ETD, preços e quantidades | Click on an order to review, edit and approve ETD, prices and quantities |
-| Nenhum pedido pendente | No pending orders |
-| Todos os pedidos de fornecedores chineses foram revisados | All orders from Chinese suppliers have been reviewed |
-| Acesso Restrito | Restricted Access |
-| Esta página é exclusiva para traders | This page is for traders only |
-| Voltar ao Início | Back to Home |
-| Pedido | Order |
-| Fornecedor | Supplier |
-| Data Criação | Created Date |
-| Containers | Containers |
-| Não definido | Not set |
-
-#### 8. `src/pages/PurchaseOrders.tsx` - Purchase Orders
-| Portuguese | English |
-|------------|---------|
-| Pedidos de Compra | Purchase Orders |
-| Gerencie seus pedidos de importação | Manage your import orders |
-| Novo Pedido | New Order |
-| Total de Pedidos | Total Orders |
-| pedidos registrados | orders registered |
-| Aguard. Trader | Awaiting Trader |
-| aguardando aprovação | awaiting approval |
-| Mudanças Pendentes | Pending Changes |
-| requerem aprovação | require approval |
-| Valor Total | Total Value |
-| Buscar por número ou fornecedor... | Search by number or supplier... |
-| Todos os Status | All Statuses |
-| Rascunho | Draft |
-| Confirmado | Confirmed |
-| Embarcado | Shipped |
-| Recebido | Received |
-| Cancelado | Cancelled |
-| Lista de Pedidos | Order List |
-| Clique em um pedido para ver os detalhes | Click on an order to see details |
-| Número | Number |
-| ETD | ETD |
-| Nenhum pedido de compra registrado. Crie o primeiro! | No purchase orders registered. Create the first one! |
-| Nenhum pedido encontrado com os filtros aplicados. | No orders found with the applied filters. |
-| Excluir pedido | Delete order |
-| Cancelar | Cancel |
-| Excluir | Delete |
-
-#### 9. `src/pages/DemandPlanning.tsx` - Demand Planning
-| Portuguese | English |
-|------------|---------|
-| Planejamento de Demanda | Demand Planning |
-| Selecione um fornecedor para analisar a projeção de estoque | Select a supplier to analyze stock projection |
-| Dados atualizados | Data updated |
-| Os indicadores foram recalculados... | The indicators were recalculated... |
-| Importar Previsões | Import Forecasts |
-| Importar Estoque | Import Inventory |
-| Importar Histórico | Import History |
-| Importar Chegadas | Import Arrivals |
-| Resumo Geral | General Summary |
-| produtos analisados | products analyzed |
-| Crítico (3m) | Critical (3m) |
-| Alerta (6m) | Alert (6m) |
-| Atenção (9m) | Attention (9m) |
-| OK (12m) | OK (12m) |
-| Saúde do Estoque por Fornecedor | Stock Health by Supplier |
-| Fornecedores ordenados por urgência | Suppliers sorted by urgency |
-| Carregando dados e calculando indicadores... | Loading data and calculating indicators... |
-
-#### 10. `src/pages/Users.tsx` - Users Management
-| Portuguese | English |
-|------------|---------|
-| Usuários | Users |
-| Gerencie os usuários e suas permissões no sistema | Manage users and their system permissions |
-| Novo Usuário | New User |
-| Nome | Name |
-| Email | Email |
-| Roles | Roles |
-| Criado em | Created at |
-| Ações | Actions |
-| Nenhum usuário encontrado | No users found |
-| Admin | Admin |
-| Comprador | Buyer |
-| Trader | Trader |
-| Visualizador | Viewer |
-| Sem roles | No roles |
-| Excluir usuário? | Delete user? |
-| Tem certeza que deseja excluir | Are you sure you want to delete |
-| Esta ação não pode ser desfeita | This action cannot be undone |
-| Cancelar | Cancel |
-| Excluir | Delete |
-| Usuário excluído | User deleted |
-| foi removido do sistema | was removed from the system |
-
-#### 11. `src/components/users/CreateUserModal.tsx` - Create User Modal
-| Portuguese | English |
-|------------|---------|
-| Novo Usuário | New User |
-| Crie um novo usuário e defina suas permissões | Create a new user and set their permissions |
-| Nome completo | Full name |
-| Digite o nome completo | Enter full name |
-| Email | Email |
-| Senha | Password |
-| Mínimo 6 caracteres | Minimum 6 characters |
-| Permissões | Permissions |
-| Administrador | Administrator |
-| Acesso irrestrito a todas as funcionalidades | Unrestricted access to all features |
-| Comprador | Buyer |
-| Produtos, fornecedores, planejamento e pedidos | Products, suppliers, planning and orders |
-| Trader | Trader |
-| Painel do trader e edição de pedidos | Trader panel and order editing |
-| Visualizador | Viewer |
-| Apenas visualização de dados | View-only access to data |
-| Cancelar | Cancel |
-| Criar Usuário | Create User |
-| Criando... | Creating... |
-| Campos obrigatórios | Required fields |
-| Preencha todos os campos obrigatórios | Fill in all required fields |
-| Senha muito curta | Password too short |
-| A senha deve ter pelo menos 6 caracteres | Password must have at least 6 characters |
-| Selecione uma role | Select a role |
-| O usuário precisa ter pelo menos uma role | User needs at least one role |
-| Usuário criado | User created |
-| foi adicionado ao sistema | was added to the system |
-
-#### 12. `src/components/users/EditUserRoleModal.tsx` - Edit Roles Modal
-Similar translations to CreateUserModal
-
-#### 13. `src/pages/Settings.tsx` - Settings Page
-| Portuguese | English |
-|------------|---------|
-| Configurações | Settings |
-| Gerencie as configurações do sistema | Manage system settings |
-| Meu Perfil | My Profile |
-| Informações da sua conta | Your account information |
-| Permissões | Permissions |
-| Níveis de acesso do sistema | System access levels |
-| Acesso total ao sistema | Full system access |
-| Gerencia produtos, fornecedores e pedidos | Manages products, suppliers and orders |
-| Apenas visualização | View only |
-
-#### 14. `src/pages/Units.tsx` - Units Page
-| Portuguese | English |
-|------------|---------|
-| Unidades | Units |
-| Configure as unidades de destino no Brasil | Configure destination units in Brazil |
-| Nova Unidade | New Unit |
-| Buscar unidades... | Search units... |
-| Lista de Unidades | Unit List |
-| Nenhuma unidade cadastrada ainda | No units registered yet |
-| Nenhuma unidade encontrada | No units found |
-| Cadastre as unidades de destino para os produtos | Register destination units for products |
-| Cadastrar Unidade | Register Unit |
-
-#### 15. `src/pages/Categories.tsx` - Categories Page
-| Portuguese | English |
-|------------|---------|
-| Categorias | Categories |
-| Organize seus produtos por categoria | Organize your products by category |
-| Nova Categoria | New Category |
-| Buscar categorias... | Search categories... |
-| Lista de Categorias | Category List |
-| Nenhuma categoria cadastrada ainda | No categories registered yet |
-| Nenhuma categoria encontrada | No categories found |
-| Crie categorias para organizar seus produtos | Create categories to organize your products |
-| Criar Categoria | Create Category |
+**Example Calculation (Jan 2026):**
+- PV: 1,000 units
+- Actual: 1,050 units
+- Performance: 105% (+50 units)
 
 ---
 
-### Additional Files to Check and Update
+### Feature 2: Month Rollover ("Virar")
 
-The following files also contain Portuguese text that will need translation:
+#### Workflow
 
-- `src/pages/SupplierPlanning.tsx` - Stock projection page
-- `src/pages/ProductDetails.tsx` - Product details page
-- `src/pages/SupplierDetails.tsx` - Supplier details page
-- `src/pages/PurchaseOrderDetails.tsx` - Purchase order details page
-- Various modal components in `src/components/`
-- Toast messages throughout the application
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Demand Planning                                    [🔄 Rollover Month]  │
+└─────────────────────────────────────────────────────────────────────────┘
+         │
+         ▼ Click "Rollover Month"
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     ROLLOVER MONTH                                       │
+│                                                                          │
+│ Current Period: Jan/2026 - Dec/2026                                     │
+│ New Period: Feb/2026 - Jan/2027                                         │
+│                                                                          │
+│ ⚠ Required Uploads to Rollover:                                        │
+│                                                                          │
+│ ☑ Inventory      [Upload] → uploaded 01/Feb ✓                          │
+│ ☐ History (Jan)  [Upload] → not uploaded                               │
+│ ☑ Arrivals       [Upload] → uploaded 01/Feb ✓                          │
+│ ☑ Forecast       [Upload] → uploaded 01/Feb ✓                          │
+│                                                                          │
+│ 📅 Date Validation: Today is Feb 3, 2026 ✓                              │
+│                                                                          │
+│ [Cancel]                    [Rollover] (disabled until all uploads done)│
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Rollover Logic
+
+1. **Date Validation**: Current date must be >= 1st day of the new month
+   - If today is Jan 31, cannot rollover to Feb yet
+   - If today is Feb 1+, can rollover
+
+2. **Required Uploads**: All 4 file types must be uploaded with data for the new period:
+   - **Inventory**: snapshot_date >= new month start
+   - **History**: year_month for the month being "closed" (Jan 2026)
+   - **Arrivals**: arrival_date >= new month start
+   - **Forecast**: year_month covering the new 12-month window
+
+3. **Rollover Action**: The system doesn't need to modify data - it just validates that data exists for the new period. The 12-month window calculation uses `startOfMonth(now)` which will naturally shift forward.
+
+4. **System Date Setting** (Optional Enhancement): Store a "current_planning_month" setting to allow manual override for testing.
+
+#### Files to Create
+
+| File | Action | Description |
+|------|--------|-------------|
+| `src/components/planning/RolloverMonthModal.tsx` | Create | Modal with checklist and rollover workflow |
+| `src/pages/DemandPlanning.tsx` | Modify | Add "Rollover Month" button |
 
 ---
 
-### Summary
+### Technical Implementation Details
 
-| Area | Files Affected |
-|------|----------------|
-| App Title/Branding | `index.html`, `AppSidebar.tsx`, `Auth.tsx` |
-| Menu/Navigation | `AppSidebar.tsx` |
-| Pages | All 14 pages in `src/pages/` |
-| Modals | ~15 modal components |
-| Toast Messages | Throughout all files |
+#### 1. PerformanceIndicator Component
+
+```typescript
+interface PerformanceData {
+  monthKey: string;
+  monthLabel: string;
+  forecast: number;
+  actual: number;
+  percentage: number; // actual/forecast * 100
+  delta: number; // actual - forecast
+}
+
+interface PerformanceIndicatorProps {
+  performanceData: PerformanceData[];
+  className?: string;
+}
+```
+
+**Visual States:**
+- No data: "No completed months"
+- 1-3 months: Show individual month percentages
+- Trend icon based on last month vs previous
+
+#### 2. Performance Calculation in SupplierPlanning
+
+Extend the existing projection calculation to include:
+
+```typescript
+// Calculate performance for months where we have both PV and History
+const performanceByProduct = useMemo(() => {
+  // Get current month
+  const currentMonth = startOfMonth(new Date());
+  
+  // Look at past 3 months (if they exist in our data)
+  const performanceMonths: PerformanceData[] = [];
+  
+  for (let i = 1; i <= 3; i++) {
+    const pastMonth = subMonths(currentMonth, i);
+    const monthKey = format(pastMonth, 'yyyy-MM-dd');
+    
+    const forecast = forecastsByProduct.get(productId)?.get(monthKey) || 0;
+    const actual = historyByProduct.get(productId)?.get(monthKey) || 0;
+    
+    // Only include if we have both values
+    if (forecast > 0 && actual > 0) {
+      performanceMonths.push({
+        monthKey,
+        monthLabel: format(pastMonth, 'MMM/yy'),
+        forecast,
+        actual,
+        percentage: Math.round((actual / forecast) * 100),
+        delta: actual - forecast,
+      });
+    }
+  }
+  
+  return performanceMonths;
+}, [forecastsByProduct, historyByProduct]);
+```
+
+#### 3. RolloverMonthModal Component
+
+```typescript
+interface RolloverValidation {
+  inventoryReady: boolean;
+  inventoryDate: string | null;
+  historyReady: boolean;
+  historyMonth: string | null;
+  arrivalsReady: boolean;
+  arrivalsDate: string | null;
+  forecastReady: boolean;
+  forecastRange: string | null;
+  dateValid: boolean;
+  currentDate: Date;
+  newMonthStart: Date;
+}
+```
+
+**Validation Queries:**
+- Inventory: `SELECT MAX(snapshot_date) FROM inventory_snapshots WHERE snapshot_date >= '2026-02-01'`
+- History: `SELECT COUNT(*) FROM sales_history WHERE year_month = '2026-01-01'`
+- Arrivals: `SELECT MAX(arrival_date) FROM scheduled_arrivals WHERE arrival_date >= '2026-02-01'`
+- Forecast: `SELECT MIN(year_month), MAX(year_month) FROM sales_forecasts WHERE year_month >= '2026-02-01'`
+
+---
+
+### UI/UX Considerations
+
+1. **Performance Card Placement**: 
+   - Desktop: Next to ESTOQUE, same row
+   - Mobile: Below ESTOQUE, stacked
+
+2. **Color Scheme**:
+   - Green (#22c55e): > 100% (over-performing)
+   - Red (#ef4444): < 95% (under-performing)
+   - Yellow (#eab308): 95-105% (on target)
+
+3. **Rollover Button**:
+   - Only visible to Admin/Buyer roles
+   - Disabled state with tooltip explaining what's missing
+   - Confirmation dialog before final rollover
+
+---
+
+### Migration Path
+
+Since the user mentioned:
+- Forecasts: Jan 2026 - Dec 2026
+- History: Will be uploaded monthly starting with Jan 2026 actual
+
+The system should handle:
+1. **Empty History State**: "No completed months yet" 
+2. **First Month Completed**: Show Jan 2026 performance after History import
+3. **Rolling 3-Month Window**: Always show most recent 3 months with data
+
+---
+
+### Files Summary
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `src/components/planning/PerformanceIndicator.tsx` | Create | Mini card showing PV vs Actual |
+| `src/components/planning/RolloverMonthModal.tsx` | Create | Modal for month rollover workflow |
+| `src/components/planning/ProductProjectionCard.tsx` | Modify | Add PerformanceIndicator to header |
+| `src/components/planning/ProductProjectionRow.tsx` | Modify | Add performance data display |
+| `src/pages/SupplierPlanning.tsx` | Modify | Calculate performance metrics |
+| `src/pages/DemandPlanning.tsx` | Modify | Add Rollover button and modal |
+
+---
 
 ### Technical Section
 
-#### Approach
-1. Update `index.html` for browser tab title and meta tags
-2. Modify `AppSidebar.tsx` for sidebar branding and menu items
-3. Update each page file systematically
-4. Update modal components
-5. Ensure consistency in date format (keep `ptBR` locale for date formatting or switch to `enUS`)
-
-#### Date Formatting
-The application uses `date-fns` with `ptBR` locale. Consider whether to:
-- Keep Portuguese date format (dd/MM/yyyy) - more familiar for Brazilian users
-- Switch to English format (MM/dd/yyyy) - consistent with full English UI
-
-Recommendation: Keep `dd/MM/yyyy` format as it's more internationally recognized, just update the locale to `enUS` where text labels appear.
-
-#### Role Labels
-Update the `roleConfig` object in `Users.tsx` and `CreateUserModal.tsx`:
-```typescript
-const roleConfig: Record<AppRole, { label: string; ... }> = {
-  admin: { label: 'Admin', ... },
-  buyer: { label: 'Buyer', ... },  // was "Comprador"
-  trader: { label: 'Trader', ... },
-  viewer: { label: 'Viewer', ... }, // was "Visualizador"
-};
+#### Performance Calculation Formula
+```
+Performance % = (Actual Sales / Forecast) × 100
+Delta = Actual - Forecast
+Trend = Current Month Performance - Previous Month Performance
 ```
 
-#### Status Labels
-Update `STATUS_CONFIG` in `PurchaseOrders.tsx`:
-```typescript
-const STATUS_CONFIG = {
-  draft: { label: 'Draft', ... },
-  pending_trader_review: { label: 'Awaiting Trader', ... },
-  pending_buyer_approval: { label: 'Pending Changes', ... },
-  confirmed: { label: 'Confirmed', ... },
-  shipped: { label: 'Shipped', ... },
-  received: { label: 'Received', ... },
-  cancelled: { label: 'Cancelled', ... },
-};
+#### Edge Cases
+1. **No forecast for month**: Skip that month in calculation
+2. **No history for month**: Skip that month (not yet uploaded)
+3. **Zero forecast**: Show as "N/A" to avoid division by zero
+4. **First month of system**: Show "No data yet"
+
+#### Data Flow
+```
+SupplierPlanning.tsx
+    │
+    ├─► Fetch sales_history (extends to include past months)
+    ├─► Fetch sales_forecasts (already includes past months)
+    │
+    ▼
+Calculate performanceByProduct Map<productId, PerformanceData[]>
+    │
+    ▼
+Pass to ProductProjectionCard / ProductProjectionRow
+    │
+    ▼
+PerformanceIndicator renders the mini card
+```
+
+#### Rollover State Machine
+```
+Initial State: "Check Requirements"
+    │
+    ├─► All 4 uploads present + date valid → "Ready"
+    │
+    └─► Missing uploads → "Not Ready" (show missing items)
 ```
