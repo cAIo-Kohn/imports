@@ -234,6 +234,14 @@ export default function PurchaseOrderDetails() {
   const totalQuantity = items.reduce((sum: number, item: any) => sum + item.quantity, 0);
   const totalValue = items.reduce((sum: number, item: any) => sum + (item.quantity * (item.unit_price_usd || 0)), 0);
 
+  // Calculate earliest arrival date from items
+  const earliestArrival = items.length > 0
+    ? items
+        .filter((item: any) => item.expected_arrival)
+        .map((item: any) => item.expected_arrival as string)
+        .sort()[0] || null
+    : null;
+
   // Fetch order changes for highlighting
   const { changesByItem, isLoading: changesLoading } = useOrderChanges(order.id);
 
@@ -299,6 +307,7 @@ export default function PurchaseOrderDetails() {
             itemsCount={items.length}
             itemsWithPriceApproved={itemsWithPriceApproved}
             itemsWithQtyApproved={itemsWithQtyApproved}
+            earliestArrival={earliestArrival}
             onOrderUpdated={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
           />
         </div>
