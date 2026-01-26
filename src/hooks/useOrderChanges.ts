@@ -30,6 +30,8 @@ export interface ConsolidatedChange {
   counterProposalValue: string | null;
   isAgreed: boolean;              // Trader accepted buyer's suggestion?
   needsApproval: boolean;         // Still needs approval?
+  productCode: string | null;     // Product code for item-level changes
+  productId: string | null;       // Product ID for item-level changes
 }
 
 interface LogChangeParams {
@@ -54,6 +56,20 @@ interface LogCounterProposalParams {
 // Critical fields that require buyer approval when changed
 const CRITICAL_FIELDS = ['etd', 'unit_price_usd', 'quantity', 'total_value_usd'];
 
+// Cadastral fields that should appear in informational changes (non-critical)
+const CADASTRAL_FIELDS = [
+  'technical_description',
+  'supplier_specs',
+  'ncm',
+  'master_box_volume',
+  'master_box_length',
+  'master_box_width',
+  'master_box_height',
+  'gross_weight',
+  'origin_description',
+  'image_url',
+];
+
 export function useOrderChanges(orderId: string) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -69,6 +85,20 @@ export function useOrderChanges(orderId: string) {
       
       if (error) throw error;
       return data as OrderChange[];
+    },
+    enabled: !!orderId,
+  });
+
+  // Fetch order items with product codes for enriching item-level changes
+  const { data: orderItems = [] } = useQuery({
+    queryKey: ['order-items-products', orderId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('purchase_order_items')
+        .select('id, product_id, products(code)')
+        .eq('purchase_order_id', orderId);
+      if (error) throw error;
+      return data as Array<{ id: string; product_id: string; products: { code: string } | null }>;
     },
     enabled: !!orderId,
   });
@@ -141,7 +171,10 @@ export function useOrderChanges(orderId: string) {
 
   const criticalChanges = changes.filter(c => c.is_critical);
   const pendingApprovalChanges = changes.filter(c => c.is_critical && c.requires_approval && !c.approved_by);
-  const informationalChanges = changes.filter(c => !c.is_critical);
+  // Filter informational changes to only show cadastral fields (no internal flags)
+  const informationalChanges = changes.filter(c => 
+    !c.is_critical && CADASTRAL_FIELDS.includes(c.field_name)
+  );
   
   // Counter-proposals made by buyers
   const counterProposals = changes.filter(c => c.change_type === 'buyer_counter_proposal');
@@ -197,6 +230,9 @@ export function useOrderChanges(orderId: string) {
       // If agreed, no approval needed; otherwise check for pending approvals
       const needsApproval = !isAgreed && criticalInTimeline.some(c => c.requires_approval && !c.approved_by);
       
+      // Find product info for item-level changes
+      const productInfo = itemId ? orderItems.find(i => i.id === itemId) : null;
+
       result.push({
         key,
         fieldName,
@@ -208,11 +244,13 @@ export function useOrderChanges(orderId: string) {
         counterProposalValue: counterProposal?.new_value || null,
         isAgreed,
         needsApproval,
+        productCode: productInfo?.products?.code || null,
+        productId: productInfo?.product_id || null,
       });
     });
     
     return result;
-  }, [changeTimeline]);
+  }, [changeTimeline, orderItems]);
 
   // Agrupar alterações por item (mantém apenas a mais recente por campo)
   const changesByItem = useMemo(() => {

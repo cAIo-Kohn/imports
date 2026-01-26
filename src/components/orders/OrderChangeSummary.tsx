@@ -206,7 +206,14 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
       >
         <div className="flex items-center justify-between">
           <div className="flex-1">
-            <span className="font-medium text-sm">{formatFieldLabel(consolidated.fieldName)}</span>
+            <span className="font-medium text-sm">
+              {formatFieldLabel(consolidated.fieldName)}
+              {consolidated.productCode && (
+                <span className="text-muted-foreground font-normal ml-1">
+                  - Produto {consolidated.productCode}
+                </span>
+              )}
+            </span>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span className="line-through">{formatValue(consolidated.fieldName, consolidated.originalValue)}</span>
               <ArrowRight className="h-3 w-3" />
