@@ -1,141 +1,58 @@
 
-## Plano: Otimizar Exibição de Alterações Críticas e Informativas
 
-### Problemas Identificados
+## Plano: Limitar Texto da Coluna Containers na Lista de Pedidos
 
-| Problema | Atual | Esperado |
-|----------|-------|----------|
-| **Código UUID no Preço** | `fabd-4fe4-a04c-bbf35801a2ec-unit_price_usd` | `Preço Unitário - Produto 001488` |
-| **Alterações Informativas** | Mostra flags internos (`trader_etd_approved`, etc.) | Mostrar apenas alterações cadastrais reais |
+### Contexto
 
----
+A página `PurchaseOrders.tsx` exibe uma lista resumida de pedidos. Não há coluna de descrição de produtos (os itens são agrupados por pedido). O único campo que pode conter texto longo é a coluna **Containers**, que extrai informações do campo `notes`.
 
-### Solução Proposta
+### Alteração Proposta
 
-#### 1. Buscar Código do Produto para Alterações de Itens
+Aplicar a mesma técnica de truncamento + tooltip à coluna Containers para manter consistência visual:
 
-Modificar `useOrderChanges.ts` para:
-- Criar query adicional que busca produtos associados aos itens do pedido
-- Enriquecer `ConsolidatedChange` com informação do produto
+#### Arquivo: `src/pages/PurchaseOrders.tsx`
 
+1. **Adicionar imports do Tooltip**:
 ```typescript
-// Nova interface
-export interface ConsolidatedChange {
-  // ... campos existentes ...
-  productCode: string | null;  // Novo campo
-  productId: string | null;    // Novo campo
-}
-
-// Query adicional para buscar produtos dos itens
-const { data: orderItems = [] } = useQuery({
-  queryKey: ['order-items-products', orderId],
-  queryFn: async () => {
-    const { data, error } = await supabase
-      .from('purchase_order_items')
-      .select('id, product_id, products(code)')
-      .eq('purchase_order_id', orderId);
-    if (error) throw error;
-    return data;
-  },
-  enabled: !!orderId,
-});
-
-// Usar no consolidatedCriticalChanges:
-const productInfo = orderItems.find(i => i.id === itemId);
-result.push({
-  // ...
-  productCode: productInfo?.products?.code || null,
-  productId: productInfo?.product_id || null,
-});
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 ```
 
-#### 2. Exibir Label Humanizado para Alterações de Itens
+2. **Modificar a célula Containers** (linhas 305-307):
 
-Modificar `OrderChangeSummary.tsx`:
-
-```typescript
-// Antes:
-<span className="font-medium text-sm">{formatFieldLabel(consolidated.fieldName)}</span>
-
-// Depois:
-<span className="font-medium text-sm">
-  {formatFieldLabel(consolidated.fieldName)}
-  {consolidated.productCode && (
-    <span className="text-muted-foreground font-normal ml-1">
-      - Produto {consolidated.productCode}
-    </span>
-  )}
-</span>
-
-// Resultado: "Preço Unitário - Produto 001488"
+**De:**
+```tsx
+<TableCell>
+  {extractContainerInfo(order.notes)}
+</TableCell>
 ```
 
-#### 3. Filtrar Alterações Informativas
-
-Manter apenas alterações cadastrais significativas. Criar lista de campos permitidos:
-
-```typescript
-// Campos cadastrais que devem aparecer nas informativas
-const CADASTRAL_FIELDS = [
-  'technical_description',
-  'supplier_specs',
-  'ncm',
-  'master_box_volume',
-  'master_box_length',
-  'master_box_width',
-  'master_box_height',
-  'gross_weight',
-  'origin_description',
-  'image_url',
-];
-
-// Filtrar informationalChanges
-const informationalChanges = changes.filter(c => 
-  !c.is_critical && CADASTRAL_FIELDS.includes(c.field_name)
-);
+**Para:**
+```tsx
+<TableCell className="max-w-[150px]">
+  <TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="text-sm line-clamp-1 cursor-help block">
+          {extractContainerInfo(order.notes)}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-sm">
+        <p className="text-sm whitespace-pre-wrap">
+          {extractContainerInfo(order.notes)}
+        </p>
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+</TableCell>
 ```
 
-Isso **remove** as flags internas como:
-- `trader_etd_approved`
-- `trader_prices_approved`
-- `trader_quantities_approved`
+### Resultado Visual
 
----
+| Antes | Depois |
+|-------|--------|
+| `2x 40HC SHCU1234567, SHCU7654321` (texto longo) | `2x 40HC SHCU123...` com tooltip completo |
 
-### Arquivos a Modificar
+### Consideração
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `useOrderChanges.ts` | Buscar produtos dos itens; adicionar `productCode`/`productId` ao ConsolidatedChange; filtrar informationalChanges |
-| `OrderChangeSummary.tsx` | Exibir código do produto no label das alterações de itens |
+Se você quiser adicionar uma coluna de resumo/descrição dos produtos do pedido na listagem, posso expandir este plano para incluir essa funcionalidade.
 
----
-
-### Resultado Final
-
-```text
-ANTES:
-┌────────────────────────────────────────────────────┐
-│ fabd-4fe4-a04c-bbf35801a2ec-unit_price_usd        │
-│ $0.00 → $0.10                                      │
-└────────────────────────────────────────────────────┘
-
-DEPOIS:
-┌────────────────────────────────────────────────────┐
-│ Preço Unitário - Produto 001488                    │
-│ $0.00 → $0.10                                      │
-└────────────────────────────────────────────────────┘
-```
-
-```text
-ANTES (Informativas):
-- trader_etd_approved: false → true
-- trader_prices_approved: false → true
-- trader_etd_approved: false → true
-
-DEPOIS:
-(Seção removida se não houver alterações cadastrais reais)
-ou
-- Descrição Técnica: "texto antigo" → "texto novo"
-- NCM: "1234.56.78" → "8765.43.21"
-```
