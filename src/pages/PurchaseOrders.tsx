@@ -11,9 +11,10 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Search, FileText, Package, DollarSign, Calendar, Truck } from 'lucide-react';
+import { Plus, Search, FileText, Package, DollarSign, Calendar, Truck, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { CreatePurchaseOrderModal } from '@/components/planning/CreatePurchaseOrderModal';
 import { useToast } from '@/hooks/use-toast';
+import { useUserRole } from '@/hooks/useUserRole';
 
 interface PurchaseOrder {
   id: string;
@@ -32,11 +33,13 @@ interface PurchaseOrder {
   }[];
 }
 
-const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: typeof Clock }> = {
   draft: { label: 'Rascunho', variant: 'secondary' },
-  confirmed: { label: 'Confirmado', variant: 'default' },
-  shipped: { label: 'Embarcado', variant: 'outline' },
-  received: { label: 'Recebido', variant: 'default' },
+  pending_trader_review: { label: 'Aguard. Trader', variant: 'outline', icon: Clock },
+  pending_buyer_approval: { label: 'Mudanças Pendentes', variant: 'outline', icon: AlertTriangle },
+  confirmed: { label: 'Confirmado', variant: 'default', icon: CheckCircle },
+  shipped: { label: 'Embarcado', variant: 'outline', icon: Truck },
+  received: { label: 'Recebido', variant: 'default', icon: Package },
   cancelled: { label: 'Cancelado', variant: 'destructive' },
 };
 
@@ -44,6 +47,7 @@ export default function PurchaseOrders() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { isTrader, canManageOrders } = useUserRole();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -89,6 +93,8 @@ export default function PurchaseOrders() {
   const stats = {
     total: orders.length,
     draft: orders.filter(o => o.status === 'draft').length,
+    pendingTrader: orders.filter(o => o.status === 'pending_trader_review').length,
+    pendingBuyer: orders.filter(o => o.status === 'pending_buyer_approval').length,
     confirmed: orders.filter(o => o.status === 'confirmed').length,
     shipped: orders.filter(o => o.status === 'shipped').length,
     totalValue: orders.reduce((sum, o) => sum + (o.total_value_usd || 0), 0),
@@ -116,10 +122,12 @@ export default function PurchaseOrders() {
             Gerencie seus pedidos de importação
           </p>
         </div>
-        <Button onClick={() => setCreateModalOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Pedido
-        </Button>
+        {canManageOrders && (
+          <Button onClick={() => setCreateModalOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Pedido
+          </Button>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -136,22 +144,22 @@ export default function PurchaseOrders() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Rascunhos</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Aguard. Trader</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.draft}</div>
-            <p className="text-xs text-muted-foreground">aguardando confirmação</p>
+            <div className="text-2xl font-bold">{stats.pendingTrader}</div>
+            <p className="text-xs text-muted-foreground">aguardando aprovação</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className={stats.pendingBuyer > 0 ? "border-yellow-500/50 bg-yellow-500/5" : ""}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Em Trânsito</CardTitle>
-            <Truck className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Mudanças Pendentes</CardTitle>
+            <AlertTriangle className={`h-4 w-4 ${stats.pendingBuyer > 0 ? 'text-yellow-600' : 'text-muted-foreground'}`} />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.shipped}</div>
-            <p className="text-xs text-muted-foreground">embarcados</p>
+            <div className="text-2xl font-bold">{stats.pendingBuyer}</div>
+            <p className="text-xs text-muted-foreground">requerem aprovação</p>
           </CardContent>
         </Card>
         <Card>
@@ -190,6 +198,8 @@ export default function PurchaseOrders() {
               <SelectContent>
                 <SelectItem value="all">Todos os Status</SelectItem>
                 <SelectItem value="draft">Rascunho</SelectItem>
+                <SelectItem value="pending_trader_review">Aguard. Trader</SelectItem>
+                <SelectItem value="pending_buyer_approval">Mudanças Pendentes</SelectItem>
                 <SelectItem value="confirmed">Confirmado</SelectItem>
                 <SelectItem value="shipped">Embarcado</SelectItem>
                 <SelectItem value="received">Recebido</SelectItem>
@@ -255,7 +265,17 @@ export default function PurchaseOrders() {
                       }
                     </TableCell>
                     <TableCell>
-                      <Badge variant={STATUS_CONFIG[order.status]?.variant || 'secondary'}>
+                      <Badge 
+                        variant={STATUS_CONFIG[order.status]?.variant || 'secondary'}
+                        className={order.status === 'pending_buyer_approval' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' : ''}
+                      >
+                        {STATUS_CONFIG[order.status]?.icon && (
+                          <span className="mr-1">
+                            {order.status === 'pending_trader_review' && <Clock className="h-3 w-3 inline" />}
+                            {order.status === 'pending_buyer_approval' && <AlertTriangle className="h-3 w-3 inline" />}
+                            {order.status === 'confirmed' && <CheckCircle className="h-3 w-3 inline" />}
+                          </span>
+                        )}
                         {STATUS_CONFIG[order.status]?.label || order.status}
                       </Badge>
                     </TableCell>
