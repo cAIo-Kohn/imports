@@ -46,6 +46,7 @@ interface ScheduledArrival {
   product_id: string;
   quantity: number;
   arrival_date: string;
+  process_number?: string | null;
 }
 
 export default function DemandPlanning() {
@@ -117,8 +118,8 @@ export default function DemandPlanning() {
   const scheduledArrivals = arrivalsResult?.data ?? [];
   const arrivalsTotal = arrivalsResult?.total ?? 0;
 
-  // Fetch pending purchase orders
-  const { data: purchaseItems = [] } = useQuery({
+  // Fetch pending purchase orders (including reference_number for deduplication)
+  const { data: purchaseItems = [], refetch: refetchPurchaseItems } = useQuery({
     queryKey: ['purchase-items-summary'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -128,7 +129,7 @@ export default function DemandPlanning() {
           quantity,
           unit_price_usd,
           expected_arrival,
-          purchase_orders!inner (status, supplier_id)
+          purchase_orders!inner (status, supplier_id, reference_number)
         `)
         .not('expected_arrival', 'is', null);
       if (error) throw error;
@@ -180,9 +181,34 @@ export default function DemandPlanning() {
     productMonths.set(monthKey, (productMonths.get(monthKey) || 0) + f.quantity);
   });
 
-  // Group arrivals by product and month
+  // Group app order arrivals by product and month
+  const appOrdersByProductMonth = new Map<string, Map<string, number>>();
+  purchaseItems.forEach(item => {
+    if (!item.expected_arrival) return;
+    const monthKey = item.expected_arrival.substring(0, 7);
+    
+    if (!appOrdersByProductMonth.has(item.product_id)) {
+      appOrdersByProductMonth.set(item.product_id, new Map());
+    }
+    const productMonths = appOrdersByProductMonth.get(item.product_id)!;
+    productMonths.set(monthKey, (productMonths.get(monthKey) || 0) + item.quantity);
+  });
+
+  // Get reference numbers for filtering duplicates from scheduled_arrivals
+  const appOrderReferenceNumbers = new Set<string>();
+  purchaseItems.forEach(item => {
+    const refNum = (item.purchase_orders as any)?.reference_number;
+    if (refNum) appOrderReferenceNumbers.add(refNum);
+  });
+
+  // Group arrivals by product and month (excluding those already matched to app orders)
   const arrivalsByProductMonth = new Map<string, Map<string, number>>();
   scheduledArrivals.forEach(arr => {
+    // Se o process_number corresponde a um reference_number de pedido do app, ignorar
+    if (arr.process_number && appOrderReferenceNumbers.has(arr.process_number)) {
+      return; // Evita duplicação
+    }
+    
     // Extract month key directly from ISO string to avoid timezone issues
     const monthKey = arr.arrival_date.substring(0, 7);
     if (!arrivalsByProductMonth.has(arr.product_id)) {
@@ -228,6 +254,7 @@ export default function DemandPlanning() {
         const initialStock = latestInventoryByProduct.get(product.id) || 0;
         const productForecasts = forecastByProductMonth.get(product.id) || new Map();
         const productArrivals = arrivalsByProductMonth.get(product.id) || new Map();
+        const productAppOrders = appOrdersByProductMonth.get(product.id) || new Map();
         
         let balance = initialStock;
         let firstRuptureMonth: number | null = null;
@@ -237,7 +264,9 @@ export default function DemandPlanning() {
         for (let i = 0; i < 12; i++) {
           const monthKey = monthKeys[i];
           const forecast = productForecasts.get(monthKey) || 0;
-          const arrivals = productArrivals.get(monthKey) || 0;
+          const uploadedArrivals = productArrivals.get(monthKey) || 0;
+          const appOrderArrivals = productAppOrders.get(monthKey) || 0;
+          const arrivals = uploadedArrivals + appOrderArrivals; // SOMA AMBAS AS FONTES
           
           balance = balance - forecast + arrivals;
           
@@ -350,8 +379,9 @@ export default function DemandPlanning() {
     refetchForecasts();
     refetchInventory();
     refetchArrivals();
+    refetchPurchaseItems();
     toast({ title: 'Dados atualizados', description: 'Os indicadores foram recalculados com base nos dados mais recentes.' });
-  }, [refetchSuppliers, refetchForecasts, refetchInventory, refetchArrivals, toast]);
+  }, [refetchSuppliers, refetchForecasts, refetchInventory, refetchArrivals, refetchPurchaseItems, toast]);
 
   // Handle import success
   const handleImportSuccess = useCallback(() => {

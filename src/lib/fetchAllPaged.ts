@@ -77,7 +77,7 @@ export async function fetchForecastsParallel(
 export async function fetchAllArrivals(
   startMonth: string,
   endMonth: string
-): Promise<{ data: { product_id: string; quantity: number; arrival_date: string }[]; total: number }> {
+): Promise<{ data: { product_id: string; quantity: number; arrival_date: string; process_number?: string | null }[]; total: number }> {
   // First get the count
   const { count, error: countError } = await supabase
     .from('scheduled_arrivals')
@@ -90,7 +90,7 @@ export async function fetchAllArrivals(
   const total = count || 0;
   const pageSize = 1000;
   const maxPages = 50;
-  const allData: { product_id: string; quantity: number; arrival_date: string }[] = [];
+  const allData: { product_id: string; quantity: number; arrival_date: string; process_number?: string | null }[] = [];
   let page = 0;
   let hasMore = true;
 
@@ -100,7 +100,7 @@ export async function fetchAllArrivals(
 
     const { data, error } = await supabase
       .from('scheduled_arrivals')
-      .select('product_id, quantity, arrival_date')
+      .select('product_id, quantity, arrival_date, process_number')
       .gte('arrival_date', startMonth)
       .lt('arrival_date', endMonth)
       .order('arrival_date', { ascending: true })
@@ -126,7 +126,7 @@ export async function fetchAllArrivals(
 export async function fetchArrivalsParallel(
   startMonth: string,
   endMonth: string
-): Promise<{ data: { product_id: string; quantity: number; arrival_date: string }[]; total: number }> {
+): Promise<{ data: { product_id: string; quantity: number; arrival_date: string; process_number?: string | null }[]; total: number }> {
   const midMonth = addMonths(parseISO(startMonth), 6);
   const midMonthStr = format(midMonth, 'yyyy-MM-dd');
   
