@@ -11,12 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Package, DollarSign, Scale, Trash2, Ship, ChevronUp, ChevronDown, AlertTriangle, Calendar, Plus } from 'lucide-react';
+import { Package, DollarSign, Scale, Trash2, Ship, ChevronUp, ChevronDown, AlertTriangle, Calendar as CalendarIcon, Plus } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/components/ui/sidebar';
 import { Progress } from '@/components/ui/progress';
 import { SimulatorQuantityInput } from './SimulatorQuantityInput';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface ProductWithDetails {
   id: string;
@@ -65,6 +67,7 @@ interface OrderDraft {
   isOverWeight: boolean;
   earliestETD: Date | null;
   hasCriticalETD: boolean;
+  suggestedETD: Date | null; // ETD calculado/arredondado
 }
 
 interface SupplierContainerSpecs {
@@ -106,6 +109,43 @@ function calculateRequiredETD(arrivalMonthKey: string, leadTimeDays: number): Da
   return subDays(arrivalDate, leadTimeDays);
 }
 
+// Calculate rounded ETD: always round DOWN to day 30 (or 28/29 for February)
+// This ensures ETD is always >= 60 days before arrival
+function calculateRoundedETD(arrivalMonthKey: string, leadTimeDays: number): Date {
+  const arrivalDate = parseDateString(arrivalMonthKey);
+  const rawETD = subDays(arrivalDate, leadTimeDays);
+  
+  const year = rawETD.getFullYear();
+  const month = rawETD.getMonth();
+  const day = rawETD.getDate();
+  
+  let roundedMonth = month;
+  let roundedYear = year;
+  
+  // Always round DOWN to day 30 of previous month if we're past day 1
+  // If day is 1-30, go to day 30 of previous month
+  // This ensures we always give MORE time than the raw 60 days
+  if (day <= 30) {
+    // Go to previous month
+    roundedMonth = month === 0 ? 11 : month - 1;
+    roundedYear = month === 0 ? year - 1 : year;
+  }
+  // If day is 31, stay in same month at day 30
+  
+  // Determine the day (30 or last day of month for February)
+  let roundedDay: number;
+  if (roundedMonth === 1) { // February
+    const isLeapYear = (roundedYear % 4 === 0 && roundedYear % 100 !== 0) || (roundedYear % 400 === 0);
+    roundedDay = isLeapYear ? 29 : 28;
+  } else if ([3, 5, 8, 10].includes(roundedMonth)) { // April, June, September, November have 30 days
+    roundedDay = 30;
+  } else {
+    roundedDay = 30; // For months with 31 days, use 30
+  }
+  
+  return new Date(roundedYear, roundedMonth, roundedDay);
+}
+
 export function OrderSimulationFooter({
   pendingArrivals,
   products,
@@ -125,6 +165,7 @@ export function OrderSimulationFooter({
   const [containerTypes, setContainerTypes] = useState<Record<string, keyof typeof CONTAINER_SPECS>>({});
   const [referenceNumbers, setReferenceNumbers] = useState<Record<string, string>>({});
   const [customContainerVolumes, setCustomContainerVolumes] = useState<Record<string, number>>({});
+  const [customETDs, setCustomETDs] = useState<Record<string, Date>>({});
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('');
 
@@ -183,6 +224,7 @@ export function OrderSimulationFooter({
           isOverWeight: false,
           earliestETD: null,
           hasCriticalETD: false,
+          suggestedETD: null,
         });
       }
 
@@ -226,6 +268,12 @@ export function OrderSimulationFooter({
 
       if (!draft.earliestETD || isBefore(etdDate, draft.earliestETD)) {
         draft.earliestETD = etdDate;
+      }
+
+      // Calculate suggested ETD (rounded) for each item's lead time
+      const roundedETD = calculateRoundedETD(monthKey, leadTime);
+      if (!draft.suggestedETD || isBefore(roundedETD, draft.suggestedETD)) {
+        draft.suggestedETD = roundedETD;
       }
     });
 
@@ -333,14 +381,27 @@ export function OrderSimulationFooter({
       if (!selectedSupplier || selectedSupplier === 'all') throw new Error('Selecione um fornecedor');
       if (!selectedUnit || selectedUnit === 'all') throw new Error('Selecione uma unidade de destino para criar o pedido');
 
+      // Validação 1: Número do pedido obrigatório
+      if (!draft.referenceNumber || draft.referenceNumber.trim() === '') {
+        throw new Error('Digite o número do pedido para confirmar');
+      }
+
+      // Validação 2: Container deve estar 100% fechado
+      if (draft.partialContainerPercent > 0) {
+        throw new Error(`Container não está 100% fechado (${draft.partialContainerPercent}% parcial). Ajuste as quantidades ou preencha o container.`);
+      }
+
       const { data: orderNumber, error: rpcError } = await supabase
         .rpc('generate_purchase_order_number');
       
       if (rpcError) throw rpcError;
 
       const container = CONTAINER_SPECS[draft.containerType];
-      const orderDate = draft.earliestETD 
-        ? format(draft.earliestETD, 'yyyy-MM-dd')
+      
+      // Use custom ETD if provided, otherwise use calculated suggestedETD
+      const effectiveETD = customETDs[draft.monthKey] || draft.suggestedETD;
+      const orderDate = effectiveETD 
+        ? format(effectiveETD, 'yyyy-MM-dd')
         : format(new Date(), 'yyyy-MM-dd');
 
       const containersLabel = draft.fullContainers > 0 
@@ -358,10 +419,11 @@ export function OrderSimulationFooter({
           reference_number: draft.referenceNumber.trim() || null,
           supplier_id: selectedSupplier,
           order_date: orderDate,
+          etd: orderDate, // Save ETD to the dedicated field
           status: initialStatus,
           created_by: user.id,
           total_value_usd: draft.totalValue,
-          notes: `Container: ${containersLabel} | Volume: ${draft.totalVolume.toFixed(2)}m³ | Chegada: ${draft.monthLabel} | ETD: ${draft.earliestETD ? format(draft.earliestETD, 'dd/MM/yyyy') : 'N/A'}`,
+          notes: `Container: ${containersLabel} | Volume: ${draft.totalVolume.toFixed(2)}m³ | Chegada: ${draft.monthLabel} | ETD: ${effectiveETD ? format(effectiveETD, 'dd/MM/yyyy') : 'N/A'}`,
         })
         .select('id')
         .single();
@@ -780,20 +842,74 @@ export function OrderSimulationFooter({
                       )}
                     </div>
 
-                    {/* Reference Number Input + Actions */}
-                    <div className="flex gap-3 pt-2 border-t">
+                    {/* Reference Number Input + ETD + Actions */}
+                    <div className="flex flex-wrap gap-3 pt-2 border-t items-center">
                       {/* Reference Number Field */}
-                      <div className="flex items-center gap-2 flex-1 max-w-xs">
+                      <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground whitespace-nowrap">Nº Pedido:</span>
                         <Input
                           type="text"
                           placeholder="Ex: AMOR-26001"
                           value={referenceNumbers[draft.monthKey] || ''}
                           onChange={(e) => handleReferenceNumberChange(draft.monthKey, e.target.value)}
-                          className="h-9 text-sm"
+                          className={cn(
+                            "h-9 text-sm w-40",
+                            !referenceNumbers[draft.monthKey]?.trim() && "border-destructive"
+                          )}
                           onClick={(e) => e.stopPropagation()}
                         />
+                        {!referenceNumbers[draft.monthKey]?.trim() && (
+                          <span className="text-xs text-destructive">* Obrigatório</span>
+                        )}
                       </div>
+
+                      {/* ETD Field - editable */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">ETD:</span>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className={cn(
+                                "h-9 justify-start text-left font-normal",
+                                draft.hasCriticalETD && "border-destructive text-destructive"
+                              )}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {customETDs[draft.monthKey] 
+                                ? format(customETDs[draft.monthKey], "dd/MM/yyyy")
+                                : draft.suggestedETD 
+                                  ? format(draft.suggestedETD, "dd/MM/yyyy")
+                                  : 'Definir ETD'
+                              }
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0 pointer-events-auto z-50" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={customETDs[draft.monthKey] || draft.suggestedETD || undefined}
+                              onSelect={(date) => {
+                                if (date) {
+                                  setCustomETDs(prev => ({ ...prev, [draft.monthKey]: date }));
+                                }
+                              }}
+                              className="p-3 pointer-events-auto"
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+
+                      {/* Container validation indicator */}
+                      {draft.partialContainerPercent > 0 && (
+                        <Badge variant="destructive" className="text-xs">
+                          Container {draft.partialContainerPercent}% - precisa 100%
+                        </Badge>
+                      )}
+                      
+                      {/* Spacer */}
+                      <div className="flex-1" />
                       
                       {/* Action Buttons */}
                       <Button 
@@ -811,8 +927,20 @@ export function OrderSimulationFooter({
                           e.stopPropagation();
                           handleCreateSingleOrder(draft);
                         }}
-                        disabled={!selectedSupplier || selectedSupplier === 'all' || createOrderMutation.isPending}
-                        className="flex-1"
+                        disabled={
+                          !selectedSupplier || 
+                          selectedSupplier === 'all' || 
+                          createOrderMutation.isPending ||
+                          !referenceNumbers[draft.monthKey]?.trim() ||
+                          draft.partialContainerPercent > 0
+                        }
+                        title={
+                          !referenceNumbers[draft.monthKey]?.trim() 
+                            ? 'Digite o número do pedido' 
+                            : draft.partialContainerPercent > 0 
+                              ? 'Container deve estar 100% cheio'
+                              : ''
+                        }
                       >
                         {createOrderMutation.isPending ? 'Criando...' : `Criar Pedido ${draft.monthLabel}`}
                       </Button>
@@ -841,13 +969,37 @@ export function OrderSimulationFooter({
                     Selecione um fornecedor
                   </span>
                 )}
+                {/* Show validation warnings for bulk create */}
+                {ordersByMonth.some(o => !referenceNumbers[o.monthKey]?.trim()) && (
+                  <span className="text-xs text-destructive">
+                    Todos os pedidos precisam de nº
+                  </span>
+                )}
+                {ordersByMonth.some(o => o.partialContainerPercent > 0) && (
+                  <span className="text-xs text-destructive">
+                    Containers incompletos
+                  </span>
+                )}
                 <Button 
                   onClick={(e) => {
                     e.stopPropagation();
                     handleCreateAllOrders();
                   }}
-                  disabled={!selectedSupplier || selectedSupplier === 'all' || createAllOrdersMutation.isPending}
+                  disabled={
+                    !selectedSupplier || 
+                    selectedSupplier === 'all' || 
+                    createAllOrdersMutation.isPending ||
+                    ordersByMonth.some(o => !referenceNumbers[o.monthKey]?.trim()) ||
+                    ordersByMonth.some(o => o.partialContainerPercent > 0)
+                  }
                   variant="default"
+                  title={
+                    ordersByMonth.some(o => !referenceNumbers[o.monthKey]?.trim())
+                      ? 'Todos os pedidos precisam de número'
+                      : ordersByMonth.some(o => o.partialContainerPercent > 0)
+                        ? 'Todos os containers precisam estar 100%'
+                        : ''
+                  }
                 >
                   {createAllOrdersMutation.isPending 
                     ? 'Criando...' 
