@@ -33,7 +33,7 @@ const planningItems = [
 export function AppSidebar() {
   const location = useLocation();
   const { signOut, user } = useAuth();
-  const { isTrader, isAdmin } = useUserRole();
+  const { isTrader, isAdmin, isOnlyTrader } = useUserRole();
 
   return (
     <Sidebar>
@@ -48,42 +48,49 @@ export function AppSidebar() {
       </SidebarHeader>
       
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={location.pathname === item.url}>
-                    <NavLink to={item.url}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {/* Menu Principal - esconder para traders puros */}
+        {!isOnlyTrader && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {menuItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={location.pathname === item.url}>
+                      <NavLink to={item.url}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Planejamento</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {planningItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={location.pathname === item.url}>
-                    <NavLink to={item.url}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {/* Planejamento - esconder para traders puros */}
+        {!isOnlyTrader && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Planejamento</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {planningItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={location.pathname === item.url}>
+                      <NavLink to={item.url}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
+        {/* Trader - mostrar para trader e admin */}
         {(isTrader || isAdmin) && (
           <SidebarGroup>
             <SidebarGroupLabel>Trader</SidebarGroupLabel>
@@ -102,6 +109,7 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
+        {/* Cadastros - apenas admin */}
         {isAdmin && (
           <SidebarGroup>
             <SidebarGroupLabel>Cadastros</SidebarGroupLabel>
@@ -120,21 +128,24 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Configurações</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={location.pathname === '/settings'}>
-                  <NavLink to="/settings">
-                    <Settings className="h-4 w-4" />
-                    <span>Configurações</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {/* Configurações - esconder para traders puros */}
+        {!isOnlyTrader && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Configurações</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={location.pathname === '/settings'}>
+                    <NavLink to="/settings">
+                      <Settings className="h-4 w-4" />
+                      <span>Configurações</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-4">
