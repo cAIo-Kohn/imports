@@ -1,189 +1,172 @@
 
-
-## Plano: Simplificar Header - Apenas ETD + Sugestão Automática
+## Plano: Padronizar Header com ETD, Total Amount e Containers
 
 ### Problema Identificado
 
-1. **Header muito complexo**: Atualmente exibe 3 aprovações (ETD, Preços, Quantidades)
-2. **ETD não está pré-populado**: O campo `etd` no pedido está `null`, mas a lógica de cálculo já existe e está registrada nas notas do pedido
-3. **Regra de ETD não implementada corretamente**: O sistema calcula ETD subtraindo dias do primeiro dia do mês, mas deveria usar dia 15 ou 30
-
-### Solução Proposta
-
-#### 1. Simplificar o TraderHeaderApprovals
-
-Remover os checkboxes de "Preços" e "Quantidades" do header, mantendo apenas:
-- **ETD**: Com opção de editar ou aprovar o ETD sugerido
-- **Botão "Confirmar Pedido"**: Habilitado quando o ETD foi aprovado
-
-#### 2. Calcular ETD Sugerido Automaticamente
-
-Quando o trader abrir o pedido e o `etd` estiver vazio:
-- Calcular 60 dias antes do mês de chegada desejado
-- Usar **dia 15** se a data resultante cair na primeira metade do mês
-- Usar **dia 30** (ou último dia do mês) se cair na segunda metade
-- Exemplo: Chegada em Julho 2026 → ETD sugerido: **15/05/2026** ou **30/05/2026**
-
-#### 3. Atualizar Lógica de Submissão
-
-A aprovação do trader agora requer apenas:
-- ETD aprovado (obrigatório)
-- Todas as aprovações de preço e quantidade por item (opcional, mas visível)
+1. **Header atual mostra**: ETD + "Preços: $X (x/x)" + "Qtd: X pcs (x/x)"
+2. **Usuário quer**: ETD + "Total Amount: $X" + "Containers: 3x40HQ"
+3. **Informação de containers** já é calculada na criação do pedido e salva no campo `notes` (ex: `Container: 3x 40' HQ | Volume: 228.06m³ | ...`)
 
 ---
 
-### Alterações Necessárias
+### Solução Proposta
+
+#### 1. Modificar TraderHeaderApprovals.tsx
+
+Trocar os badges informativos:
+- **De**: "Preços: $75,033 (4/9)" → **Para**: "Total Amount: $75,033.60"
+- **De**: "Qtd: 803.241 pcs (4/9)" → **Para**: "Containers: 3x 40' HQ"
+
+#### 2. Adicionar prop `containerInfo` ao componente
+
+Extrair informação de containers do campo `notes` do pedido ou calcular dinamicamente.
+
+#### 3. Padronizar na lista de Pedidos de Compra (PurchaseOrders.tsx)
+
+Atualizar a tabela para mostrar:
+- ETD em vez de "Data"
+- Total Amount (já existe como "Valor FOB")
+- Total de containers em vez de "X itens (Y un)"
+
+---
+
+### Arquivos a Modificar
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `TraderHeaderApprovals.tsx` | Remover checkboxes de Preços e Qtd, manter apenas ETD + calcular sugestão automática |
-| `PurchaseOrderDetails.tsx` | Ajustar props passadas ao TraderHeaderApprovals |
+| `TraderHeaderApprovals.tsx` | Trocar "Preços" por "Total Amount" e "Qtd" por containers |
+| `PurchaseOrderDetails.tsx` | Passar `containerInfo` e `totalCBM` para o header |
+| `PurchaseOrders.tsx` | Atualizar colunas da tabela: ETD, Total Amount, Containers |
 
 ---
 
 ### Detalhes de Implementação
 
-#### TraderHeaderApprovals.tsx - Nova Estrutura
+#### 1. Extrair Informação de Containers
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│ ☐ ETD: 15/05/2026 (sugerido) ✏️          │ Preços: $75,033 (4/9 OK)  │
-│                                           │ Qtd: 803,241 pcs (4/9 OK) │
-│                                           │      [Confirmar Pedido]   │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-**Visual:**
-- ETD com checkbox de aprovação + botão de edição
-- Preços e Quantidades como **informação apenas** (sem checkbox)
-- Progresso de aprovação por item mostrado mas não bloqueante
-
-#### Lógica de ETD Sugerido
-
+Opção mais simples: extrair do campo `notes` usando regex:
 ```typescript
-function calculateSuggestedEtd(expectedArrival: string): string {
-  // expectedArrival é no formato YYYY-MM-DD (ex: 2026-07-01)
-  const arrivalDate = new Date(expectedArrival);
-  
-  // Subtrair 60 dias
-  const suggestedDate = subDays(arrivalDate, 60);
-  
-  // Normalizar para dia 15 ou 30 (último dia do mês)
-  const day = suggestedDate.getDate();
-  const year = suggestedDate.getFullYear();
-  const month = suggestedDate.getMonth();
-  
-  if (day <= 15) {
-    // Usar dia 15
-    return format(new Date(year, month, 15), 'yyyy-MM-dd');
-  } else {
-    // Usar último dia do mês (30 ou 31 ou 28/29)
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    return format(new Date(year, month, lastDay), 'yyyy-MM-dd');
-  }
-}
+// notes: "Container: 3x 40' HQ | Volume: 228.06m³ | ..."
+const extractContainerInfo = (notes: string | null): string => {
+  if (!notes) return '-';
+  const match = notes.match(/Container:\s*([^|]+)/);
+  return match ? match[1].trim() : '-';
+};
 ```
 
-**Exemplo prático:**
-- Chegada: **01/07/2026**
-- 60 dias antes: **02/05/2026**
-- Dia 2 ≤ 15 → ETD sugerido: **15/05/2026**
+Opção mais robusta: calcular dinamicamente usando items + supplier container config (mais complexa, deixar para futuro se necessário).
 
-#### Modificações no TraderHeaderApprovals.tsx
-
-1. **Adicionar prop para data de chegada mais antiga**:
-```typescript
-interface TraderHeaderApprovalsProps {
-  order: PurchaseOrder;
-  totalValue: number;
-  totalQuantity: number;
-  itemsCount: number;
-  itemsWithPriceApproved: number;
-  itemsWithQtyApproved: number;
-  earliestArrival: string | null;  // NOVO: Data de chegada mais antiga dos itens
-  onOrderUpdated: () => void;
-}
-```
-
-2. **Calcular ETD sugerido ao montar componente**:
-```typescript
-const suggestedEtd = useMemo(() => {
-  if (order.etd) return order.etd;
-  if (!earliestArrival) return '';
-  return calculateSuggestedEtd(earliestArrival);
-}, [order.etd, earliestArrival]);
-```
-
-3. **Remover seções de Preços e Quantidades com checkbox**, mostrar apenas como texto informativo
-
-4. **Atualizar condição de habilitação do botão**:
-```typescript
-// Antes: allApproved = etd && prices && quantities
-// Depois: apenas ETD é obrigatório
-const canSubmit = order.trader_etd_approved;
-```
-
----
-
-### Fluxo Atualizado
-
-1. **Trader abre pedido** `pending_trader_review`
-2. Vê **ETD sugerido** calculado automaticamente (baseado na chegada)
-3. Pode **editar o ETD** se necessário (gera alteração crítica)
-4. Marca checkbox **ETD aprovado**
-5. Vê progresso de aprovações por item (preços: 4/9, qtd: 4/9) como informação
-6. Clica **Confirmar Pedido**
-   - Se houve alteração crítica (ETD modificado) → `pending_buyer_approval`
-   - Se não → `confirmed`
-
----
-
-### Layout Final
+#### 2. TraderHeaderApprovals - Nova Estrutura
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ ☐ 📅 ETD: 15/05/2026 ✏️ ✓      │  $ Preços: $75,033 (4/9)  │ [Confirmar   │
-│   (sugerido: 60d antes chegada)│  📦 Qtd: 803k pcs (4/9)   │    Pedido]   │
+│ ☐ 📅 ETD: 30/05/2026 ✏️ ✓    │  💵 Total: $75,033.60  │  📦 3x 40' HQ    │
+│                               │                        │                   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Legenda visual:**
-- ☐ = Checkbox de aprovação (apenas ETD)
-- ✏️ = Botão de edição (apenas ETD)
-- ✓ = Ícone verde quando aprovado
-- Preços e Qtd = Apenas informação, sem interação
+Mudanças no código:
+```typescript
+// Props atualizadas
+interface TraderHeaderApprovalsProps {
+  order: PurchaseOrder;
+  totalValue: number;
+  containerInfo: string;  // Ex: "3x 40' HQ" ou "3x 40' HQ + 45%"
+  earliestArrival: string | null;
+  onOrderUpdated: () => void;
+}
 
----
+// Badge de Total Amount (sem progresso de aprovação)
+<div className="flex items-center gap-2 p-2 rounded-lg bg-background border">
+  <DollarSign className="h-4 w-4 text-muted-foreground" />
+  <span className="text-sm">
+    <span className="font-medium">Total Amount:</span>{' '}
+    {formatCurrency(totalValue)}
+  </span>
+</div>
 
-### Código Detalhado
+// Badge de Containers
+<div className="flex items-center gap-2 p-2 rounded-lg bg-background border">
+  <Container className="h-4 w-4 text-muted-foreground" />
+  <span className="text-sm">
+    <span className="font-medium">Containers:</span>{' '}
+    {containerInfo}
+  </span>
+</div>
+```
 
-#### PurchaseOrderDetails.tsx - Calcular earliestArrival
+#### 3. PurchaseOrderDetails.tsx - Calcular e Passar Container Info
 
 ```typescript
-// Calcular data de chegada mais antiga entre os itens
-const earliestArrival = useMemo(() => {
-  if (!items.length) return null;
-  const arrivals = items
-    .filter((item: any) => item.expected_arrival)
-    .map((item: any) => item.expected_arrival);
-  if (!arrivals.length) return null;
-  return arrivals.sort()[0]; // Mais antiga (ordem crescente)
-}, [items]);
+// Extrair container info do notes
+const containerInfo = useMemo(() => {
+  if (!order?.notes) return '-';
+  const match = order.notes.match(/Container:\s*([^|]+)/);
+  return match ? match[1].trim() : '-';
+}, [order?.notes]);
 
-// Passar para o componente
+// Passar para o header
 <TraderHeaderApprovals 
-  order={order}
+  order={order as any} 
   totalValue={totalValue}
-  totalQuantity={totalQuantity}
-  itemsCount={items.length}
-  itemsWithPriceApproved={itemsWithPriceApproved}
-  itemsWithQtyApproved={itemsWithQtyApproved}
+  containerInfo={containerInfo}
   earliestArrival={earliestArrival}
   onOrderUpdated={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
 />
 ```
 
-#### TraderHeaderApprovals.tsx - Estrutura Simplificada
+#### 4. PurchaseOrders.tsx - Atualizar Colunas da Tabela
 
-A seção de Preços e Quantidades será transformada em texto informativo (badges) sem checkbox de aprovação geral, focando a atenção do trader no ETD.
+| Antes | Depois |
+|-------|--------|
+| Data (order_date) | ETD (order.etd) |
+| Itens (X itens / Y un) | Containers (extraído de notes) |
+| Valor FOB | Total Amount (mesmo dado, label diferente) |
 
+Query precisa incluir `etd` e `notes`:
+```typescript
+.select(`
+  id, order_number, order_date, status, notes, total_value_usd, created_at,
+  etd,  // ADICIONAR
+  suppliers (company_name),
+  purchase_order_items (id, quantity)
+`)
+```
+
+Nova estrutura da tabela:
+```
+┌──────────┬────────────┬────────────┬───────────────┬───────────────┬──────────┐
+│ Número   │ Fornecedor │ ETD        │ Containers    │ Total Amount  │ Status   │
+├──────────┼────────────┼────────────┼───────────────┼───────────────┼──────────┤
+│ PO-2026  │ JILONG     │ 30/05/2026 │ 3x 40' HQ     │ $75,033.60    │ Aguard.  │
+└──────────┴────────────┴────────────┴───────────────┴───────────────┴──────────┘
+```
+
+---
+
+### Função Helper para Extrair Containers
+
+Criar uma função reutilizável:
+```typescript
+// src/lib/utils.ts ou inline
+export function extractContainerInfo(notes: string | null): string {
+  if (!notes) return '-';
+  const match = notes.match(/Container:\s*([^|]+)/);
+  return match ? match[1].trim() : '-';
+}
+```
+
+---
+
+### Resumo das Entregas
+
+| Componente | Mudança Visual |
+|------------|----------------|
+| `TraderHeaderApprovals` | "Preços" → "Total Amount", "Qtd pcs" → "Containers: Xx40'HQ" |
+| `PurchaseOrders` lista | Coluna "Data" → "ETD", "Itens" → "Containers" |
+| `PurchaseOrderDetails` | Passar containerInfo extraído do notes |
+
+### Compatibilidade
+
+- Pedidos criados antes da mudança: Se não tiverem info de container no `notes`, mostrar "-" ou calcular dinamicamente
+- Pedidos novos: Já salvam container info no `notes` automaticamente
