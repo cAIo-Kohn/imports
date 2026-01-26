@@ -183,15 +183,6 @@ export function TraderHeaderApprovals({
       }
     },
     onSuccess: () => {
-      const accepted = buyerEtdSuggestion && editedEtd === buyerEtdSuggestion;
-      const wasAutoConfirmed = accepted && pendingApprovalChanges.filter(c => c.field_name !== 'etd').length === 0;
-      toast({ 
-        title: wasAutoConfirmed 
-          ? 'Sugestão do Buyer aceita! Pedido confirmado automaticamente.'
-          : accepted 
-            ? 'Sugestão do Buyer aceita! ETD atualizado.' 
-            : 'ETD atualizado!' 
-      });
       setIsEditingEtd(false);
       onOrderUpdated();
       queryClient.invalidateQueries({ queryKey: ['order-changes', order.id] });
