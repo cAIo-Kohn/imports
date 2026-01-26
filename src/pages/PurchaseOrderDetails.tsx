@@ -8,11 +8,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Calendar, Truck, Package, DollarSign, Building2, Plus, Trash2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ArrowLeft, Calendar, Package, DollarSign, Building2, Plus, Trash2, FileText, Edit2, Save, X, Eye, EyeOff, Printer } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { AddOrderItemModal } from '@/components/planning/AddOrderItemModal';
+import { PurchaseOrderInvoice } from '@/components/orders/PurchaseOrderInvoice';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +44,19 @@ export default function PurchaseOrderDetails() {
   
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
+  const [isEditingShipping, setIsEditingShipping] = useState(false);
+  const [showImages, setShowImages] = useState(true);
+  
+  // Shipping form state
+  const [shippingForm, setShippingForm] = useState({
+    etd: '',
+    crd: '',
+    port_origin: '',
+    port_destination: '',
+    payment_terms: '',
+    invoice_number: '',
+    notes: '',
+  });
 
   const { data: order, isLoading } = useQuery({
     queryKey: ['purchase-order', id],
@@ -48,23 +65,50 @@ export default function PurchaseOrderDetails() {
         .from('purchase_orders')
         .select(`
           *,
-          suppliers (id, company_name, country, contact_email),
+          suppliers (
+            id, company_name, country, address, city, state_province, postal_code,
+            contact_name, contact_phone, contact_email,
+            bank_name, bank_swift, bank_account, bank_address,
+            payment_terms
+          ),
           purchase_order_items (
             id,
             quantity,
             unit_price_usd,
             expected_arrival,
-            products (id, code, technical_description, lead_time_days, fob_price_usd),
-            units (id, name)
+            products (
+              id, code, technical_description, ncm,
+              qty_master_box, qty_inner,
+              master_box_length, master_box_width, master_box_height,
+              master_box_volume, packaging_type, supplier_specs,
+              individual_length, individual_width, individual_height,
+              image_url, fob_price_usd, origin_description, gross_weight
+            ),
+            units (id, name, address, city, state, cnpj, zip_code)
           )
         `)
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       return data;
     },
     enabled: !!id,
+  });
+
+  // Initialize shipping form when order loads
+  useState(() => {
+    if (order) {
+      setShippingForm({
+        etd: order.etd || '',
+        crd: order.crd || '',
+        port_origin: order.port_origin || '',
+        port_destination: order.port_destination || '',
+        payment_terms: order.payment_terms || '',
+        invoice_number: order.invoice_number || '',
+        notes: order.notes || '',
+      });
+    }
   });
 
   const updateStatusMutation = useMutation({
@@ -81,6 +125,32 @@ export default function PurchaseOrderDetails() {
     },
     onError: () => {
       toast({ title: 'Erro ao atualizar status', variant: 'destructive' });
+    },
+  });
+
+  const updateShippingMutation = useMutation({
+    mutationFn: async (data: typeof shippingForm) => {
+      const { error } = await supabase
+        .from('purchase_orders')
+        .update({
+          etd: data.etd || null,
+          crd: data.crd || null,
+          port_origin: data.port_origin || null,
+          port_destination: data.port_destination || null,
+          payment_terms: data.payment_terms || null,
+          invoice_number: data.invoice_number || null,
+          notes: data.notes || null,
+        })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-order', id] });
+      toast({ title: 'Dados de embarque atualizados!' });
+      setIsEditingShipping(false);
+    },
+    onError: () => {
+      toast({ title: 'Erro ao atualizar dados', variant: 'destructive' });
     },
   });
 
@@ -101,6 +171,25 @@ export default function PurchaseOrderDetails() {
       toast({ title: 'Erro ao remover item', variant: 'destructive' });
     },
   });
+
+  const handleEditShipping = () => {
+    if (order) {
+      setShippingForm({
+        etd: order.etd || '',
+        crd: order.crd || '',
+        port_origin: order.port_origin || '',
+        port_destination: order.port_destination || '',
+        payment_terms: order.payment_terms || '',
+        invoice_number: order.invoice_number || '',
+        notes: order.notes || '',
+      });
+    }
+    setIsEditingShipping(true);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   if (isLoading) {
     return (
@@ -133,7 +222,7 @@ export default function PurchaseOrderDetails() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between print:hidden">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate('/purchase-orders')}>
             <ArrowLeft className="h-5 w-5" />
@@ -149,6 +238,14 @@ export default function PurchaseOrderDetails() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowImages(!showImages)}>
+            {showImages ? <EyeOff className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}
+            {showImages ? 'Ocultar Imagens' : 'Mostrar Imagens'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handlePrint}>
+            <Printer className="mr-2 h-4 w-4" />
+            Imprimir
+          </Button>
           <Select value={order.status} onValueChange={(v) => updateStatusMutation.mutate(v)}>
             <SelectTrigger className="w-[180px]">
               <SelectValue />
@@ -164,146 +261,211 @@ export default function PurchaseOrderDetails() {
         </div>
       </div>
 
-      {/* Info Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Fornecedor</CardTitle>
-            <Building2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-medium">{order.suppliers?.company_name}</div>
-            <p className="text-sm text-muted-foreground">{order.suppliers?.country}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Data do Pedido</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-medium">
-              {format(new Date(order.order_date), 'dd/MM/yyyy', { locale: ptBR })}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Quantidade Total</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-medium">{totalQuantity.toLocaleString('pt-BR')} un</div>
-            <p className="text-sm text-muted-foreground">{items.length} itens</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Valor Total FOB</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="font-medium">
-              ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Tabs defaultValue="invoice" className="print:hidden">
+        <TabsList>
+          <TabsTrigger value="invoice">
+            <FileText className="mr-2 h-4 w-4" />
+            Invoice Comercial
+          </TabsTrigger>
+          <TabsTrigger value="shipping">
+            <Package className="mr-2 h-4 w-4" />
+            Dados de Embarque
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Items Table */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Itens do Pedido</CardTitle>
-            <CardDescription>Produtos incluídos neste pedido de compra</CardDescription>
-          </div>
+        <TabsContent value="invoice" className="mt-4">
           {order.status === 'draft' && (
-            <Button onClick={() => setAddItemOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Adicionar Item
-            </Button>
+            <div className="mb-4 flex justify-end">
+              <Button onClick={() => setAddItemOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Adicionar Item
+              </Button>
+            </div>
           )}
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Código</TableHead>
-                <TableHead>Descrição</TableHead>
-                <TableHead>Unidade Destino</TableHead>
-                <TableHead className="text-right">Quantidade</TableHead>
-                <TableHead className="text-right">Preço Unit.</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead>Chegada Prev.</TableHead>
-                {order.status === 'draft' && <TableHead className="w-[50px]" />}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                    Nenhum item adicionado. Adicione produtos a este pedido.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                items.map((item: any) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.products?.code}</TableCell>
-                    <TableCell className="max-w-[300px] truncate">
-                      {item.products?.technical_description}
-                    </TableCell>
-                    <TableCell>{item.units?.name}</TableCell>
-                    <TableCell className="text-right">
-                      {item.quantity.toLocaleString('pt-BR')}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {item.unit_price_usd 
-                        ? `$${item.unit_price_usd.toLocaleString('en-US', { minimumFractionDigits: 4 })}`
-                        : '-'
-                      }
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {item.unit_price_usd 
-                        ? `$${(item.quantity * item.unit_price_usd).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-                        : '-'
-                      }
-                    </TableCell>
-                    <TableCell>
-                      {item.expected_arrival 
-                        ? format(new Date(item.expected_arrival), 'dd/MM/yyyy', { locale: ptBR })
-                        : '-'
-                      }
-                    </TableCell>
-                    {order.status === 'draft' && (
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDeleteItemId(item.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+          <PurchaseOrderInvoice order={order as any} showImages={showImages} />
+        </TabsContent>
 
-      {/* Notes */}
-      {order.notes && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Observações</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground whitespace-pre-wrap">{order.notes}</p>
-          </CardContent>
-        </Card>
-      )}
+        <TabsContent value="shipping" className="mt-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Dados de Embarque</CardTitle>
+                <CardDescription>
+                  Informações de ETD, portos e condições de pagamento
+                </CardDescription>
+              </div>
+              {!isEditingShipping ? (
+                <Button variant="outline" size="sm" onClick={handleEditShipping}>
+                  <Edit2 className="mr-2 h-4 w-4" />
+                  Editar
+                </Button>
+              ) : (
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setIsEditingShipping(false)}>
+                    <X className="mr-2 h-4 w-4" />
+                    Cancelar
+                  </Button>
+                  <Button size="sm" onClick={() => updateShippingMutation.mutate(shippingForm)}>
+                    <Save className="mr-2 h-4 w-4" />
+                    Salvar
+                  </Button>
+                </div>
+              )}
+            </CardHeader>
+            <CardContent>
+              {isEditingShipping ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Número da Invoice</Label>
+                    <Input
+                      value={shippingForm.invoice_number}
+                      onChange={(e) => setShippingForm(s => ({ ...s, invoice_number: e.target.value }))}
+                      placeholder="Ex: INV-2025-001"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>ETD (Estimated Time of Departure)</Label>
+                    <Input
+                      type="date"
+                      value={shippingForm.etd}
+                      onChange={(e) => setShippingForm(s => ({ ...s, etd: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CRD (Cargo Ready Date)</Label>
+                    <Input
+                      type="date"
+                      value={shippingForm.crd}
+                      onChange={(e) => setShippingForm(s => ({ ...s, crd: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Porto de Origem</Label>
+                    <Input
+                      value={shippingForm.port_origin}
+                      onChange={(e) => setShippingForm(s => ({ ...s, port_origin: e.target.value }))}
+                      placeholder="Ex: QINGDAO, CHINA"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Porto de Destino</Label>
+                    <Input
+                      value={shippingForm.port_destination}
+                      onChange={(e) => setShippingForm(s => ({ ...s, port_destination: e.target.value }))}
+                      placeholder="Ex: RIO GRANDE, BRAZIL"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Condições de Pagamento</Label>
+                    <Input
+                      value={shippingForm.payment_terms}
+                      onChange={(e) => setShippingForm(s => ({ ...s, payment_terms: e.target.value }))}
+                      placeholder="Ex: 100% T/T AFTER RECEIVED SHIPPING DOCUMENTS"
+                    />
+                  </div>
+                  <div className="space-y-2 col-span-2">
+                    <Label>Observações / Remarks</Label>
+                    <Textarea
+                      value={shippingForm.notes}
+                      onChange={(e) => setShippingForm(s => ({ ...s, notes: e.target.value }))}
+                      placeholder="Observações sobre o pedido..."
+                      rows={4}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Número da Invoice</p>
+                    <p className="font-medium">{order.invoice_number || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">ETD</p>
+                    <p className="font-medium">
+                      {order.etd ? format(new Date(order.etd), 'dd/MM/yyyy', { locale: ptBR }) : '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">CRD</p>
+                    <p className="font-medium">
+                      {order.crd ? format(new Date(order.crd), 'dd/MM/yyyy', { locale: ptBR }) : '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Porto de Origem</p>
+                    <p className="font-medium">{order.port_origin || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Porto de Destino</p>
+                    <p className="font-medium">{order.port_destination || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Condições de Pagamento</p>
+                    <p className="font-medium">{order.payment_terms || order.suppliers?.payment_terms || '-'}</p>
+                  </div>
+                  {order.notes && (
+                    <div className="col-span-2">
+                      <p className="text-sm text-muted-foreground">Observações</p>
+                      <p className="font-medium whitespace-pre-wrap">{order.notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Fornecedor</CardTitle>
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="font-medium">{order.suppliers?.company_name}</div>
+                <p className="text-sm text-muted-foreground">{order.suppliers?.country}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Data do Pedido</CardTitle>
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="font-medium">
+                  {format(new Date(order.order_date), 'dd/MM/yyyy', { locale: ptBR })}
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Quantidade Total</CardTitle>
+                <Package className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="font-medium">{totalQuantity.toLocaleString('pt-BR')} un</div>
+                <p className="text-sm text-muted-foreground">{items.length} itens</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Valor Total FOB</CardTitle>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="font-medium">
+                  ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* Print View - Shows invoice directly */}
+      <div className="hidden print:block">
+        <PurchaseOrderInvoice order={order as any} showImages={showImages} />
+      </div>
 
       {/* Add Item Modal */}
       <AddOrderItemModal

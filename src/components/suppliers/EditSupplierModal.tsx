@@ -31,6 +31,11 @@ const formSchema = z.object({
   container_20_cbm: z.string().optional().or(z.literal('')),
   container_40_cbm: z.string().optional().or(z.literal('')),
   container_40hq_cbm: z.string().optional().or(z.literal('')),
+  // Bank details
+  bank_name: z.string().max(200, 'Nome do banco muito longo').optional().or(z.literal('')),
+  bank_swift: z.string().max(50, 'SWIFT muito longo').optional().or(z.literal('')),
+  bank_account: z.string().max(100, 'Conta muito longa').optional().or(z.literal('')),
+  bank_address: z.string().max(300, 'Endereço do banco muito longo').optional().or(z.literal('')),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -55,6 +60,11 @@ interface Supplier {
   container_20_cbm: number | null;
   container_40_cbm: number | null;
   container_40hq_cbm: number | null;
+  // Bank details
+  bank_name?: string | null;
+  bank_swift?: string | null;
+  bank_account?: string | null;
+  bank_address?: string | null;
 }
 
 interface EditSupplierModalProps {
@@ -88,6 +98,10 @@ export function EditSupplierModal({ open, onOpenChange, supplier, onSuccess }: E
       container_20_cbm: supplier.container_20_cbm?.toString() || '',
       container_40_cbm: supplier.container_40_cbm?.toString() || '',
       container_40hq_cbm: supplier.container_40hq_cbm?.toString() || '',
+      bank_name: supplier.bank_name || '',
+      bank_swift: supplier.bank_swift || '',
+      bank_account: supplier.bank_account || '',
+      bank_address: supplier.bank_address || '',
     },
   });
 
@@ -112,6 +126,10 @@ export function EditSupplierModal({ open, onOpenChange, supplier, onSuccess }: E
       container_20_cbm: supplier.container_20_cbm?.toString() || '',
       container_40_cbm: supplier.container_40_cbm?.toString() || '',
       container_40hq_cbm: supplier.container_40hq_cbm?.toString() || '',
+      bank_name: supplier.bank_name || '',
+      bank_swift: supplier.bank_swift || '',
+      bank_account: supplier.bank_account || '',
+      bank_address: supplier.bank_address || '',
     });
   }, [supplier, form]);
 
@@ -139,6 +157,10 @@ export function EditSupplierModal({ open, onOpenChange, supplier, onSuccess }: E
           container_20_cbm: data.container_20_cbm ? parseFloat(data.container_20_cbm) : null,
           container_40_cbm: data.container_40_cbm ? parseFloat(data.container_40_cbm) : null,
           container_40hq_cbm: data.container_40hq_cbm ? parseFloat(data.container_40hq_cbm) : null,
+          bank_name: data.bank_name?.trim() || null,
+          bank_swift: data.bank_swift?.trim() || null,
+          bank_account: data.bank_account?.trim() || null,
+          bank_address: data.bank_address?.trim() || null,
         })
         .eq('id', supplier.id);
 
@@ -441,6 +463,70 @@ export function EditSupplierModal({ open, onOpenChange, supplier, onSuccess }: E
                           placeholder="76" 
                           {...field} 
                         />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-muted-foreground">Dados Bancários</h4>
+              <p className="text-xs text-muted-foreground">
+                Informações para pagamento e inclusão nas invoices comerciais
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="bank_name"
+                  render={({ field }) => (
+                    <FormItem className="col-span-2">
+                      <FormLabel>Nome do Banco</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ex: BANK OF COMMUNICATIONS" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="bank_swift"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>SWIFT/BIC</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ex: COMMCNSHSQN" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="bank_account"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Número da Conta</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ex: 398899991140003010721" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="bank_address"
+                  render={({ field }) => (
+                    <FormItem className="col-span-2">
+                      <FormLabel>Endereço do Banco</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Endereço completo do banco" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
