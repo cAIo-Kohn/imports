@@ -52,25 +52,22 @@ const roleOptions: { value: AppRole; label: string; description: string; icon: t
 export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserModalProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    fullName: '',
-    email: '',
-    password: '',
-  });
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [selectedRoles, setSelectedRoles] = useState<AppRole[]>([]);
 
-  const handleRoleToggle = (role: AppRole) => {
-    setSelectedRoles((prev) =>
-      prev.includes(role)
-        ? prev.filter((r) => r !== role)
-        : [...prev, role]
-    );
+  const resetForm = () => {
+    setFullName('');
+    setEmail('');
+    setPassword('');
+    setSelectedRoles([]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.fullName || !formData.email || !formData.password) {
+    if (!fullName || !email || !password) {
       toast({
         title: 'Campos obrigatórios',
         description: 'Preencha todos os campos obrigatórios.',
@@ -79,7 +76,7 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
       return;
     }
 
-    if (formData.password.length < 6) {
+    if (password.length < 6) {
       toast({
         title: 'Senha muito curta',
         description: 'A senha deve ter pelo menos 6 caracteres.',
@@ -104,9 +101,9 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
 
       const response = await supabase.functions.invoke('create-user', {
         body: {
-          email: formData.email,
-          password: formData.password,
-          fullName: formData.fullName,
+          email,
+          password,
+          fullName,
           roles: selectedRoles,
         },
         headers: {
@@ -121,12 +118,10 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
 
       toast({
         title: 'Usuário criado',
-        description: `${formData.fullName} foi adicionado ao sistema.`,
+        description: `${fullName} foi adicionado ao sistema.`,
       });
 
-      // Reset form
-      setFormData({ fullName: '', email: '', password: '' });
-      setSelectedRoles([]);
+      resetForm();
       onSuccess();
     } catch (error: any) {
       toast({
@@ -154,8 +149,8 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
             <Label htmlFor="fullName">Nome completo *</Label>
             <Input
               id="fullName"
-              value={formData.fullName}
-              onChange={(e) => setFormData((prev) => ({ ...prev, fullName: e.target.value }))}
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
               placeholder="Digite o nome completo"
             />
           </div>
@@ -165,8 +160,8 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
             <Input
               id="email"
               type="email"
-              value={formData.email}
-              onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               placeholder="usuario@empresa.com"
             />
           </div>
@@ -176,8 +171,8 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
             <Input
               id="password"
               type="password"
-              value={formData.password}
-              onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="Mínimo 6 caracteres"
             />
           </div>
@@ -187,16 +182,23 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
             <div className="space-y-2">
               {roleOptions.map((option) => {
                 const Icon = option.icon;
+                const isChecked = selectedRoles.includes(option.value);
                 return (
-                  <div
+                  <label
                     key={option.value}
+                    htmlFor={option.value}
                     className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer"
-                    onClick={() => handleRoleToggle(option.value)}
                   >
                     <Checkbox
                       id={option.value}
-                      checked={selectedRoles.includes(option.value)}
-                      onCheckedChange={() => handleRoleToggle(option.value)}
+                      checked={isChecked}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedRoles((prev) => [...prev, option.value]);
+                        } else {
+                          setSelectedRoles((prev) => prev.filter((r) => r !== option.value));
+                        }
+                      }}
                     />
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -205,7 +207,7 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
                       </div>
                       <p className="text-sm text-muted-foreground">{option.description}</p>
                     </div>
-                  </div>
+                  </label>
                 );
               })}
             </div>
