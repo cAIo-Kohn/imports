@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Package, TrendingDown, AlertTriangle, TrendingUp, Building2, Upload, FileSpreadsheet, RefreshCw, Ship, Bug } from 'lucide-react';
+import { Package, TrendingDown, AlertTriangle, TrendingUp, Building2, Upload, FileSpreadsheet, RefreshCw, Ship, Bug, RotateCcw } from 'lucide-react';
 import { SupplierHealthRow, type SupplierHealthRowData } from '@/components/planning/SupplierHealthRow';
 import { type PeriodStats, type RupturedProduct } from '@/components/planning/PeriodIndicator';
 import { HealthBar } from '@/components/planning/HealthBar';
@@ -14,6 +14,7 @@ import { ImportForecastModal } from '@/components/planning/ImportForecastModal';
 import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal';
 import { ImportArrivalsModal } from '@/components/planning/ImportArrivalsModal';
 import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
+import { RolloverMonthModal } from '@/components/planning/RolloverMonthModal';
 import { format, addMonths, startOfMonth } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { fetchForecastsParallel, fetchArrivalsParallel, fetchAllInventory } from '@/lib/fetchAllPaged';
@@ -59,6 +60,7 @@ export default function DemandPlanning() {
   const [importInventoryOpen, setImportInventoryOpen] = useState(false);
   const [importHistoryOpen, setImportHistoryOpen] = useState(false);
   const [importArrivalsOpen, setImportArrivalsOpen] = useState(false);
+  const [rolloverModalOpen, setRolloverModalOpen] = useState(false);
 
   const now = new Date();
   const startMonth = startOfMonth(now);
@@ -436,6 +438,10 @@ export default function DemandPlanning() {
           <Button variant="outline" size="icon" onClick={handleRefreshData} title="Refresh data">
             <RefreshCw className="h-4 w-4" />
           </Button>
+          <Button variant="secondary" onClick={() => setRolloverModalOpen(true)}>
+            <RotateCcw className="mr-2 h-4 w-4" />
+            Rollover Month
+          </Button>
           <Button variant="outline" onClick={() => setImportInventoryOpen(true)}>
             <Upload className="mr-2 h-4 w-4" />
             Inventory
@@ -598,6 +604,11 @@ export default function DemandPlanning() {
         open={importArrivalsOpen}
         onOpenChange={setImportArrivalsOpen}
         onSuccess={handleImportSuccess}
+      />
+      <RolloverMonthModal
+        open={rolloverModalOpen}
+        onOpenChange={setRolloverModalOpen}
+        onSuccess={handleRefreshData}
       />
     </div>
   );

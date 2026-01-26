@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { format, addMonths, startOfMonth, parseISO, subYears } from 'date-fns';
+import { format, addMonths, startOfMonth, parseISO, subYears, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -60,6 +60,15 @@ interface MonthProjection {
   processNumber: string | null;
 }
 
+interface PerformanceData {
+  monthKey: string;
+  monthLabel: string;
+  forecast: number;
+  actual: number;
+  percentage: number;
+  delta: number;
+}
+
 interface ProductProjection {
   product: Product;
   currentStock: number;
@@ -71,6 +80,7 @@ interface ProductProjection {
   totalPurchases: number; // From uploads (scheduled_arrivals)
   totalAppOrderArrivals: number; // From app orders (purchase_order_items)
   totalPendingArrivals: number;
+  performanceData: PerformanceData[]; // PV vs Actual for last 3 completed months
 }
 
 export default function SupplierPlanning() {
@@ -578,6 +588,31 @@ export default function SupplierPlanning() {
           };
         });
 
+        // Calculate performance data: compare PV vs Actual for past months with data
+        const performanceData: PerformanceData[] = [];
+        const currentMonth = startOfMonth(new Date());
+        
+        // Look at past 3 months (months that have "closed" - before current month)
+        for (let i = 1; i <= 3; i++) {
+          const pastMonth = subMonths(currentMonth, i);
+          const monthKey = format(pastMonth, 'yyyy-MM-dd');
+          
+          const forecast = productForecasts.get(monthKey) || 0;
+          const actual = productHistory.get(monthKey) || 0;
+          
+          // Only include months where we have both forecast AND actual sales data
+          if (forecast > 0 && actual > 0) {
+            performanceData.push({
+              monthKey,
+              monthLabel: format(pastMonth, 'MMM/yy', { locale: ptBR }),
+              forecast,
+              actual,
+              percentage: Math.round((actual / forecast) * 100),
+              delta: actual - forecast,
+            });
+          }
+        }
+
         const totalForecast = monthProjections.reduce((sum, m) => sum + m.forecast, 0);
         const totalHistory = monthProjections.reduce((sum, m) => sum + m.historyLastYear, 0);
         const totalPurchases = monthProjections.reduce((sum, m) => sum + m.purchases, 0);
@@ -595,6 +630,7 @@ export default function SupplierPlanning() {
           totalPurchases,
           totalAppOrderArrivals,
           totalPendingArrivals,
+          performanceData, // Include performance data
         };
       })
       .filter(p => !showOnlyRuptures || p.hasRupture);
@@ -641,8 +677,8 @@ export default function SupplierPlanning() {
   if (!supplier) {
     return (
       <div className="flex flex-col items-center justify-center h-96 gap-4">
-        <p className="text-muted-foreground">Fornecedor não encontrado</p>
-        <Button onClick={() => navigate('/demand-planning')}>Voltar</Button>
+        <p className="text-muted-foreground">Supplier not found</p>
+        <Button onClick={() => navigate('/demand-planning')}>Go Back</Button>
       </div>
     );
   }
@@ -658,7 +694,7 @@ export default function SupplierPlanning() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold tracking-tight">{supplier.company_name}</h1>
-            <p className="text-sm text-muted-foreground">{products.length} produtos</p>
+            <p className="text-sm text-muted-foreground">{products.length} products</p>
           </div>
         </div>
         
@@ -684,7 +720,7 @@ export default function SupplierPlanning() {
         
         {/* Right: Actions */}
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={handleRefreshData} title="Atualizar dados">
+        <Button variant="outline" size="icon" onClick={handleRefreshData} title="Refresh data">
             <RefreshCw className="h-4 w-4" />
           </Button>
           <SmartOrderBuilder
@@ -697,7 +733,7 @@ export default function SupplierPlanning() {
                   Object.entries(arrivals).map(([k, v]) => [k, v.toString()])
                 )
               );
-              toast.success('Pedido simulado gerado! Ajuste as quantidades e crie o pedido.');
+          toast.success('Simulated order generated! Adjust quantities and create the order.');
             }}
           />
         </div>
@@ -708,7 +744,7 @@ export default function SupplierPlanning() {
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por código ou descrição..."
+            placeholder="Search by code or description..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9 h-9"
@@ -720,7 +756,7 @@ export default function SupplierPlanning() {
           </SelectTrigger>
           <SelectContent>
             {availableUnits.length > 1 && (
-              <SelectItem value="all">Todas as Unidades</SelectItem>
+              <SelectItem value="all">All Units</SelectItem>
             )}
             {availableUnits.length > 0 ? (
               availableUnits.map(unit => (
@@ -738,9 +774,9 @@ export default function SupplierPlanning() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="6">6 meses</SelectItem>
-            <SelectItem value="12">12 meses</SelectItem>
-            <SelectItem value="18">18 meses</SelectItem>
+            <SelectItem value="6">6 months</SelectItem>
+            <SelectItem value="12">12 months</SelectItem>
+            <SelectItem value="18">18 months</SelectItem>
           </SelectContent>
         </Select>
         <Button
@@ -749,7 +785,7 @@ export default function SupplierPlanning() {
           size="sm"
         >
           <Filter className="mr-2 h-4 w-4" />
-          Apenas Rupturas
+          Ruptures Only
         </Button>
       </div>
 
@@ -763,7 +799,7 @@ export default function SupplierPlanning() {
               <span className="font-normal truncate">{selectedProductData.product.technical_description}</span>
             </CardTitle>
             <CardDescription>
-              Projeção de estoque para os próximos {monthsAhead} meses
+              Stock projection for the next {monthsAhead} months
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -775,19 +811,19 @@ export default function SupplierPlanning() {
       {/* Projection Cards */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle>Projeção de Estoque</CardTitle>
+          <CardTitle>Stock Projection</CardTitle>
           <CardDescription className="text-xs">
-            Clique em um produto para ver o gráfico. Digite valores na linha "Chegada" para simular compras.
+            Click a product to view the chart. Enter values in the "Arrival" row to simulate purchases.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div 
+          <div
             ref={tableContainerRef}
             className="space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-2"
           >
             {productProjections.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                Nenhum produto encontrado. Importe previsões e estoque para começar.
+                No products found. Import forecasts and inventory to start.
               </div>
             ) : (
               productProjections.map((productProj) => (

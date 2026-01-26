@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { ArrivalInput } from './ArrivalInput';
+import { PerformanceIndicator, type PerformanceData } from './PerformanceIndicator';
 
 interface MonthProjection {
   monthKey: string;
@@ -35,6 +36,7 @@ export interface ProductProjectionData {
   totalPurchases: number; // From uploads
   totalAppOrderArrivals: number; // From app orders
   totalPendingArrivals: number;
+  performanceData?: PerformanceData[]; // PV vs Actual for last 3 months
 }
 
 interface ProductProjectionCardProps {
@@ -87,9 +89,13 @@ export const ProductProjectionCard = memo(function ProductProjectionCard({
             </div>
           </div>
           <div className="flex flex-col items-center bg-muted/40 rounded-md px-3 py-1.5">
-            <span className="text-[10px] text-muted-foreground uppercase">Estoque</span>
+            <span className="text-[10px] text-muted-foreground uppercase">Stock</span>
             <span className="font-bold text-lg">{productProj.currentStock.toLocaleString('pt-BR')}</span>
           </div>
+          {/* Performance Indicator - PV vs Actual */}
+          <PerformanceIndicator 
+            performanceData={productProj.performanceData || []} 
+          />
         </div>
 
         {/* Projection Table */}
