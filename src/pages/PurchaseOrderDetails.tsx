@@ -47,7 +47,7 @@ export default function PurchaseOrderDetails() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { isTrader, canManageOrders } = useUserRole();
+  const { isTrader, isAdmin, canManageOrders } = useUserRole();
   
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
@@ -234,7 +234,7 @@ export default function PurchaseOrderDetails() {
 
   // Check if supplier is Chinese
   const isChineseSupplier = order.suppliers?.country?.toLowerCase() === 'china';
-  const showTraderApproval = isTrader && isChineseSupplier && order.status === 'pending_trader_review';
+  const showTraderApproval = (isTrader || isAdmin) && isChineseSupplier && order.status === 'pending_trader_review';
   const showBuyerApproval = canManageOrders && order.status === 'pending_buyer_approval';
 
   return (
