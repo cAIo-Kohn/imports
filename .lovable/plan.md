@@ -1,248 +1,189 @@
 
 
-## Plano: Edição Completa pelo Trader + Visualização de Alterações para Comprador
+## Plano: Simplificar Header - Apenas ETD + Sugestão Automática
 
 ### Problema Identificado
 
-1. **Edição limitada**: O trader só pode editar preço e quantidade dos itens. Não consegue editar descrição técnica, NCM, cubagem, especificações do fornecedor, etc.
-
-2. **Falta de destaque visual**: Quando o pedido volta para o comprador, ele vê uma lista de alterações no `OrderChangeSummary`, mas os campos alterados na tabela de itens não estão destacados visualmente.
-
-3. **Sem tooltip**: Não há indicação inline de "antes/depois" nos campos que foram modificados.
-
----
+1. **Header muito complexo**: Atualmente exibe 3 aprovações (ETD, Preços, Quantidades)
+2. **ETD não está pré-populado**: O campo `etd` no pedido está `null`, mas a lógica de cálculo já existe e está registrada nas notas do pedido
+3. **Regra de ETD não implementada corretamente**: O sistema calcula ETD subtraindo dias do primeiro dia do mês, mas deveria usar dia 15 ou 30
 
 ### Solução Proposta
 
-#### Parte 1: Expandir Edição Completa para Traders
+#### 1. Simplificar o TraderHeaderApprovals
 
-Modificar `EditableOrderItemsTable.tsx` para permitir edição de **todos** os campos relevantes:
+Remover os checkboxes de "Preços" e "Quantidades" do header, mantendo apenas:
+- **ETD**: Com opção de editar ou aprovar o ETD sugerido
+- **Botão "Confirmar Pedido"**: Habilitado quando o ETD foi aprovado
 
-| Campo | Tabela | Crítico? |
-|-------|--------|----------|
-| `unit_price_usd` | purchase_order_items | Sim |
-| `quantity` | purchase_order_items | Sim |
-| `technical_description` | products | Não |
-| `supplier_specs` | products | Não |
-| `ncm` | products | Não |
-| `master_box_volume` | products | Não |
-| `master_box_length/width/height` | products | Não |
-| `fob_price_usd` | products | Não |
-| `packaging_type` | products | Não |
+#### 2. Calcular ETD Sugerido Automaticamente
 
-**Importante**: Alterações em produtos (`products`) afetam o cadastro do produto, não apenas o pedido. Devemos decidir:
-- **Opção A**: Editar direto na tabela de produtos (afeta outros pedidos)
-- **Opção B**: Criar campos de override no `purchase_order_items` para sobrescrever valores específicos do produto naquele pedido
+Quando o trader abrir o pedido e o `etd` estiver vazio:
+- Calcular 60 dias antes do mês de chegada desejado
+- Usar **dia 15** se a data resultante cair na primeira metade do mês
+- Usar **dia 30** (ou último dia do mês) se cair na segunda metade
+- Exemplo: Chegada em Julho 2026 → ETD sugerido: **15/05/2026** ou **30/05/2026**
 
-Vou implementar a **Opção A** (editar produtos diretamente), já que parece ser o comportamento esperado de um trader que está atualizando informações dos produtos.
+#### 3. Atualizar Lógica de Submissão
 
-#### Parte 2: Criar Visualização com Destaque de Alterações
-
-Criar novo componente `HighlightedOrderItemsTable.tsx` para o comprador ver:
-- Campos alterados com **fundo amarelo/âmbar**
-- **Tooltip** mostrando valor anterior ao passar o mouse
-- Ícone de "alterado" nos campos modificados
-
-#### Parte 3: Integrar no Fluxo de Aprovação
-
-- Quando o status for `pending_buyer_approval`, mostrar a tabela com destaques
-- Comprador vê exatamente o que foi alterado, campo por campo
-- Alterações críticas precisam de aprovação explícita
-- Alterações informativas são apenas visualizadas
+A aprovação do trader agora requer apenas:
+- ETD aprovado (obrigatório)
+- Todas as aprovações de preço e quantidade por item (opcional, mas visível)
 
 ---
 
-### Arquivos a Modificar/Criar
+### Alterações Necessárias
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `EditableOrderItemsTable.tsx` | Adicionar edição de descrição, NCM, cubagem, specs |
-| **NOVO** `HighlightedOrderItemsTable.tsx` | Tabela read-only com destaque visual de alterações |
-| `PurchaseOrderDetails.tsx` | Usar `HighlightedOrderItemsTable` para status `pending_buyer_approval` |
-| `useOrderChanges.ts` | Adicionar helper para buscar alterações por item/campo |
-
----
-
-### Layout da Tabela Editável (Trader)
-
-```
-┌────┬─────┬────────┬────────────────┬──────┬────────┬─────┬────────┬─────┬────────┐
-│ #  │ PIC │ CODE   │ DESCRIPTION ✏️ │ NCM ✏️│ Q'TY ✏️│ ☐Q │ FOB ✏️ │ ☐$ │ AÇÃO   │
-├────┼─────┼────────┼────────────────┼──────┼────────┼─────┼────────┼─────┼────────┤
-│ 1  │ 📷  │ 001480 │ [input texto]  │[inp] │ 1,000  │ ☑   │ $0.45  │ ☑   │ 💾 ❌  │
-└────┴─────┴────────┴────────────────┴──────┴────────┴─────┴────────┴─────┴────────┘
-```
-
-### Layout da Tabela Destacada (Comprador)
-
-```
-┌────┬─────┬────────┬─────────────────────────┬───────────────┬────────┐
-│ #  │ PIC │ CODE   │ DESCRIPTION             │ Q'TY          │ FOB    │
-├────┼─────┼────────┼─────────────────────────┼───────────────┼────────┤
-│ 1  │ 📷  │ 001480 │ ⚠️ "Nova descrição"     │ 🔶 1,500      │ $0.45  │
-│    │     │        │ [tooltip: era "antiga"] │ [era: 1,000]  │        │
-└────┴─────┴────────┴─────────────────────────┴───────────────┴────────┘
-
-Legenda:
-🔶 = Campo crítico alterado (fundo amarelo/âmbar, requer aprovação)
-⚠️ = Campo informativo alterado (fundo azul claro, apenas visualização)
-```
+| `TraderHeaderApprovals.tsx` | Remover checkboxes de Preços e Qtd, manter apenas ETD + calcular sugestão automática |
+| `PurchaseOrderDetails.tsx` | Ajustar props passadas ao TraderHeaderApprovals |
 
 ---
 
 ### Detalhes de Implementação
 
-#### 1. Expandir EditableOrderItemsTable.tsx
+#### TraderHeaderApprovals.tsx - Nova Estrutura
 
-Adicionar estado para mais campos editáveis:
-
-```typescript
-interface EditingState {
-  [itemId: string]: {
-    unit_price_usd: number;
-    quantity: number;
-    // Novos campos
-    technical_description: string;
-    supplier_specs: string;
-    ncm: string;
-    master_box_volume: number;
-    isSaving: boolean;
-  };
-}
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ ☐ ETD: 15/05/2026 (sugerido) ✏️          │ Preços: $75,033 (4/9 OK)  │
+│                                           │ Qtd: 803,241 pcs (4/9 OK) │
+│                                           │      [Confirmar Pedido]   │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-Adicionar inputs para campos não-críticos com logging:
+**Visual:**
+- ETD com checkbox de aprovação + botão de edição
+- Preços e Quantidades como **informação apenas** (sem checkbox)
+- Progresso de aprovação por item mostrado mas não bloqueante
+
+#### Lógica de ETD Sugerido
 
 ```typescript
-// Ao salvar descrição (não crítico)
-await logChange({
-  orderId,
-  itemId: item.id,
-  changeType: 'item_field',
-  fieldName: 'technical_description',
-  oldValue: oldDescription,
-  newValue: newDescription,
-  isCritical: false, // Não requer aprovação
-});
-```
-
-#### 2. Criar HighlightedOrderItemsTable.tsx
-
-```typescript
-interface HighlightedOrderItemsTableProps {
-  orderId: string;
-  items: OrderItem[];
-  changes: OrderChange[]; // Alterações do pedido
-  showImages?: boolean;
-}
-
-// Helper para verificar se campo foi alterado
-const getFieldChange = (itemId: string, fieldName: string): OrderChange | null => {
-  return changes.find(c => 
-    c.purchase_order_item_id === itemId && 
-    c.field_name === fieldName
-  ) || null;
-};
-
-// Componente de célula com destaque
-const HighlightedCell = ({ value, change }: { value: any; change: OrderChange | null }) => {
-  if (!change) return <span>{value}</span>;
+function calculateSuggestedEtd(expectedArrival: string): string {
+  // expectedArrival é no formato YYYY-MM-DD (ex: 2026-07-01)
+  const arrivalDate = new Date(expectedArrival);
   
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className={cn(
-          "px-1 rounded",
-          change.is_critical 
-            ? "bg-yellow-100 text-yellow-900 border border-yellow-300" 
-            : "bg-blue-50 text-blue-900 border border-blue-200"
-        )}>
-          {value}
-          {change.is_critical ? <AlertTriangle className="inline h-3 w-3 ml-1" /> : <Info className="inline h-3 w-3 ml-1" />}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>
-        <p className="text-xs">
-          <span className="font-medium">Valor anterior:</span>{' '}
-          <span className="line-through">{change.old_value}</span>
-        </p>
-        <p className="text-xs text-muted-foreground">
-          Alterado em {format(new Date(change.changed_at), "dd/MM 'às' HH:mm")}
-        </p>
-      </TooltipContent>
-    </Tooltip>
-  );
-};
+  // Subtrair 60 dias
+  const suggestedDate = subDays(arrivalDate, 60);
+  
+  // Normalizar para dia 15 ou 30 (último dia do mês)
+  const day = suggestedDate.getDate();
+  const year = suggestedDate.getFullYear();
+  const month = suggestedDate.getMonth();
+  
+  if (day <= 15) {
+    // Usar dia 15
+    return format(new Date(year, month, 15), 'yyyy-MM-dd');
+  } else {
+    // Usar último dia do mês (30 ou 31 ou 28/29)
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    return format(new Date(year, month, lastDay), 'yyyy-MM-dd');
+  }
+}
 ```
 
-#### 3. Atualizar PurchaseOrderDetails.tsx
+**Exemplo prático:**
+- Chegada: **01/07/2026**
+- 60 dias antes: **02/05/2026**
+- Dia 2 ≤ 15 → ETD sugerido: **15/05/2026**
 
+#### Modificações no TraderHeaderApprovals.tsx
+
+1. **Adicionar prop para data de chegada mais antiga**:
 ```typescript
-// Para comprador vendo pedido pending_buyer_approval
-{showBuyerApproval ? (
-  <HighlightedOrderItemsTable
-    orderId={order.id}
-    items={items}
-    changes={orderChanges} // Buscar alterações
-    showImages={showImages}
-  />
-) : showTraderApproval ? (
-  <EditableOrderItemsTable ... />
-) : (
-  <PurchaseOrderInvoice ... />
-)}
+interface TraderHeaderApprovalsProps {
+  order: PurchaseOrder;
+  totalValue: number;
+  totalQuantity: number;
+  itemsCount: number;
+  itemsWithPriceApproved: number;
+  itemsWithQtyApproved: number;
+  earliestArrival: string | null;  // NOVO: Data de chegada mais antiga dos itens
+  onOrderUpdated: () => void;
+}
 ```
 
-#### 4. Atualizar useOrderChanges.ts
-
-Adicionar helper para buscar alterações por item:
-
+2. **Calcular ETD sugerido ao montar componente**:
 ```typescript
-// Agrupar alterações por item
-const changesByItem = useMemo(() => {
-  const grouped: Record<string, Record<string, OrderChange>> = {};
-  changes.forEach(c => {
-    if (c.purchase_order_item_id) {
-      if (!grouped[c.purchase_order_item_id]) {
-        grouped[c.purchase_order_item_id] = {};
-      }
-      // Manter apenas a alteração mais recente por campo
-      grouped[c.purchase_order_item_id][c.field_name] = c;
-    }
-  });
-  return grouped;
-}, [changes]);
+const suggestedEtd = useMemo(() => {
+  if (order.etd) return order.etd;
+  if (!earliestArrival) return '';
+  return calculateSuggestedEtd(earliestArrival);
+}, [order.etd, earliestArrival]);
+```
 
-return {
-  // ... existente
-  changesByItem,
-};
+3. **Remover seções de Preços e Quantidades com checkbox**, mostrar apenas como texto informativo
+
+4. **Atualizar condição de habilitação do botão**:
+```typescript
+// Antes: allApproved = etd && prices && quantities
+// Depois: apenas ETD é obrigatório
+const canSubmit = order.trader_etd_approved;
 ```
 
 ---
 
-### Fluxo Completo
+### Fluxo Atualizado
 
 1. **Trader abre pedido** `pending_trader_review`
-2. **Edita qualquer campo** (preço, qtd, descrição, NCM, etc.)
-3. **Todas as alterações são logadas** com `is_critical` apropriado
-4. **Marca aprovações** (ETD, Preços, Quantidades) no header
-5. **Clica "Confirmar"** → Se houve mudança crítica → `pending_buyer_approval`
-6. **Comprador abre pedido** e vê:
-   - `HighlightedOrderItemsTable` com campos destacados
-   - Alterações críticas em amarelo com tooltip
-   - Alterações informativas em azul com tooltip
-7. **Comprador aprova** alterações críticas
-8. **Status muda para** `confirmed`
+2. Vê **ETD sugerido** calculado automaticamente (baseado na chegada)
+3. Pode **editar o ETD** se necessário (gera alteração crítica)
+4. Marca checkbox **ETD aprovado**
+5. Vê progresso de aprovações por item (preços: 4/9, qtd: 4/9) como informação
+6. Clica **Confirmar Pedido**
+   - Se houve alteração crítica (ETD modificado) → `pending_buyer_approval`
+   - Se não → `confirmed`
 
 ---
 
-### Resumo das Entregas
+### Layout Final
 
-| Componente | Função |
-|------------|--------|
-| `EditableOrderItemsTable` | Edição completa de todos os campos pelo trader |
-| **NOVO** `HighlightedOrderItemsTable` | Visualização com destaque de alterações para comprador |
-| `useOrderChanges` | Helper `changesByItem` para agrupar alterações |
-| `PurchaseOrderDetails` | Integração condicional baseada em status/role |
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ☐ 📅 ETD: 15/05/2026 ✏️ ✓      │  $ Preços: $75,033 (4/9)  │ [Confirmar   │
+│   (sugerido: 60d antes chegada)│  📦 Qtd: 803k pcs (4/9)   │    Pedido]   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Legenda visual:**
+- ☐ = Checkbox de aprovação (apenas ETD)
+- ✏️ = Botão de edição (apenas ETD)
+- ✓ = Ícone verde quando aprovado
+- Preços e Qtd = Apenas informação, sem interação
+
+---
+
+### Código Detalhado
+
+#### PurchaseOrderDetails.tsx - Calcular earliestArrival
+
+```typescript
+// Calcular data de chegada mais antiga entre os itens
+const earliestArrival = useMemo(() => {
+  if (!items.length) return null;
+  const arrivals = items
+    .filter((item: any) => item.expected_arrival)
+    .map((item: any) => item.expected_arrival);
+  if (!arrivals.length) return null;
+  return arrivals.sort()[0]; // Mais antiga (ordem crescente)
+}, [items]);
+
+// Passar para o componente
+<TraderHeaderApprovals 
+  order={order}
+  totalValue={totalValue}
+  totalQuantity={totalQuantity}
+  itemsCount={items.length}
+  itemsWithPriceApproved={itemsWithPriceApproved}
+  itemsWithQtyApproved={itemsWithQtyApproved}
+  earliestArrival={earliestArrival}
+  onOrderUpdated={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
+/>
+```
+
+#### TraderHeaderApprovals.tsx - Estrutura Simplificada
+
+A seção de Preços e Quantidades será transformada em texto informativo (badges) sem checkbox de aprovação geral, focando a atenção do trader no ETD.
 
