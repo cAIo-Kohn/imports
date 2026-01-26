@@ -51,7 +51,7 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
       consolidatedCriticalChanges.every(c => c.isAgreed || !c.needsApproval);
     
     if (allResolved && consolidatedCriticalChanges.some(c => c.isAgreed)) {
-      // Auto-confirm the order
+      // Auto-confirm the order silently
       const autoConfirm = async () => {
         const { error } = await supabase
           .from('purchase_orders')
@@ -62,14 +62,13 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
           .eq('id', orderId);
         
         if (!error) {
-          toast({ title: 'Pedido confirmado automaticamente - acordo alcançado!' });
           queryClient.invalidateQueries({ queryKey: ['purchase-order', orderId] });
           onChangesApproved?.();
         }
       };
       autoConfirm();
     }
-  }, [consolidatedCriticalChanges, orderId, queryClient, toast, onChangesApproved]);
+  }, [consolidatedCriticalChanges, orderId, queryClient, onChangesApproved]);
 
   const approveConsolidatedMutation = useMutation({
     mutationFn: async (consolidated: ConsolidatedChange) => {
