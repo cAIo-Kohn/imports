@@ -314,15 +314,30 @@ export default function SupplierPlanning() {
     });
   }, []);
 
-  // Update multiple arrivals at once (for fill container function)
+  // Update multiple arrivals at once (for fill container function and simulator edits)
   const updateMultipleArrivals = useCallback((updates: Record<string, number>) => {
-    setPendingArrivals(prev => ({ ...prev, ...updates }));
-    setPendingArrivalsInput(prev => {
-      const inputUpdates: Record<string, string> = {};
+    setPendingArrivals(prev => {
+      const updated = { ...prev };
       Object.entries(updates).forEach(([key, value]) => {
-        inputUpdates[key] = value.toString();
+        if (value <= 0) {
+          delete updated[key]; // Remove if value is 0 or negative
+        } else {
+          updated[key] = value;
+        }
       });
-      return { ...prev, ...inputUpdates };
+      return updated;
+    });
+    
+    setPendingArrivalsInput(prev => {
+      const updated = { ...prev };
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value <= 0) {
+          delete updated[key];
+        } else {
+          updated[key] = value.toString();
+        }
+      });
+      return updated;
     });
   }, []);
 

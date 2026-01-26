@@ -16,6 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/components/ui/sidebar';
 import { Progress } from '@/components/ui/progress';
+import { SimulatorQuantityInput } from './SimulatorQuantityInput';
 
 interface ProductWithDetails {
   id: string;
@@ -417,6 +418,20 @@ export function OrderSimulationFooter({
     }
   };
 
+  // Handle quantity update from simulator input
+  const handleQuantityUpdate = useCallback((productId: string, monthKey: string, newValue: number) => {
+    if (!onUpdateArrivals) return;
+    
+    const key = `${productId}::${monthKey}`;
+    
+    if (newValue <= 0) {
+      // Remove item: setting to 0 effectively removes from pendingArrivals
+      onUpdateArrivals({ [key]: 0 });
+    } else {
+      onUpdateArrivals({ [key]: newValue });
+    }
+  }, [onUpdateArrivals]);
+
   const hasItems = ordersByMonth.length > 0;
   const totalOrders = ordersByMonth.length;
   const totalItems = ordersByMonth.reduce((sum, o) => sum + o.items.length, 0);
@@ -703,8 +718,14 @@ export function OrderSimulationFooter({
                                     <AlertTriangle className="h-3 w-3 text-destructive mx-auto" />
                                   )}
                                 </TableCell>
-                                <TableCell className="text-right text-sm py-1.5 px-3">
-                                  {item.quantity.toLocaleString('pt-BR')}
+                                <TableCell className="text-right py-1.5 px-3">
+                                  <SimulatorQuantityInput
+                                    productId={item.productId}
+                                    monthKey={draft.monthKey}
+                                    value={item.quantity}
+                                    qtyMasterBox={products.find(p => p.id === item.productId)?.qty_master_box || null}
+                                    onUpdate={handleQuantityUpdate}
+                                  />
                                 </TableCell>
                                 <TableCell className="text-right text-sm text-muted-foreground py-1.5 px-3">
                                   {item.masterBoxes}
