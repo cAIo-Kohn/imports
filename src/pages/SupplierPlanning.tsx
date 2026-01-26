@@ -51,7 +51,9 @@ interface MonthProjection {
   initialStock: number;
   forecast: number;
   historyLastYear: number;
-  purchases: number;
+  purchases: number; // From scheduled_arrivals (uploads) - BLACK
+  appOrderArrivals: number; // From purchase_order_items (app) - BLUE
+  appOrderNumbers: string[]; // Order reference numbers for tooltip
   pendingArrival: number;
   finalBalance: number;
   status: 'ok' | 'warning' | 'rupture';
@@ -66,7 +68,8 @@ interface ProductProjection {
   firstRuptureMonth: Date | null;
   totalForecast: number;
   totalHistory: number;
-  totalPurchases: number;
+  totalPurchases: number; // From uploads (scheduled_arrivals)
+  totalAppOrderArrivals: number; // From app orders (purchase_order_items)
   totalPendingArrivals: number;
 }
 
@@ -205,7 +208,7 @@ export default function SupplierPlanning() {
     enabled: productIds.length > 0,
   });
 
-  // Fetch scheduled arrivals - filtered by supplier's products
+  // Fetch scheduled arrivals (from uploads - BLACK)
   const { data: scheduledArrivals = [], refetch: refetchScheduledArrivals } = useQuery({
     queryKey: ['scheduled-arrivals', selectedUnit, supplierId, productIds],
     queryFn: async () => {
@@ -226,6 +229,59 @@ export default function SupplierPlanning() {
     },
     enabled: productIds.length > 0,
   });
+
+  // Fetch purchase order items (from app - BLUE)
+  const { data: appOrderItems = [], refetch: refetchAppOrderItems } = useQuery({
+    queryKey: ['app-order-items', supplierId, selectedUnit, productIds],
+    queryFn: async () => {
+      if (!supplierId || productIds.length === 0) return [];
+      
+      // Fetch all reference_numbers from this supplier's orders for deduplication
+      const { data: poData, error: poError } = await supabase
+        .from('purchase_orders')
+        .select('id, reference_number, status')
+        .eq('supplier_id', supplierId)
+        .not('status', 'in', '("cancelled","received")');
+      
+      if (poError) throw poError;
+      if (!poData || poData.length === 0) return [];
+      
+      const orderIds = poData.map(po => po.id);
+      const orderMap = new Map(poData.map(po => [po.id, { reference_number: po.reference_number, status: po.status }]));
+      
+      let itemsQuery = supabase
+        .from('purchase_order_items')
+        .select('product_id, unit_id, quantity, expected_arrival, purchase_order_id')
+        .in('purchase_order_id', orderIds)
+        .in('product_id', productIds)
+        .not('expected_arrival', 'is', null);
+      
+      if (selectedUnit !== 'all') {
+        itemsQuery = itemsQuery.eq('unit_id', selectedUnit);
+      }
+      
+      const { data: itemsData, error: itemsError } = await itemsQuery;
+      if (itemsError) throw itemsError;
+      
+      return (itemsData || []).map(item => ({
+        ...item,
+        reference_number: orderMap.get(item.purchase_order_id)?.reference_number || null,
+        status: orderMap.get(item.purchase_order_id)?.status || 'draft',
+      }));
+    },
+    enabled: !!supplierId && productIds.length > 0,
+  });
+
+  // Get set of reference_numbers from app orders for deduplication
+  const appOrderReferenceNumbers = useMemo(() => {
+    const refs = new Set<string>();
+    appOrderItems.forEach(item => {
+      if (item.reference_number) {
+        refs.add(item.reference_number);
+      }
+    });
+    return refs;
+  }, [appOrderItems]);
 
   const handleArrivalChange = useCallback((productId: string, monthKey: string, value: string) => {
     const key = `${productId}::${monthKey}`;
@@ -365,9 +421,13 @@ export default function SupplierPlanning() {
       }
     });
 
+    // scheduled_arrivals from uploads (BLACK) - exclude those matching app order reference_numbers
     const purchasesByProductMonth = new Map<string, Map<string, { quantity: number; processNumbers: string[] }>>();
     scheduledArrivals.forEach(item => {
       if (!item.arrival_date) return;
+      // Skip if this process_number matches an app order reference_number (will show as blue instead)
+      if (item.process_number && appOrderReferenceNumbers.has(item.process_number)) return;
+      
       const key = item.product_id;
       if (!purchasesByProductMonth.has(key)) {
         purchasesByProductMonth.set(key, new Map());
@@ -379,6 +439,24 @@ export default function SupplierPlanning() {
         current.processNumbers.push(item.process_number);
       }
       purchasesByProductMonth.get(key)!.set(monthKey, current);
+    });
+
+    // app order arrivals (BLUE)
+    const appOrdersByProductMonth = new Map<string, Map<string, { quantity: number; orderNumbers: string[] }>>();
+    appOrderItems.forEach(item => {
+      if (!item.expected_arrival) return;
+      const key = item.product_id;
+      if (!appOrdersByProductMonth.has(key)) {
+        appOrdersByProductMonth.set(key, new Map());
+      }
+      const monthKey = format(startOfMonth(parseISO(item.expected_arrival)), 'yyyy-MM-dd');
+      const current = appOrdersByProductMonth.get(key)!.get(monthKey) || { quantity: 0, orderNumbers: [] };
+      current.quantity += item.quantity;
+      const refNum = item.reference_number || `PO-${item.purchase_order_id.substring(0, 8)}`;
+      if (!current.orderNumbers.includes(refNum)) {
+        current.orderNumbers.push(refNum);
+      }
+      appOrdersByProductMonth.get(key)!.set(monthKey, current);
     });
 
     const projections: ProductProjection[] = products
@@ -403,14 +481,22 @@ export default function SupplierPlanning() {
         const monthProjections: MonthProjection[] = months.map((month, index) => {
           const monthKey = format(month, 'yyyy-MM-dd');
           const forecast = productForecasts.get(monthKey) || 0;
+          
+          // Uploads (BLACK)
           const purchaseData = productPurchases.get(monthKey) || { quantity: 0, processNumbers: [] };
           const existingPurchases = purchaseData.quantity;
           const processNumber = purchaseData.processNumbers.length > 0 ? purchaseData.processNumbers.join(', ') : null;
           
+          // App orders (BLUE)
+          const appOrderData = appOrdersByProductMonth.get(product.id)?.get(monthKey) || { quantity: 0, orderNumbers: [] };
+          const appOrderArrivals = appOrderData.quantity;
+          const appOrderNumbers = appOrderData.orderNumbers;
+          
           const pendingArrivalKey = `${product.id}::${monthKey}`;
           const pendingArrival = pendingArrivals[pendingArrivalKey] || 0;
           
-          const totalArrivals = existingPurchases + pendingArrival;
+          // Total arrivals = uploads + app orders + pending input
+          const totalArrivals = existingPurchases + appOrderArrivals + pendingArrival;
           
           const historyMonth = subYears(month, 1);
           const historyKey = format(historyMonth, 'yyyy-MM-dd');
@@ -440,6 +526,8 @@ export default function SupplierPlanning() {
             forecast,
             historyLastYear,
             purchases: existingPurchases,
+            appOrderArrivals,
+            appOrderNumbers,
             pendingArrival,
             finalBalance,
             status,
@@ -450,6 +538,7 @@ export default function SupplierPlanning() {
         const totalForecast = monthProjections.reduce((sum, m) => sum + m.forecast, 0);
         const totalHistory = monthProjections.reduce((sum, m) => sum + m.historyLastYear, 0);
         const totalPurchases = monthProjections.reduce((sum, m) => sum + m.purchases, 0);
+        const totalAppOrderArrivals = monthProjections.reduce((sum, m) => sum + m.appOrderArrivals, 0);
         const totalPendingArrivals = monthProjections.reduce((sum, m) => sum + m.pendingArrival, 0);
 
         return {
@@ -461,13 +550,14 @@ export default function SupplierPlanning() {
           totalForecast,
           totalHistory,
           totalPurchases,
+          totalAppOrderArrivals,
           totalPendingArrivals,
         };
       })
       .filter(p => !showOnlyRuptures || p.hasRupture);
 
     return projections.sort((a, b) => a.product.code.localeCompare(b.product.code));
-  }, [products, forecasts, salesHistory, inventorySnapshots, scheduledArrivals, searchQuery, showOnlyRuptures, monthsAhead, selectedUnit, pendingArrivals]);
+  }, [products, forecasts, salesHistory, inventorySnapshots, scheduledArrivals, appOrderItems, appOrderReferenceNumbers, searchQuery, showOnlyRuptures, monthsAhead, selectedUnit, pendingArrivals]);
 
   const stats = useMemo(() => {
     const total = productProjections.length;
@@ -490,6 +580,7 @@ export default function SupplierPlanning() {
     refetchInventory();
     refetchHistory();
     refetchScheduledArrivals();
+    refetchAppOrderItems();
   };
 
   if (supplierLoading || productsLoading) {

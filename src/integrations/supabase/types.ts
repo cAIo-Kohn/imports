@@ -455,6 +455,7 @@ export type Database = {
           payment_terms: string | null
           port_destination: string | null
           port_origin: string | null
+          reference_number: string | null
           requires_buyer_approval: boolean | null
           status: string
           supplier_id: string
@@ -484,6 +485,7 @@ export type Database = {
           payment_terms?: string | null
           port_destination?: string | null
           port_origin?: string | null
+          reference_number?: string | null
           requires_buyer_approval?: boolean | null
           status?: string
           supplier_id: string
@@ -513,6 +515,7 @@ export type Database = {
           payment_terms?: string | null
           port_destination?: string | null
           port_origin?: string | null
+          reference_number?: string | null
           requires_buyer_approval?: boolean | null
           status?: string
           supplier_id?: string

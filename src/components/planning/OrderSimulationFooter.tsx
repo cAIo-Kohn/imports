@@ -48,6 +48,7 @@ interface OrderDraft {
   monthKey: string;
   monthLabel: string;
   containerType: keyof typeof CONTAINER_SPECS;
+  referenceNumber: string; // User-defined order reference
   items: OrderItem[];
   totalVolume: number;
   totalValue: number;
@@ -122,6 +123,7 @@ export function OrderSimulationFooter({
   const queryClient = useQueryClient();
   const { state: sidebarState, isMobile } = useSidebar();
   const [containerTypes, setContainerTypes] = useState<Record<string, keyof typeof CONTAINER_SPECS>>({});
+  const [referenceNumbers, setReferenceNumbers] = useState<Record<string, string>>({});
   const [customContainerVolumes, setCustomContainerVolumes] = useState<Record<string, number>>({});
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('');
@@ -161,10 +163,12 @@ export function OrderSimulationFooter({
 
       if (!grouped.has(monthKey)) {
         const containerType = containerTypes[monthKey] || '40hq';
+        const referenceNumber = referenceNumbers[monthKey] || '';
         grouped.set(monthKey, {
           monthKey,
           monthLabel: format(parseDateString(monthKey), "MMM/yy", { locale: ptBR }),
           containerType,
+          referenceNumber,
           items: [],
           totalVolume: 0,
           totalValue: 0,
@@ -247,7 +251,7 @@ export function OrderSimulationFooter({
     });
 
     return Array.from(grouped.values()).sort((a, b) => a.monthKey.localeCompare(b.monthKey));
-  }, [pendingArrivals, products, selectedSupplier, containerTypes, customContainerVolumes, getEffectiveContainerVolume]);
+  }, [pendingArrivals, products, selectedSupplier, containerTypes, referenceNumbers, customContainerVolumes, getEffectiveContainerVolume]);
 
   // Set initial active tab
   React.useEffect(() => {
@@ -260,6 +264,10 @@ export function OrderSimulationFooter({
 
   const handleContainerChange = (monthKey: string, type: keyof typeof CONTAINER_SPECS) => {
     setContainerTypes(prev => ({ ...prev, [monthKey]: type }));
+  };
+
+  const handleReferenceNumberChange = (monthKey: string, value: string) => {
+    setReferenceNumbers(prev => ({ ...prev, [monthKey]: value }));
   };
 
   const getContainerVolume = (monthKey: string, containerType: keyof typeof CONTAINER_SPECS) => {
@@ -347,6 +355,7 @@ export function OrderSimulationFooter({
         .from('purchase_orders')
         .insert({
           order_number: orderNumber,
+          reference_number: draft.referenceNumber.trim() || null,
           supplier_id: selectedSupplier,
           order_date: orderDate,
           status: initialStatus,
@@ -374,10 +383,11 @@ export function OrderSimulationFooter({
 
       if (itemsError) throw itemsError;
 
-      return { orderNumber, orderId: order.id, monthKey: draft.monthKey };
+      return { orderNumber, orderId: order.id, monthKey: draft.monthKey, referenceNumber: draft.referenceNumber };
     },
     onSuccess: (data) => {
-      toast.success(`Pedido ${data.orderNumber} criado para ${format(parseDateString(data.monthKey), "MMM/yy", { locale: ptBR })}!`);
+      const displayNumber = data.referenceNumber || data.orderNumber;
+      toast.success(`Pedido ${displayNumber} criado para ${format(parseDateString(data.monthKey), "MMM/yy", { locale: ptBR })}!`);
       queryClient.invalidateQueries({ queryKey: ['purchase-order-items'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       // Clear only items from this month
@@ -770,18 +780,31 @@ export function OrderSimulationFooter({
                       )}
                     </div>
 
-                    {/* Actions for this month */}
-                    <div className="flex gap-2 pt-2 border-t">
+                    {/* Reference Number Input + Actions */}
+                    <div className="flex gap-3 pt-2 border-t">
+                      {/* Reference Number Field */}
+                      <div className="flex items-center gap-2 flex-1 max-w-xs">
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">Nº Pedido:</span>
+                        <Input
+                          type="text"
+                          placeholder="Ex: AMOR-26001"
+                          value={referenceNumbers[draft.monthKey] || ''}
+                          onChange={(e) => handleReferenceNumberChange(draft.monthKey, e.target.value)}
+                          className="h-9 text-sm"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                      
+                      {/* Action Buttons */}
                       <Button 
                         variant="outline" 
                         onClick={(e) => {
                           e.stopPropagation();
                           handleClearMonth(draft.monthKey);
                         }}
-                        className="flex-1"
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
-                        Limpar {draft.monthLabel}
+                        Limpar
                       </Button>
                       <Button 
                         onClick={(e) => {

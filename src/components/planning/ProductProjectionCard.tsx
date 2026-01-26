@@ -10,7 +10,9 @@ interface MonthProjection {
   monthLabel: string;
   forecast: number;
   historyLastYear: number;
-  purchases: number;
+  purchases: number; // From uploads (BLACK)
+  appOrderArrivals: number; // From app orders (BLUE DARK)
+  appOrderNumbers: string[]; // Order reference numbers for tooltip
   pendingArrival: number;
   finalBalance: number;
   status: 'ok' | 'warning' | 'rupture';
@@ -30,7 +32,8 @@ export interface ProductProjectionData {
   hasRupture: boolean;
   totalForecast: number;
   totalHistory: number;
-  totalPurchases: number;
+  totalPurchases: number; // From uploads
+  totalAppOrderArrivals: number; // From app orders
   totalPendingArrivals: number;
 }
 
@@ -162,7 +165,9 @@ export const ProductProjectionCard = memo(function ProductProjectionCard({
                       productId={productProj.product.id}
                       monthKey={proj.monthKey}
                       initialValue={pendingArrivalsInput[`${productProj.product.id}::${proj.monthKey}`] || ''}
-                      existingPurchases={proj.purchases}
+                      uploadedArrivals={proj.purchases}
+                      appOrderArrivals={proj.appOrderArrivals}
+                      appOrderNumbers={proj.appOrderNumbers}
                       processNumber={proj.processNumber}
                       onValueChange={onArrivalChange}
                       onBlur={onArrivalBlur}
@@ -171,11 +176,11 @@ export const ProductProjectionCard = memo(function ProductProjectionCard({
                 ))}
                 <TableCell className="text-center py-1 px-1 bg-muted/20">
                   <span className="font-semibold">
-                    {(productProj.totalPurchases + productProj.totalPendingArrivals).toLocaleString('pt-BR')}
+                    {(productProj.totalPurchases + productProj.totalAppOrderArrivals + productProj.totalPendingArrivals).toLocaleString('pt-BR')}
                   </span>
-                  {productProj.totalPendingArrivals > 0 && (
+                  {(productProj.totalAppOrderArrivals + productProj.totalPendingArrivals) > 0 && (
                     <span className="text-[10px] text-blue-600 ml-1">
-                      (+{productProj.totalPendingArrivals.toLocaleString('pt-BR')})
+                      (+{(productProj.totalAppOrderArrivals + productProj.totalPendingArrivals).toLocaleString('pt-BR')})
                     </span>
                   )}
                 </TableCell>

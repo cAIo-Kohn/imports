@@ -259,12 +259,19 @@ export default function PurchaseOrderDetails() {
           </Button>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight">{order.order_number}</h1>
+              <h1 className="text-3xl font-bold tracking-tight">
+                {order.reference_number || order.order_number}
+              </h1>
               <Badge variant={STATUS_CONFIG[order.status]?.variant || 'secondary'}>
                 {STATUS_CONFIG[order.status]?.label || order.status}
               </Badge>
             </div>
-            <p className="text-muted-foreground">{order.suppliers?.company_name}</p>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <span>{order.suppliers?.company_name}</span>
+              {order.reference_number && (
+                <span className="text-xs">• {order.order_number}</span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex gap-2">
