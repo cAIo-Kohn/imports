@@ -1,44 +1,46 @@
 
+## Plano: Limitar Descrição na Commercial Invoice
 
-## Plano: Limitar Texto da Coluna Containers na Lista de Pedidos
+### Problema Identificado
 
-### Contexto
+Na página de detalhes do pedido (Commercial Invoice - `PurchaseOrderInvoice.tsx`), a coluna **DESCRIPTION** exibe o texto completo de `supplier_specs` ou `technical_description`, que pode ser muito extenso (como especificações técnicas detalhadas), ocupando muito espaço vertical na tabela.
 
-A página `PurchaseOrders.tsx` exibe uma lista resumida de pedidos. Não há coluna de descrição de produtos (os itens são agrupados por pedido). O único campo que pode conter texto longo é a coluna **Containers**, que extrai informações do campo `notes`.
+### Solução
 
-### Alteração Proposta
+Aplicar a mesma técnica de truncamento + tooltip que foi usada em outros componentes:
 
-Aplicar a mesma técnica de truncamento + tooltip à coluna Containers para manter consistência visual:
+---
 
-#### Arquivo: `src/pages/PurchaseOrders.tsx`
+### Arquivo: `src/components/orders/PurchaseOrderInvoice.tsx`
 
-1. **Adicionar imports do Tooltip**:
+**1. Adicionar imports do Tooltip (linha 3):**
+
 ```typescript
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 ```
 
-2. **Modificar a célula Containers** (linhas 305-307):
+**2. Modificar a célula Description (linhas 265-267):**
 
-**De:**
+De:
 ```tsx
-<TableCell>
-  {extractContainerInfo(order.notes)}
+<TableCell className="max-w-[150px] text-xs">
+  {product?.supplier_specs || product?.technical_description || '-'}
 </TableCell>
 ```
 
-**Para:**
+Para:
 ```tsx
-<TableCell className="max-w-[150px]">
+<TableCell className="max-w-[180px]">
   <TooltipProvider>
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="text-sm line-clamp-1 cursor-help block">
-          {extractContainerInfo(order.notes)}
+        <span className="text-xs line-clamp-2 cursor-help block">
+          {product?.supplier_specs || product?.technical_description || '-'}
         </span>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-sm">
-        <p className="text-sm whitespace-pre-wrap">
-          {extractContainerInfo(order.notes)}
+      <TooltipContent side="top" className="max-w-md">
+        <p className="text-xs whitespace-pre-wrap max-h-[300px] overflow-y-auto">
+          {product?.supplier_specs || product?.technical_description || '-'}
         </p>
       </TooltipContent>
     </Tooltip>
@@ -46,13 +48,18 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 </TableCell>
 ```
 
+---
+
 ### Resultado Visual
 
 | Antes | Depois |
 |-------|--------|
-| `2x 40HC SHCU1234567, SHCU7654321` (texto longo) | `2x 40HC SHCU123...` com tooltip completo |
+| Texto completo com 30+ linhas | 2 linhas com "..." e tooltip para ver completo |
 
-### Consideração
+### Detalhes Técnicos
 
-Se você quiser adicionar uma coluna de resumo/descrição dos produtos do pedido na listagem, posso expandir este plano para incluir essa funcionalidade.
+- `line-clamp-2`: Limita a 2 linhas de texto
+- `cursor-help`: Indica visualmente que há mais conteúdo
+- `max-h-[300px] overflow-y-auto` no tooltip: Permite scroll para descrições muito longas
+- `max-w-md` no tooltip: Largura adequada para leitura confortável
 
