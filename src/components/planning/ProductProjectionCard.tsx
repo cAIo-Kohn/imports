@@ -175,12 +175,24 @@ export const ProductProjectionCard = memo(function ProductProjectionCard({
                   </TableCell>
                 ))}
                 <TableCell className="text-center py-1 px-1 bg-muted/20">
-                  <span className="font-semibold">
-                    {(productProj.totalPurchases + productProj.totalAppOrderArrivals + productProj.totalPendingArrivals).toLocaleString('pt-BR')}
-                  </span>
-                  {(productProj.totalAppOrderArrivals + productProj.totalPendingArrivals) > 0 && (
-                    <span className="text-[10px] text-blue-600 ml-1">
-                      (+{(productProj.totalAppOrderArrivals + productProj.totalPendingArrivals).toLocaleString('pt-BR')})
+                  {productProj.totalPurchases > 0 ? (
+                    <>
+                      <span className="font-semibold">
+                        {productProj.totalPurchases.toLocaleString('pt-BR')}
+                      </span>
+                      {(productProj.totalAppOrderArrivals + productProj.totalPendingArrivals) > 0 && (
+                        <span className="text-[10px] text-blue-700 dark:text-blue-400 font-bold ml-1">
+                          +{(productProj.totalAppOrderArrivals + productProj.totalPendingArrivals).toLocaleString('pt-BR')}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className={`font-semibold ${
+                      (productProj.totalAppOrderArrivals + productProj.totalPendingArrivals) > 0 
+                        ? 'text-blue-700 dark:text-blue-400' 
+                        : ''
+                    }`}>
+                      {(productProj.totalAppOrderArrivals + productProj.totalPendingArrivals).toLocaleString('pt-BR')}
                     </span>
                   )}
                 </TableCell>
