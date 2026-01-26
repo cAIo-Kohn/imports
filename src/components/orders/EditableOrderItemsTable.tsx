@@ -608,7 +608,7 @@ export function EditableOrderItemsTable({
                   </TableCell>
                   
                   {/* Description / Specs - Editable */}
-                  <TableCell className="w-48">
+                  <TableCell className="w-48 max-w-[200px]">
                     {isEditing(item.id) ? (
                       <Textarea
                         value={editing.supplier_specs || editing.technical_description}
@@ -620,9 +620,20 @@ export function EditableOrderItemsTable({
                         placeholder="Descrição técnica..."
                       />
                     ) : (
-                      <span className="text-xs line-clamp-3">
-                        {product?.supplier_specs || product?.technical_description || '-'}
-                      </span>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-xs line-clamp-2 cursor-help block">
+                              {product?.supplier_specs || product?.technical_description || '-'}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-sm">
+                            <p className="text-xs whitespace-pre-wrap">
+                              {product?.supplier_specs || product?.technical_description || '-'}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
                   </TableCell>
                   

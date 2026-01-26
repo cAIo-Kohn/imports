@@ -258,11 +258,31 @@ export function HighlightedOrderItemsTable({
                         change={volumeChange}
                       />
                     </TableCell>
-                    <TableCell className="max-w-[180px] text-xs">
-                      <HighlightedCell 
-                        value={product?.supplier_specs || product?.technical_description || '-'} 
-                        change={descChange || specsChange}
-                      />
+                    <TableCell className="max-w-[180px]">
+                      {(descChange || specsChange) ? (
+                        <HighlightedCell 
+                          value={
+                            <span className="line-clamp-2 block">
+                              {product?.supplier_specs || product?.technical_description || '-'}
+                            </span>
+                          }
+                          change={descChange || specsChange}
+                          className="text-xs"
+                        />
+                      ) : (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-xs line-clamp-2 cursor-help block">
+                              {product?.supplier_specs || product?.technical_description || '-'}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-sm">
+                            <p className="text-xs whitespace-pre-wrap">
+                              {product?.supplier_specs || product?.technical_description || '-'}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                     </TableCell>
                     <TableCell className="font-mono text-sm">
                       <HighlightedCell 
