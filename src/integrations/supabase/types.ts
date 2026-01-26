@@ -387,6 +387,8 @@ export type Database = {
           product_id: string
           purchase_order_id: string
           quantity: number
+          trader_price_approved: boolean | null
+          trader_quantity_approved: boolean | null
           unit_id: string
           unit_price_usd: number | null
         }
@@ -397,6 +399,8 @@ export type Database = {
           product_id: string
           purchase_order_id: string
           quantity: number
+          trader_price_approved?: boolean | null
+          trader_quantity_approved?: boolean | null
           unit_id: string
           unit_price_usd?: number | null
         }
@@ -407,6 +411,8 @@ export type Database = {
           product_id?: string
           purchase_order_id?: string
           quantity?: number
+          trader_price_approved?: boolean | null
+          trader_quantity_approved?: boolean | null
           unit_id?: string
           unit_price_usd?: number | null
         }

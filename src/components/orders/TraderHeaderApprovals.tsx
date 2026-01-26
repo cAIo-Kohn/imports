@@ -31,13 +31,19 @@ interface TraderHeaderApprovalsProps {
   order: PurchaseOrder;
   totalValue: number;
   totalQuantity: number;
+  itemsCount: number;
+  itemsWithPriceApproved: number;
+  itemsWithQtyApproved: number;
   onOrderUpdated: () => void;
 }
 
 export function TraderHeaderApprovals({ 
   order, 
   totalValue, 
-  totalQuantity, 
+  totalQuantity,
+  itemsCount,
+  itemsWithPriceApproved,
+  itemsWithQtyApproved,
   onOrderUpdated 
 }: TraderHeaderApprovalsProps) {
   const { user } = useAuth();
@@ -239,7 +245,7 @@ export function TraderHeaderApprovals({
           </div>
 
           {/* Prices Approval */}
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-background border min-w-[200px]">
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-background border min-w-[240px]">
             <Checkbox 
               id="prices-approved" 
               checked={order.trader_prices_approved}
@@ -251,6 +257,9 @@ export function TraderHeaderApprovals({
               <Label htmlFor="prices-approved" className="text-sm cursor-pointer">
                 <span className="font-medium">Preços:</span>{' '}
                 {formatCurrency(totalValue)}
+                <span className="text-xs text-muted-foreground ml-1">
+                  ({itemsWithPriceApproved}/{itemsCount})
+                </span>
               </Label>
             </div>
             {order.trader_prices_approved && (
@@ -259,7 +268,7 @@ export function TraderHeaderApprovals({
           </div>
 
           {/* Quantities Approval */}
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-background border min-w-[180px]">
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-background border min-w-[220px]">
             <Checkbox 
               id="quantities-approved" 
               checked={order.trader_quantities_approved}
@@ -271,6 +280,9 @@ export function TraderHeaderApprovals({
               <Label htmlFor="quantities-approved" className="text-sm cursor-pointer">
                 <span className="font-medium">Qtd:</span>{' '}
                 {totalQuantity.toLocaleString('pt-BR')} pcs
+                <span className="text-xs text-muted-foreground ml-1">
+                  ({itemsWithQtyApproved}/{itemsCount})
+                </span>
               </Label>
             </div>
             {order.trader_quantities_approved && (

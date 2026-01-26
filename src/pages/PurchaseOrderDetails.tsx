@@ -54,6 +54,10 @@ export default function PurchaseOrderDetails() {
   const [isEditingShipping, setIsEditingShipping] = useState(false);
   const [showImages, setShowImages] = useState(true);
   
+  // Item approval counts
+  const [itemsWithPriceApproved, setItemsWithPriceApproved] = useState(0);
+  const [itemsWithQtyApproved, setItemsWithQtyApproved] = useState(0);
+  
   // Shipping form state
   const [shippingForm, setShippingForm] = useState({
     etd: '',
@@ -83,6 +87,8 @@ export default function PurchaseOrderDetails() {
             quantity,
             unit_price_usd,
             expected_arrival,
+            trader_price_approved,
+            trader_quantity_approved,
             products (
               id, code, technical_description, ncm,
               qty_master_box, qty_inner,
@@ -284,6 +290,9 @@ export default function PurchaseOrderDetails() {
             order={order as any} 
             totalValue={totalValue}
             totalQuantity={totalQuantity}
+            itemsCount={items.length}
+            itemsWithPriceApproved={itemsWithPriceApproved}
+            itemsWithQtyApproved={itemsWithQtyApproved}
             onOrderUpdated={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
           />
         </div>
@@ -335,6 +344,10 @@ export default function PurchaseOrderDetails() {
               items={items}
               showImages={showImages}
               onTotalsChanged={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
+              onApprovalsChanged={(priceCount, qtyCount) => {
+                setItemsWithPriceApproved(priceCount);
+                setItemsWithQtyApproved(qtyCount);
+              }}
             />
           ) : (
             <PurchaseOrderInvoice order={order as any} showImages={showImages} />
