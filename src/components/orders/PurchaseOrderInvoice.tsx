@@ -2,6 +2,7 @@ import { format } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface Product {
   id: string;
@@ -262,8 +263,21 @@ export function PurchaseOrderInvoice({ order, showImages = true }: PurchaseOrder
                     )}
                   </TableCell>
                   <TableCell className="text-right">{masterVolume?.toFixed(3) || '-'}</TableCell>
-                  <TableCell className="max-w-[150px] text-xs">
-                    {product?.supplier_specs || product?.technical_description || '-'}
+                  <TableCell className="max-w-[180px]">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-xs line-clamp-2 cursor-help block">
+                            {product?.supplier_specs || product?.technical_description || '-'}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-md">
+                          <p className="text-xs whitespace-pre-wrap max-h-[300px] overflow-y-auto">
+                            {product?.supplier_specs || product?.technical_description || '-'}
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </TableCell>
                   <TableCell className="text-sm">{product?.packaging_type || '-'}</TableCell>
                   <TableCell className="text-sm">{product?.origin_description || '-'}</TableCell>
