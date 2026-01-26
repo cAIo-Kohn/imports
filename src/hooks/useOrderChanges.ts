@@ -22,11 +22,20 @@ export interface OrderChange {
 interface LogChangeParams {
   orderId: string;
   itemId?: string;
-  changeType: 'order_field' | 'item_field' | 'approval';
+  changeType: 'order_field' | 'item_field' | 'approval' | 'buyer_counter_proposal';
   fieldName: string;
   oldValue: string | null;
   newValue: string | null;
   isCritical?: boolean;
+}
+
+interface LogCounterProposalParams {
+  orderId: string;
+  itemId?: string;
+  fieldName: string;
+  traderValue: string | null;
+  suggestedValue: string;
+  justification?: string;
 }
 
 // Critical fields that require buyer approval when changed
@@ -94,9 +103,51 @@ export function useOrderChanges(orderId: string) {
     },
   });
 
+  const logCounterProposalMutation = useMutation({
+    mutationFn: async (params: LogCounterProposalParams) => {
+      const { error } = await supabase
+        .from('purchase_order_change_history')
+        .insert({
+          purchase_order_id: params.orderId,
+          purchase_order_item_id: params.itemId || null,
+          changed_by: user?.id,
+          change_type: 'buyer_counter_proposal',
+          field_name: params.fieldName,
+          old_value: params.traderValue,
+          new_value: params.suggestedValue,
+          is_critical: true,
+          requires_approval: true, // Trader needs to accept or negotiate
+        });
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order-changes', orderId] });
+    },
+  });
+
   const criticalChanges = changes.filter(c => c.is_critical);
   const pendingApprovalChanges = changes.filter(c => c.is_critical && c.requires_approval && !c.approved_by);
   const informationalChanges = changes.filter(c => !c.is_critical);
+  
+  // Counter-proposals made by buyers
+  const counterProposals = changes.filter(c => c.change_type === 'buyer_counter_proposal');
+  const pendingCounterProposals = counterProposals.filter(c => c.requires_approval && !c.approved_by);
+  
+  // Timeline agrupando por campo para mostrar negociação
+  const changeTimeline = useMemo(() => {
+    const grouped: Record<string, OrderChange[]> = {};
+    changes.forEach(c => {
+      const key = `${c.purchase_order_item_id || 'order'}-${c.field_name}`;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(c);
+    });
+    // Ordenar cada grupo por data (mais antigo primeiro)
+    Object.keys(grouped).forEach(key => {
+      grouped[key].sort((a, b) => new Date(a.changed_at).getTime() - new Date(b.changed_at).getTime());
+    });
+    return grouped;
+  }, [changes]);
 
   // Agrupar alterações por item (mantém apenas a mais recente por campo)
   const changesByItem = useMemo(() => {
@@ -133,12 +184,17 @@ export function useOrderChanges(orderId: string) {
     criticalChanges,
     pendingApprovalChanges,
     informationalChanges,
+    counterProposals,
+    pendingCounterProposals,
+    changeTimeline,
     changesByItem,
     orderLevelChanges,
     isLoading,
     logChange: logChangeMutation.mutateAsync,
+    logCounterProposal: logCounterProposalMutation.mutateAsync,
     approveChange: approveChangeMutation.mutateAsync,
     isLogging: logChangeMutation.isPending,
+    isLoggingCounterProposal: logCounterProposalMutation.isPending,
     isApproving: approveChangeMutation.isPending,
   };
 }

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,7 +9,9 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { AlertTriangle, Info, CheckCircle, X, ArrowRight, History } from 'lucide-react';
+import { AlertTriangle, Info, CheckCircle, ArrowRight, History, MessageSquare, RotateCcw, Loader2 } from 'lucide-react';
+import { CounterProposalForm } from './CounterProposalForm';
+import { NegotiationTimeline } from './NegotiationTimeline';
 
 interface OrderChangeSummaryProps {
   orderId: string;
@@ -33,10 +36,16 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
   const { 
     criticalChanges, 
     pendingApprovalChanges, 
-    informationalChanges, 
+    informationalChanges,
+    changeTimeline,
     isLoading,
-    approveChange 
+    approveChange,
+    logCounterProposal,
+    isLoggingCounterProposal,
   } = useOrderChanges(orderId);
+
+  const [counterProposalFor, setCounterProposalFor] = useState<string | null>(null);
+  const [hasCounterProposals, setHasCounterProposals] = useState(false);
 
   const approveMutation = useMutation({
     mutationFn: async (changeId: string) => {
@@ -78,6 +87,46 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
     },
   });
 
+  const returnToTraderMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('purchase_orders')
+        .update({ 
+          status: 'pending_trader_review',
+          requires_buyer_approval: false,
+          // Reset trader approvals to force review
+          trader_etd_approved: false,
+          trader_prices_approved: false,
+          trader_quantities_approved: false,
+        })
+        .eq('id', orderId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: 'Pedido devolvido ao trader com suas sugestões!' });
+      queryClient.invalidateQueries({ queryKey: ['purchase-order', orderId] });
+      onChangesApproved?.();
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Erro ao devolver ao trader', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const handleCounterProposal = async (change: OrderChange, suggestedValue: string, justification: string) => {
+    await logCounterProposal({
+      orderId,
+      itemId: change.purchase_order_item_id || undefined,
+      fieldName: change.field_name,
+      traderValue: change.new_value,
+      suggestedValue,
+      justification,
+    });
+    setCounterProposalFor(null);
+    setHasCounterProposals(true);
+    toast({ title: 'Contra-proposta registrada!' });
+  };
+
   if (isLoading) {
     return null;
   }
@@ -113,43 +162,87 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
     return value;
   };
 
-  const renderChange = (change: OrderChange, showApproval = false) => (
-    <div 
-      key={change.id} 
-      className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50"
-    >
-      <div className="flex-1">
-        <span className="font-medium text-sm">{formatFieldLabel(change.field_name)}</span>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span className="line-through">{formatValue(change.field_name, change.old_value)}</span>
-          <ArrowRight className="h-3 w-3" />
-          <span className="text-foreground font-medium">{formatValue(change.field_name, change.new_value)}</span>
+  // Get timeline key for a change
+  const getTimelineKey = (change: OrderChange) => {
+    return `${change.purchase_order_item_id || 'order'}-${change.field_name}`;
+  };
+
+  const renderChange = (change: OrderChange, showApproval = false) => {
+    const timelineKey = getTimelineKey(change);
+    const timeline = changeTimeline[timelineKey] || [];
+    const hasNegotiationHistory = timeline.length > 1;
+
+    return (
+      <div 
+        key={change.id} 
+        className="py-3 px-4 rounded-lg bg-muted/50 space-y-2"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <span className="font-medium text-sm">{formatFieldLabel(change.field_name)}</span>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="line-through">{formatValue(change.field_name, change.old_value)}</span>
+              <ArrowRight className="h-3 w-3" />
+              <span className="text-foreground font-medium">{formatValue(change.field_name, change.new_value)}</span>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {format(new Date(change.changed_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+            </span>
+          </div>
+          
+          {showApproval && change.requires_approval && !change.approved_by && (
+            <div className="flex gap-2">
+              <Button 
+                size="sm" 
+                variant="outline"
+                className="h-8"
+                onClick={() => approveMutation.mutate(change.id)}
+                disabled={approveMutation.isPending}
+              >
+                <CheckCircle className="h-4 w-4 mr-1" />
+                Aprovar
+              </Button>
+              <Button 
+                size="sm" 
+                variant="ghost"
+                className="h-8"
+                onClick={() => setCounterProposalFor(change.id)}
+              >
+                <MessageSquare className="h-4 w-4 mr-1" />
+                Sugerir
+              </Button>
+            </div>
+          )}
+          
+          {change.approved_by && (
+            <Badge variant="outline" className="text-green-600">
+              <CheckCircle className="h-3 w-3 mr-1" />
+              Aprovado
+            </Badge>
+          )}
         </div>
-        <span className="text-xs text-muted-foreground">
-          {format(new Date(change.changed_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-        </span>
+
+        {/* Show negotiation timeline if there are multiple changes */}
+        {hasNegotiationHistory && (
+          <NegotiationTimeline changes={timeline} fieldName={change.field_name} />
+        )}
+
+        {/* Counter-proposal form */}
+        {counterProposalFor === change.id && (
+          <CounterProposalForm
+            fieldName={change.field_name}
+            currentValue={change.new_value}
+            onSubmit={(value, justification) => handleCounterProposal(change, value, justification)}
+            onCancel={() => setCounterProposalFor(null)}
+            isSubmitting={isLoggingCounterProposal}
+          />
+        )}
       </div>
-      {showApproval && change.requires_approval && !change.approved_by && (
-        <div className="flex gap-2">
-          <Button 
-            size="sm" 
-            variant="outline"
-            className="h-8"
-            onClick={() => approveMutation.mutate(change.id)}
-            disabled={approveMutation.isPending}
-          >
-            <CheckCircle className="h-4 w-4 mr-1" />
-            Aprovar
-          </Button>
-        </div>
-      )}
-      {change.approved_by && (
-        <Badge variant="outline" className="text-green-600">
-          <CheckCircle className="h-3 w-3 mr-1" />
-          Aprovado
-        </Badge>
-      )}
-    </div>
+    );
+  };
+
+  const showReturnButton = hasCounterProposals || pendingApprovalChanges.some(c => 
+    changeTimeline[getTimelineKey(c)]?.some(tc => tc.change_type === 'buyer_counter_proposal')
   );
 
   return (
@@ -199,17 +292,51 @@ export function OrderChangeSummary({ orderId, onChangesApproved }: OrderChangeSu
           </div>
         )}
 
-        {/* Approve All Button */}
+        {/* Action Buttons */}
         {pendingApprovalChanges.length > 0 && (
-          <div className="pt-3 border-t">
-            <Button 
-              className="w-full"
-              onClick={() => approveAllMutation.mutate()}
-              disabled={approveAllMutation.isPending}
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Aprovar Todas as Alterações e Confirmar Pedido
-            </Button>
+          <div className="pt-3 border-t space-y-2">
+            {showReturnButton ? (
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => returnToTraderMutation.mutate()}
+                  disabled={returnToTraderMutation.isPending}
+                >
+                  {returnToTraderMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                  )}
+                  Devolver ao Trader com Contra-propostas
+                </Button>
+                <Button 
+                  className="flex-1"
+                  onClick={() => approveAllMutation.mutate()}
+                  disabled={approveAllMutation.isPending}
+                >
+                  {approveAllMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                  )}
+                  Aprovar Todas
+                </Button>
+              </div>
+            ) : (
+              <Button 
+                className="w-full"
+                onClick={() => approveAllMutation.mutate()}
+                disabled={approveAllMutation.isPending}
+              >
+                {approveAllMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                )}
+                Aprovar Todas as Alterações e Confirmar Pedido
+              </Button>
+            )}
           </div>
         )}
       </CardContent>

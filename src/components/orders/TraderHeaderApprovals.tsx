@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { format, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CheckCircle, Calendar, DollarSign, Container, Send, AlertTriangle, Edit2, X, Save, Loader2 } from 'lucide-react';
+import { CheckCircle, Calendar, DollarSign, Container, Send, AlertTriangle, Edit2, X, Save, Loader2, Users } from 'lucide-react';
 
 interface PurchaseOrder {
   id: string;
@@ -62,7 +62,14 @@ export function TraderHeaderApprovals({
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { logChange, pendingApprovalChanges } = useOrderChanges(order.id);
+  const { logChange, pendingApprovalChanges, pendingCounterProposals, changeTimeline } = useOrderChanges(order.id);
+
+  // Get buyer's suggestion for ETD if any
+  const buyerEtdSuggestion = useMemo(() => {
+    const etdChanges = changeTimeline['order-etd'] || [];
+    const counterProposal = etdChanges.find(c => c.change_type === 'buyer_counter_proposal' && c.requires_approval);
+    return counterProposal?.new_value || null;
+  }, [changeTimeline]);
 
   // Calculate suggested ETD
   const suggestedEtd = useMemo(() => {
@@ -314,8 +321,47 @@ export function TraderHeaderApprovals({
           </div>
         </div>
 
+        {/* Buyer counter-proposals alert */}
+        {pendingCounterProposals.length > 0 && order.status === 'pending_trader_review' && (
+          <div className="mt-3 pt-3 border-t">
+            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+              <div className="flex items-center gap-2 text-sm font-medium text-blue-700 dark:text-blue-300">
+                <Users className="h-4 w-4" />
+                Buyer fez {pendingCounterProposals.length} contra-proposta(s)
+              </div>
+              <div className="mt-2 space-y-1">
+                {pendingCounterProposals.map(cp => (
+                  <div key={cp.id} className="text-sm text-blue-600 dark:text-blue-400">
+                    <span className="font-medium">{cp.field_name === 'etd' ? 'ETD' : cp.field_name}:</span>{' '}
+                    Buyer sugere{' '}
+                    <span className="font-semibold">
+                      {cp.field_name === 'etd' 
+                        ? format(new Date(cp.new_value + 'T12:00:00'), "dd/MM/yyyy", { locale: ptBR })
+                        : cp.new_value?.includes('.') ? `$${parseFloat(cp.new_value).toFixed(2)}` : cp.new_value
+                      }
+                    </span>
+                    {buyerEtdSuggestion && cp.field_name === 'etd' && (
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="ml-2 h-auto p-0 text-blue-700 dark:text-blue-300"
+                        onClick={() => {
+                          setEditedEtd(buyerEtdSuggestion);
+                          setIsEditingEtd(true);
+                        }}
+                      >
+                        Usar sugestão
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Warning for critical changes */}
-        {pendingApprovalChanges.length > 0 && canSubmit && order.status === 'pending_trader_review' && (
+        {pendingApprovalChanges.length > 0 && canSubmit && order.status === 'pending_trader_review' && pendingCounterProposals.length === 0 && (
           <div className="mt-3 pt-3 border-t">
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <AlertTriangle className="h-3 w-3" />
