@@ -41,11 +41,18 @@ export function CreatePurchaseOrderModal({ open, onOpenChange, onSuccess }: Crea
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      // Find if the supplier is Chinese
+      const selectedSupplier = suppliers.find(s => s.id === supplierId);
+      const isChineseSupplier = selectedSupplier?.country?.toLowerCase() === 'china';
+      
       // Generate order number using database function
       const { data: orderNumber, error: numError } = await supabase
         .rpc('generate_purchase_order_number');
       
       if (numError) throw numError;
+
+      // Set initial status based on supplier country
+      const initialStatus = isChineseSupplier ? 'pending_trader_review' : 'draft';
 
       const { data, error } = await supabase
         .from('purchase_orders')
@@ -54,17 +61,20 @@ export function CreatePurchaseOrderModal({ open, onOpenChange, onSuccess }: Crea
           supplier_id: supplierId,
           order_date: orderDate,
           notes: notes || null,
-          status: 'draft',
+          status: initialStatus,
           created_by: user?.id,
         })
         .select()
         .single();
 
       if (error) throw error;
-      return data;
+      return { order: data, isChineseSupplier };
     },
-    onSuccess: () => {
-      toast({ title: 'Pedido criado com sucesso!' });
+    onSuccess: (result) => {
+      const message = result.isChineseSupplier 
+        ? 'Pedido criado e enviado para aprovação do trader!' 
+        : 'Pedido criado com sucesso!';
+      toast({ title: message });
       onSuccess();
       handleClose();
     },

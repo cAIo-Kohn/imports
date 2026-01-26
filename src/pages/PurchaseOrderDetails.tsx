@@ -13,10 +13,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Calendar, Package, DollarSign, Building2, Plus, Trash2, FileText, Edit2, Save, X, Eye, EyeOff, Printer } from 'lucide-react';
+import { ArrowLeft, Calendar, Package, DollarSign, Building2, Plus, Trash2, FileText, Edit2, Save, X, Eye, EyeOff, Printer, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { AddOrderItemModal } from '@/components/planning/AddOrderItemModal';
 import { PurchaseOrderInvoice } from '@/components/orders/PurchaseOrderInvoice';
+import { TraderApprovalPanel } from '@/components/orders/TraderApprovalPanel';
+import { OrderChangeSummary } from '@/components/orders/OrderChangeSummary';
+import { useUserRole } from '@/hooks/useUserRole';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +33,8 @@ import {
 
 const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   draft: { label: 'Rascunho', variant: 'secondary' },
+  pending_trader_review: { label: 'Aguard. Trader', variant: 'outline' },
+  pending_buyer_approval: { label: 'Mudanças Pendentes', variant: 'outline' },
   confirmed: { label: 'Confirmado', variant: 'default' },
   shipped: { label: 'Embarcado', variant: 'outline' },
   received: { label: 'Recebido', variant: 'default' },
@@ -41,6 +46,7 @@ export default function PurchaseOrderDetails() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { isTrader, canManageOrders } = useUserRole();
   
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
@@ -219,6 +225,11 @@ export default function PurchaseOrderDetails() {
   const totalQuantity = items.reduce((sum: number, item: any) => sum + item.quantity, 0);
   const totalValue = items.reduce((sum: number, item: any) => sum + (item.quantity * (item.unit_price_usd || 0)), 0);
 
+  // Check if supplier is Chinese
+  const isChineseSupplier = order.suppliers?.country?.toLowerCase() === 'china';
+  const showTraderApproval = isTrader && isChineseSupplier && order.status === 'pending_trader_review';
+  const showBuyerApproval = canManageOrders && order.status === 'pending_buyer_approval';
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -246,20 +257,52 @@ export default function PurchaseOrderDetails() {
             <Printer className="mr-2 h-4 w-4" />
             Imprimir
           </Button>
-          <Select value={order.status} onValueChange={(v) => updateStatusMutation.mutate(v)}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="draft">Rascunho</SelectItem>
-              <SelectItem value="confirmed">Confirmado</SelectItem>
-              <SelectItem value="shipped">Embarcado</SelectItem>
-              <SelectItem value="received">Recebido</SelectItem>
-              <SelectItem value="cancelled">Cancelado</SelectItem>
-            </SelectContent>
-          </Select>
+          {canManageOrders && (
+            <Select value={order.status} onValueChange={(v) => updateStatusMutation.mutate(v)}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="draft">Rascunho</SelectItem>
+                <SelectItem value="pending_trader_review">Aguard. Trader</SelectItem>
+                <SelectItem value="pending_buyer_approval">Mudanças Pendentes</SelectItem>
+                <SelectItem value="confirmed">Confirmado</SelectItem>
+                <SelectItem value="shipped">Embarcado</SelectItem>
+                <SelectItem value="received">Recebido</SelectItem>
+                <SelectItem value="cancelled">Cancelado</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </div>
+
+      {/* Trader Approval Panel */}
+      {showTraderApproval && (
+        <div className="print:hidden">
+          <TraderApprovalPanel 
+            order={order as any} 
+            totalQuantity={totalQuantity}
+            onOrderUpdated={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
+          />
+        </div>
+      )}
+
+      {/* Buyer Approval - Order Changes Summary */}
+      {showBuyerApproval && (
+        <div className="print:hidden">
+          <OrderChangeSummary 
+            orderId={order.id}
+            onChangesApproved={() => queryClient.invalidateQueries({ queryKey: ['purchase-order', id] })}
+          />
+        </div>
+      )}
+
+      {/* Change History for confirmed orders */}
+      {order.status === 'confirmed' && isChineseSupplier && (
+        <div className="print:hidden">
+          <OrderChangeSummary orderId={order.id} />
+        </div>
+      )}
 
       <Tabs defaultValue="invoice" className="print:hidden">
         <TabsList>
@@ -274,7 +317,7 @@ export default function PurchaseOrderDetails() {
         </TabsList>
 
         <TabsContent value="invoice" className="mt-4">
-          {order.status === 'draft' && (
+          {(order.status === 'draft' || order.status === 'pending_trader_review') && (
             <div className="mb-4 flex justify-end">
               <Button onClick={() => setAddItemOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />

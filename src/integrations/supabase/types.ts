@@ -316,6 +316,69 @@ export type Database = {
         }
         Relationships: []
       }
+      purchase_order_change_history: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          change_type: string
+          changed_at: string
+          changed_by: string
+          field_name: string
+          id: string
+          is_critical: boolean | null
+          new_value: string | null
+          old_value: string | null
+          purchase_order_id: string
+          purchase_order_item_id: string | null
+          requires_approval: boolean | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          change_type: string
+          changed_at?: string
+          changed_by: string
+          field_name: string
+          id?: string
+          is_critical?: boolean | null
+          new_value?: string | null
+          old_value?: string | null
+          purchase_order_id: string
+          purchase_order_item_id?: string | null
+          requires_approval?: boolean | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          change_type?: string
+          changed_at?: string
+          changed_by?: string
+          field_name?: string
+          id?: string
+          is_critical?: boolean | null
+          new_value?: string | null
+          old_value?: string | null
+          purchase_order_id?: string
+          purchase_order_item_id?: string | null
+          requires_approval?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_change_history_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_change_history_purchase_order_item_id_fkey"
+            columns: ["purchase_order_item_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_order_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       purchase_order_items: {
         Row: {
           created_at: string
@@ -373,6 +436,7 @@ export type Database = {
       }
       purchase_orders: {
         Row: {
+          buyer_approval_notes: string | null
           crd: string | null
           created_at: string
           created_by: string | null
@@ -385,12 +449,23 @@ export type Database = {
           payment_terms: string | null
           port_destination: string | null
           port_origin: string | null
+          requires_buyer_approval: boolean | null
           status: string
           supplier_id: string
           total_value_usd: number | null
+          trader_etd_approved: boolean | null
+          trader_etd_approved_at: string | null
+          trader_etd_approved_by: string | null
+          trader_prices_approved: boolean | null
+          trader_prices_approved_at: string | null
+          trader_prices_approved_by: string | null
+          trader_quantities_approved: boolean | null
+          trader_quantities_approved_at: string | null
+          trader_quantities_approved_by: string | null
           updated_at: string
         }
         Insert: {
+          buyer_approval_notes?: string | null
           crd?: string | null
           created_at?: string
           created_by?: string | null
@@ -403,12 +478,23 @@ export type Database = {
           payment_terms?: string | null
           port_destination?: string | null
           port_origin?: string | null
+          requires_buyer_approval?: boolean | null
           status?: string
           supplier_id: string
           total_value_usd?: number | null
+          trader_etd_approved?: boolean | null
+          trader_etd_approved_at?: string | null
+          trader_etd_approved_by?: string | null
+          trader_prices_approved?: boolean | null
+          trader_prices_approved_at?: string | null
+          trader_prices_approved_by?: string | null
+          trader_quantities_approved?: boolean | null
+          trader_quantities_approved_at?: string | null
+          trader_quantities_approved_by?: string | null
           updated_at?: string
         }
         Update: {
+          buyer_approval_notes?: string | null
           crd?: string | null
           created_at?: string
           created_by?: string | null
@@ -421,9 +507,19 @@ export type Database = {
           payment_terms?: string | null
           port_destination?: string | null
           port_origin?: string | null
+          requires_buyer_approval?: boolean | null
           status?: string
           supplier_id?: string
           total_value_usd?: number | null
+          trader_etd_approved?: boolean | null
+          trader_etd_approved_at?: string | null
+          trader_etd_approved_by?: string | null
+          trader_prices_approved?: boolean | null
+          trader_prices_approved_at?: string | null
+          trader_prices_approved_by?: string | null
+          trader_quantities_approved?: boolean | null
+          trader_quantities_approved_at?: string | null
+          trader_quantities_approved_by?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -815,7 +911,7 @@ export type Database = {
       refresh_supplier_health_summary: { Args: never; Returns: undefined }
     }
     Enums: {
-      app_role: "admin" | "buyer" | "viewer"
+      app_role: "admin" | "buyer" | "viewer" | "trader"
       unit_of_measure:
         | "pcs"
         | "kg"
@@ -954,7 +1050,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "buyer", "viewer"],
+      app_role: ["admin", "buyer", "viewer", "trader"],
       unit_of_measure: [
         "pcs",
         "kg",
