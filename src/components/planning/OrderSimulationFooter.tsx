@@ -78,6 +78,7 @@ interface OrderSimulationFooterProps {
   productProjections?: unknown; // Kept for backwards compatibility, no longer used
   selectedSupplier: string;
   supplierName: string;
+  supplierCountry: string;
   selectedUnit: string;
   onClear: () => void;
   onClearMonth?: (monthKey: string) => void;
@@ -109,6 +110,7 @@ export function OrderSimulationFooter({
   products,
   selectedSupplier,
   supplierName,
+  supplierCountry,
   selectedUnit,
   onClear,
   onClearMonth,
@@ -337,13 +339,17 @@ export function OrderSimulationFooter({
         ? `${draft.fullContainers}x ${container.name}${draft.partialContainerPercent > 0 ? ` + ${draft.partialContainerPercent}%` : ''}`
         : `${draft.partialContainerPercent}% ${container.name}`;
 
+      // Determinar status inicial baseado no país do fornecedor
+      const isChineseSupplier = supplierCountry?.toLowerCase() === 'china';
+      const initialStatus = isChineseSupplier ? 'pending_trader_review' : 'draft';
+
       const { data: order, error: orderError } = await supabase
         .from('purchase_orders')
         .insert({
           order_number: orderNumber,
           supplier_id: selectedSupplier,
           order_date: orderDate,
-          status: 'draft',
+          status: initialStatus,
           created_by: user.id,
           total_value_usd: draft.totalValue,
           notes: `Container: ${containersLabel} | Volume: ${draft.totalVolume.toFixed(2)}m³ | Chegada: ${draft.monthLabel} | ETD: ${draft.earliestETD ? format(draft.earliestETD, 'dd/MM/yyyy') : 'N/A'}`,
