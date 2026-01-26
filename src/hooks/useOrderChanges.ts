@@ -184,7 +184,7 @@ export function useOrderChanges(orderId: string) {
   const changeTimeline = useMemo(() => {
     const grouped: Record<string, OrderChange[]> = {};
     changes.forEach(c => {
-      const key = `${c.purchase_order_item_id || 'order'}-${c.field_name}`;
+      const key = `${c.purchase_order_item_id || 'order'}::${c.field_name}`;
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(c);
     });
@@ -204,9 +204,7 @@ export function useOrderChanges(orderId: string) {
       const criticalInTimeline = timeline.filter(c => c.is_critical);
       if (criticalInTimeline.length === 0) return;
       
-      const parts = key.split('-');
-      const scope = parts[0];
-      const fieldName = parts.slice(1).join('-'); // Handle field names with dashes
+      const [scope, fieldName] = key.split('::');
       const itemId = scope === 'order' ? null : scope;
       
       // Original value (first old_value in timeline)
