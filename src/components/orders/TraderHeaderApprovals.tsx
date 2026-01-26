@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { format } from 'date-fns';
+import { format, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { CheckCircle, Calendar, DollarSign, Package, Send, AlertTriangle, Edit2, X, Save, Loader2 } from 'lucide-react';
 
@@ -34,7 +34,25 @@ interface TraderHeaderApprovalsProps {
   itemsCount: number;
   itemsWithPriceApproved: number;
   itemsWithQtyApproved: number;
+  earliestArrival: string | null;
   onOrderUpdated: () => void;
+}
+
+// Calculate suggested ETD: 60 days before arrival, snap to 15th or last day of month
+function calculateSuggestedEtd(expectedArrival: string): string {
+  const arrivalDate = new Date(expectedArrival + 'T12:00:00');
+  const suggestedDate = subDays(arrivalDate, 60);
+  
+  const day = suggestedDate.getDate();
+  const year = suggestedDate.getFullYear();
+  const month = suggestedDate.getMonth();
+  
+  if (day <= 15) {
+    return format(new Date(year, month, 15), 'yyyy-MM-dd');
+  } else {
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    return format(new Date(year, month, lastDay), 'yyyy-MM-dd');
+  }
 }
 
 export function TraderHeaderApprovals({ 
@@ -44,6 +62,7 @@ export function TraderHeaderApprovals({
   itemsCount,
   itemsWithPriceApproved,
   itemsWithQtyApproved,
+  earliestArrival,
   onOrderUpdated 
 }: TraderHeaderApprovalsProps) {
   const { user } = useAuth();
@@ -51,33 +70,39 @@ export function TraderHeaderApprovals({
   const queryClient = useQueryClient();
   const { logChange, pendingApprovalChanges } = useOrderChanges(order.id);
 
+  // Calculate suggested ETD
+  const suggestedEtd = useMemo(() => {
+    if (order.etd) return order.etd;
+    if (!earliestArrival) return '';
+    return calculateSuggestedEtd(earliestArrival);
+  }, [order.etd, earliestArrival]);
+
   const [isEditingEtd, setIsEditingEtd] = useState(false);
-  const [editedEtd, setEditedEtd] = useState(order.etd || '');
+  const [editedEtd, setEditedEtd] = useState(suggestedEtd);
 
-  const allApproved = order.trader_etd_approved && order.trader_prices_approved && order.trader_quantities_approved;
+  // Update editedEtd when suggestedEtd changes
+  useMemo(() => {
+    if (!isEditingEtd) {
+      setEditedEtd(suggestedEtd);
+    }
+  }, [suggestedEtd, isEditingEtd]);
 
-  const approveFieldMutation = useMutation({
-    mutationFn: async (field: 'etd' | 'prices' | 'quantities') => {
-      const updateData: Record<string, unknown> = {};
+  const displayEtd = order.etd || suggestedEtd;
+  const canSubmit = order.trader_etd_approved;
+
+  const approveEtdMutation = useMutation({
+    mutationFn: async () => {
       const now = new Date().toISOString();
+      const etdToSave = order.etd || suggestedEtd;
       
-      if (field === 'etd') {
-        updateData.trader_etd_approved = true;
-        updateData.trader_etd_approved_at = now;
-        updateData.trader_etd_approved_by = user?.id;
-      } else if (field === 'prices') {
-        updateData.trader_prices_approved = true;
-        updateData.trader_prices_approved_at = now;
-        updateData.trader_prices_approved_by = user?.id;
-      } else if (field === 'quantities') {
-        updateData.trader_quantities_approved = true;
-        updateData.trader_quantities_approved_at = now;
-        updateData.trader_quantities_approved_by = user?.id;
-      }
-
       const { error } = await supabase
         .from('purchase_orders')
-        .update(updateData)
+        .update({
+          etd: etdToSave,
+          trader_etd_approved: true,
+          trader_etd_approved_at: now,
+          trader_etd_approved_by: user?.id,
+        })
         .eq('id', order.id);
 
       if (error) throw error;
@@ -85,24 +110,24 @@ export function TraderHeaderApprovals({
       await logChange({
         orderId: order.id,
         changeType: 'approval',
-        fieldName: `trader_${field}_approved`,
+        fieldName: 'trader_etd_approved',
         oldValue: 'false',
         newValue: 'true',
         isCritical: false,
       });
     },
     onSuccess: () => {
-      toast({ title: 'Aprovação registrada!' });
+      toast({ title: 'ETD aprovado!' });
       onOrderUpdated();
     },
     onError: (error: Error) => {
-      toast({ title: 'Erro ao aprovar', description: error.message, variant: 'destructive' });
+      toast({ title: 'Erro ao aprovar ETD', description: error.message, variant: 'destructive' });
     },
   });
 
   const updateEtdMutation = useMutation({
     mutationFn: async () => {
-      const oldEtd = order.etd;
+      const oldEtd = order.etd || suggestedEtd;
       
       const { error } = await supabase
         .from('purchase_orders')
@@ -111,7 +136,6 @@ export function TraderHeaderApprovals({
 
       if (error) throw error;
 
-      // Log the critical change if ETD changed
       if (oldEtd !== editedEtd) {
         await logChange({
           orderId: order.id,
@@ -172,12 +196,12 @@ export function TraderHeaderApprovals({
       <CardContent className="py-4">
         <div className="flex flex-wrap items-center gap-4">
           {/* ETD Approval */}
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-background border min-w-[260px]">
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-background border min-w-[280px]">
             <Checkbox 
               id="etd-approved" 
               checked={order.trader_etd_approved}
-              onCheckedChange={() => !order.trader_etd_approved && approveFieldMutation.mutate('etd')}
-              disabled={order.trader_etd_approved || approveFieldMutation.isPending}
+              onCheckedChange={() => !order.trader_etd_approved && approveEtdMutation.mutate()}
+              disabled={order.trader_etd_approved || approveEtdMutation.isPending || !displayEtd}
             />
             <div className="flex items-center gap-2 flex-1">
               <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -209,7 +233,7 @@ export function TraderHeaderApprovals({
                       className="h-7 w-7"
                       onClick={() => {
                         setIsEditingEtd(false);
-                        setEditedEtd(order.etd || '');
+                        setEditedEtd(displayEtd);
                       }}
                     >
                       <X className="h-3 w-3" />
@@ -218,10 +242,13 @@ export function TraderHeaderApprovals({
                 ) : (
                   <Label htmlFor="etd-approved" className="text-sm cursor-pointer">
                     <span className="font-medium">ETD:</span>{' '}
-                    {order.etd 
-                      ? format(new Date(order.etd), "dd/MM/yyyy", { locale: ptBR })
+                    {displayEtd 
+                      ? format(new Date(displayEtd + 'T12:00:00'), "dd/MM/yyyy", { locale: ptBR })
                       : 'Não definido'
                     }
+                    {!order.etd && suggestedEtd && (
+                      <span className="text-xs text-muted-foreground ml-1">(sugerido)</span>
+                    )}
                   </Label>
                 )}
               </div>
@@ -231,7 +258,7 @@ export function TraderHeaderApprovals({
                   variant="ghost" 
                   className="h-6 w-6"
                   onClick={() => {
-                    setEditedEtd(order.etd || '');
+                    setEditedEtd(displayEtd);
                     setIsEditingEtd(true);
                   }}
                 >
@@ -244,50 +271,28 @@ export function TraderHeaderApprovals({
             )}
           </div>
 
-          {/* Prices Approval */}
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-background border min-w-[240px]">
-            <Checkbox 
-              id="prices-approved" 
-              checked={order.trader_prices_approved}
-              onCheckedChange={() => !order.trader_prices_approved && approveFieldMutation.mutate('prices')}
-              disabled={order.trader_prices_approved || approveFieldMutation.isPending}
-            />
-            <div className="flex items-center gap-2 flex-1">
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-              <Label htmlFor="prices-approved" className="text-sm cursor-pointer">
-                <span className="font-medium">Preços:</span>{' '}
-                {formatCurrency(totalValue)}
-                <span className="text-xs text-muted-foreground ml-1">
-                  ({itemsWithPriceApproved}/{itemsCount})
-                </span>
-              </Label>
-            </div>
-            {order.trader_prices_approved && (
-              <CheckCircle className="h-4 w-4 text-green-600" />
-            )}
+          {/* Prices Info Badge (no checkbox) */}
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-background border">
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm">
+              <span className="font-medium">Preços:</span>{' '}
+              {formatCurrency(totalValue)}
+              <span className="text-xs text-muted-foreground ml-1">
+                ({itemsWithPriceApproved}/{itemsCount})
+              </span>
+            </span>
           </div>
 
-          {/* Quantities Approval */}
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-background border min-w-[220px]">
-            <Checkbox 
-              id="quantities-approved" 
-              checked={order.trader_quantities_approved}
-              onCheckedChange={() => !order.trader_quantities_approved && approveFieldMutation.mutate('quantities')}
-              disabled={order.trader_quantities_approved || approveFieldMutation.isPending}
-            />
-            <div className="flex items-center gap-2 flex-1">
-              <Package className="h-4 w-4 text-muted-foreground" />
-              <Label htmlFor="quantities-approved" className="text-sm cursor-pointer">
-                <span className="font-medium">Qtd:</span>{' '}
-                {totalQuantity.toLocaleString('pt-BR')} pcs
-                <span className="text-xs text-muted-foreground ml-1">
-                  ({itemsWithQtyApproved}/{itemsCount})
-                </span>
-              </Label>
-            </div>
-            {order.trader_quantities_approved && (
-              <CheckCircle className="h-4 w-4 text-green-600" />
-            )}
+          {/* Quantities Info Badge (no checkbox) */}
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-background border">
+            <Package className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm">
+              <span className="font-medium">Qtd:</span>{' '}
+              {totalQuantity.toLocaleString('pt-BR')} pcs
+              <span className="text-xs text-muted-foreground ml-1">
+                ({itemsWithQtyApproved}/{itemsCount})
+              </span>
+            </span>
           </div>
 
           {/* Spacer */}
@@ -295,14 +300,14 @@ export function TraderHeaderApprovals({
 
           {/* Status Badge & Submit Button */}
           <div className="flex items-center gap-3">
-            {allApproved && (
+            {canSubmit && (
               <Badge className="bg-green-500">
                 <CheckCircle className="h-3 w-3 mr-1" />
-                Aprovações concluídas
+                ETD aprovado
               </Badge>
             )}
             
-            {allApproved && order.status === 'pending_trader_review' && (
+            {canSubmit && order.status === 'pending_trader_review' && (
               <Button 
                 onClick={() => submitForApprovalMutation.mutate()}
                 disabled={submitForApprovalMutation.isPending}
@@ -322,7 +327,7 @@ export function TraderHeaderApprovals({
         </div>
 
         {/* Warning for critical changes */}
-        {pendingApprovalChanges.length > 0 && allApproved && order.status === 'pending_trader_review' && (
+        {pendingApprovalChanges.length > 0 && canSubmit && order.status === 'pending_trader_review' && (
           <div className="mt-3 pt-3 border-t">
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <AlertTriangle className="h-3 w-3" />
