@@ -18,6 +18,7 @@ import DemandPlanning from "./pages/DemandPlanning";
 import SupplierPlanning from "./pages/SupplierPlanning";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import PurchaseOrderDetails from "./pages/PurchaseOrderDetails";
+import TraderDashboard from "./pages/TraderDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -73,6 +74,7 @@ const AppRoutes = () => (
     <Route path="/demand-planning/:id" element={<ProtectedRoute><SupplierPlanning /></ProtectedRoute>} />
     <Route path="/purchase-orders" element={<ProtectedRoute><PurchaseOrders /></ProtectedRoute>} />
     <Route path="/purchase-orders/:id" element={<ProtectedRoute><PurchaseOrderDetails /></ProtectedRoute>} />
+    <Route path="/trader" element={<ProtectedRoute><TraderDashboard /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );

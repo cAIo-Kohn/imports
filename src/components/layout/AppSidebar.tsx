@@ -1,7 +1,8 @@
-import { Package, Factory, Building2, FolderTree, LayoutDashboard, LogOut, Settings, TrendingUp, ShoppingCart } from 'lucide-react';
+import { Package, Factory, Building2, FolderTree, LayoutDashboard, LogOut, Settings, TrendingUp, ShoppingCart, UserCheck } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import {
   Sidebar,
   SidebarContent,
@@ -32,6 +33,7 @@ const planningItems = [
 export function AppSidebar() {
   const location = useLocation();
   const { signOut, user } = useAuth();
+  const { isTrader, isAdmin } = useUserRole();
 
   return (
     <Sidebar>
@@ -81,6 +83,24 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {(isTrader || isAdmin) && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Trader</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={location.pathname === '/trader'}>
+                    <NavLink to="/trader">
+                      <UserCheck className="h-4 w-4" />
+                      <span>Painel do Trader</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         <SidebarGroup>
           <SidebarGroupLabel>Configurações</SidebarGroupLabel>
