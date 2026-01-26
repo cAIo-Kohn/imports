@@ -252,7 +252,7 @@ export function TraderHeaderApprovals({
                   </Label>
                 )}
               </div>
-              {!isEditingEtd && !order.trader_etd_approved && (
+              {!isEditingEtd && (
                 <Button 
                   size="icon" 
                   variant="ghost" 
