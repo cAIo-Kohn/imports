@@ -398,6 +398,13 @@ export function EditableOrderItemsTable({
     return acc;
   }, { totalQty: 0, totalCartons: 0, totalAmount: 0, totalCbm: 0 });
 
+  // Sort items by product code to maintain stable order
+  const sortedItems = [...items].sort((a, b) => {
+    const codeA = a.products?.code || '';
+    const codeB = b.products?.code || '';
+    return codeA.localeCompare(codeB);
+  });
+
   return (
     <Card className="p-0 overflow-hidden">
       <div className="overflow-x-auto">
@@ -423,7 +430,7 @@ export function EditableOrderItemsTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.map((item, index) => {
+            {sortedItems.map((item, index) => {
               const product = item.products;
               const editing = editingItems[item.id];
               const qty = editing ? editing.quantity : item.quantity;
