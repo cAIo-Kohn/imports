@@ -9,25 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { TrendingUp, TrendingDown, AlertTriangle, Package, Search, Filter, Upload, FileSpreadsheet, RefreshCw, Ship, ArrowLeft } from 'lucide-react';
-import { ImportForecastModal } from '@/components/planning/ImportForecastModal';
-import { ImportInventoryModal } from '@/components/planning/ImportInventoryModal';
-import { ImportSalesHistoryModal } from '@/components/planning/ImportSalesHistoryModal';
+import { TrendingUp, TrendingDown, AlertTriangle, Package, Search, Filter, RefreshCw, ArrowLeft } from 'lucide-react';
 import { ProjectionChart } from '@/components/planning/ProjectionChart';
 import { OrderSimulationFooter } from '@/components/planning/OrderSimulationFooter';
 import { ProductProjectionCard } from '@/components/planning/ProductProjectionCard';
 import { SmartOrderBuilder } from '@/components/planning/SmartOrderBuilder';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
 
 interface Product {
   id: string;
@@ -92,9 +80,6 @@ export default function SupplierPlanning() {
   const [monthsAhead, setMonthsAhead] = useState(12);
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   
-  const [importForecastOpen, setImportForecastOpen] = useState(false);
-  const [importInventoryOpen, setImportInventoryOpen] = useState(false);
-  const [importHistoryOpen, setImportHistoryOpen] = useState(false);
   
 
   const [pendingArrivals, setPendingArrivals] = useState<Record<string, number>>({});
@@ -529,54 +514,49 @@ export default function SupplierPlanning() {
   }
 
   return (
-    <div className="space-y-6 pb-24">
-      {/* Breadcrumb */}
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/demand-planning">Planejamento de Demanda</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{supplier.company_name}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+    <div className="space-y-3 pb-24">
+      {/* Compact Header with Stats */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Left: Back + Title */}
+        <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate('/demand-planning')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">{supplier.company_name}</h1>
-            <p className="text-muted-foreground">
-              Projeção de estoque • {products.length} produtos
-            </p>
+            <h1 className="text-2xl font-bold tracking-tight">{supplier.company_name}</h1>
+            <p className="text-sm text-muted-foreground">{products.length} produtos</p>
           </div>
         </div>
+        
+        {/* Center: Inline Stats */}
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-sm py-1 px-3">
+            <Package className="h-3.5 w-3.5 mr-1.5" />
+            {stats.total}
+          </Badge>
+          <Badge variant="destructive" className="text-sm py-1 px-3">
+            <TrendingDown className="h-3.5 w-3.5 mr-1.5" />
+            {stats.withRupture}
+          </Badge>
+          <Badge className="bg-yellow-500 text-white text-sm py-1 px-3">
+            <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
+            {stats.withWarning}
+          </Badge>
+          <Badge className="bg-green-500 text-white text-sm py-1 px-3">
+            <TrendingUp className="h-3.5 w-3.5 mr-1.5" />
+            {stats.ok}
+          </Badge>
+        </div>
+        
+        {/* Right: Actions */}
         <div className="flex gap-2">
           <Button variant="outline" size="icon" onClick={handleRefreshData} title="Atualizar dados">
             <RefreshCw className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" onClick={() => setImportInventoryOpen(true)}>
-            <Upload className="mr-2 h-4 w-4" />
-            Importar Estoque
-          </Button>
-          <Button variant="outline" onClick={() => setImportHistoryOpen(true)}>
-            <FileSpreadsheet className="mr-2 h-4 w-4" />
-            Importar Histórico
-          </Button>
-          <Button variant="outline" onClick={() => setImportForecastOpen(true)}>
-            <TrendingUp className="mr-2 h-4 w-4" />
-            Importar Previsão
           </Button>
           <SmartOrderBuilder
             productProjections={productProjections}
             products={products}
             onGenerateOrder={(arrivals) => {
-              // Clear previous simulations and apply new ones
               setPendingArrivals(arrivals);
               setPendingArrivalsInput(
                 Object.fromEntries(
@@ -589,96 +569,47 @@ export default function SupplierPlanning() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Produtos</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">produtos analisados</p>
-          </CardContent>
-        </Card>
-        <Card className="border-destructive/50">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Com Ruptura</CardTitle>
-            <TrendingDown className="h-4 w-4 text-destructive" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">{stats.withRupture}</div>
-            <p className="text-xs text-muted-foreground">precisam de compra urgente</p>
-          </CardContent>
-        </Card>
-        <Card className="border-yellow-500/50">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Atenção</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-yellow-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-500">{stats.withWarning}</div>
-            <p className="text-xs text-muted-foreground">estoque baixo previsto</p>
-          </CardContent>
-        </Card>
-        <Card className="border-green-500/50">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">OK</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-500">{stats.ok}</div>
-            <p className="text-xs text-muted-foreground">situação confortável</p>
-          </CardContent>
-        </Card>
+      {/* Compact Filters Row */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por código ou descrição..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 h-9"
+          />
+        </div>
+        <Select value={selectedUnit} onValueChange={setSelectedUnit}>
+          <SelectTrigger className="w-[160px] h-9">
+            <SelectValue placeholder="Unidade" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as Unidades</SelectItem>
+            {units.map(unit => (
+              <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={monthsAhead.toString()} onValueChange={(v) => setMonthsAhead(Number(v))}>
+          <SelectTrigger className="w-[120px] h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="6">6 meses</SelectItem>
+            <SelectItem value="12">12 meses</SelectItem>
+            <SelectItem value="18">18 meses</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          variant={showOnlyRuptures ? "default" : "outline"}
+          onClick={() => setShowOnlyRuptures(!showOnlyRuptures)}
+          size="sm"
+        >
+          <Filter className="mr-2 h-4 w-4" />
+          Apenas Rupturas
+        </Button>
       </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por código ou descrição..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-            <Select value={selectedUnit} onValueChange={setSelectedUnit}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Unidade" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as Unidades</SelectItem>
-                {units.map(unit => (
-                  <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={monthsAhead.toString()} onValueChange={(v) => setMonthsAhead(Number(v))}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="6">6 meses</SelectItem>
-                <SelectItem value="12">12 meses</SelectItem>
-                <SelectItem value="18">18 meses</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant={showOnlyRuptures ? "default" : "outline"}
-              onClick={() => setShowOnlyRuptures(!showOnlyRuptures)}
-            >
-              <Filter className="mr-2 h-4 w-4" />
-              Apenas Rupturas
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Chart for selected product */}
       {selectedProductData && (
@@ -701,16 +632,16 @@ export default function SupplierPlanning() {
 
       {/* Projection Cards */}
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-2">
           <CardTitle>Projeção de Estoque</CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs">
             Clique em um produto para ver o gráfico. Digite valores na linha "Chegada" para simular compras.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div 
             ref={tableContainerRef}
-            className="space-y-3 max-h-[700px] overflow-y-auto pr-2"
+            className="space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-2"
           >
             {productProjections.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
@@ -732,23 +663,6 @@ export default function SupplierPlanning() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Import Modals */}
-      <ImportForecastModal 
-        open={importForecastOpen} 
-        onOpenChange={setImportForecastOpen}
-        onSuccess={handleRefreshData}
-      />
-      <ImportInventoryModal 
-        open={importInventoryOpen} 
-        onOpenChange={setImportInventoryOpen}
-        onSuccess={handleRefreshData}
-      />
-      <ImportSalesHistoryModal 
-        open={importHistoryOpen} 
-        onOpenChange={setImportHistoryOpen}
-        onSuccess={handleRefreshData}
-      />
 
       {/* Order Simulation Footer - Fixed at bottom */}
       <OrderSimulationFooter
