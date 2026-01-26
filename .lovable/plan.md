@@ -1,185 +1,189 @@
 
-## Plano: Edição de Itens pelo Trader + Checkboxes de Aprovação no Header
+
+## Plano: Checkboxes de Aprovação por Item + Aprovação Global no Header
 
 ### Problema Identificado
 
-1. **Itens não editáveis**: O componente `PurchaseOrderInvoice.tsx` é apenas para visualização (read-only). Não existe funcionalidade de edição inline dos itens do pedido.
+Atualmente:
+1. O `TraderHeaderApprovals` tem checkboxes para aprovar ETD, Preços e Quantidades **do pedido todo**
+2. O `EditableOrderItemsTable` permite editar preço e quantidade, mas **não tem checkboxes de aprovação por item**
 
-2. **Checkboxes de aprovação**: O painel `TraderApprovalPanel` está separado do header do pedido. O usuário quer os checkboxes integrados no header principal.
+O usuário quer poder conferir item por item, marcando checkbox de preço e quantidade enquanto vai revisando, facilitando o processo de conferência.
 
 ---
 
 ### Solução Proposta
 
-#### Parte 1: Criar Tabela Editável para Traders
+#### Parte 1: Adicionar Checkboxes de Aprovação por Item
 
-Criar um novo componente `EditableOrderItemsTable.tsx` que:
-- Permite edição inline de preço, quantidade e outros campos
-- Registra todas as alterações via `useOrderChanges.logChange()`
-- Marca alterações críticas (preço, quantidade) automaticamente
-- Salva as alterações no banco de dados
+No `EditableOrderItemsTable.tsx`, adicionar duas novas colunas com checkboxes:
+- **Preço OK**: Checkbox para aprovar o preço do item
+- **Qtd OK**: Checkbox para aprovar a quantidade do item
 
-**Campos editáveis pelo trader:**
-| Campo | Tipo | Crítico? |
-|-------|------|----------|
-| `unit_price_usd` | number | Sim |
-| `quantity` | number | Sim |
-| Descrição do produto | text | Não |
-| Especificações técnicas | text | Não |
+Esses checkboxes funcionarão como **auxiliares visuais** para o trader conforme vai conferindo cada produto.
 
-#### Parte 2: Integrar Aprovações no Header
+#### Parte 2: Lógica de Aprovação Automática no Header
 
-Mover os 3 checkboxes de aprovação para o header do pedido:
-- Checkbox ETD (com botão para editar ETD)
-- Checkbox Preços
-- Checkbox Quantidades
+O header mostrará:
+- Contagem de itens aprovados: "Preços: 5/10 OK" e "Qtd: 5/10 OK"
+- Quando **todos os itens** tiverem preço e quantidade marcados, os checkboxes do header serão automaticamente habilitados para aprovação final
 
-**Layout proposto:**
-```
-┌─────────────────────────────────────────────────────────────┐
-│  PO-2026-0009                        [Aguard. Trader]       │
-│  JILONG GROUP                                               │
-├─────────────────────────────────────────────────────────────┤
-│  ☐ ETD: 15/03/2026 [Editar]  ☐ Preços: $45,230  ☐ Qtd: 5000│
-│  [Aprovar Selecionados]           [Confirmar Pedido]        │
-└─────────────────────────────────────────────────────────────┘
-```
+#### Parte 3: Armazenamento das Aprovações por Item
+
+Adicionar duas colunas na tabela `purchase_order_items`:
+- `trader_price_approved: boolean`
+- `trader_quantity_approved: boolean`
 
 ---
 
-### Arquivos a Modificar
+### Alterações Necessárias
 
-#### 1. Criar `src/components/orders/EditableOrderItemsTable.tsx`
-Tabela com edição inline para traders:
-- Input para preço unitário
-- Input para quantidade
-- Botão salvar por linha
-- Logging automático de alterações
+#### 1. Migração SQL para novos campos
 
-#### 2. Criar `src/components/orders/TraderHeaderApprovals.tsx`
-Componente compacto para o header:
-- 3 checkboxes de aprovação inline
-- Campo de edição de ETD (expandível)
-- Botão "Confirmar Pedido"
+```sql
+ALTER TABLE public.purchase_order_items 
+ADD COLUMN IF NOT EXISTS trader_price_approved boolean DEFAULT false;
 
-#### 3. Modificar `src/pages/PurchaseOrderDetails.tsx`
-- Substituir `TraderApprovalPanel` por `TraderHeaderApprovals` no header
-- Adicionar `EditableOrderItemsTable` quando trader estiver revisando
-- Manter `PurchaseOrderInvoice` para visualização de outros usuários
+ALTER TABLE public.purchase_order_items 
+ADD COLUMN IF NOT EXISTS trader_quantity_approved boolean DEFAULT false;
+```
 
----
+#### 2. Modificar `EditableOrderItemsTable.tsx`
 
-### Lógica de Salvamento
+**Adicionar colunas de checkbox:**
 
+| Coluna Nova | Posição | Descrição |
+|-------------|---------|-----------|
+| `☐ $` | Após FOB USD | Checkbox para aprovar preço |
+| `☐ Qty` | Após Q'TY | Checkbox para aprovar quantidade |
+
+**Lógica por item:**
 ```typescript
-// Ao editar um item
-const handleItemUpdate = async (itemId: string, field: string, oldValue: any, newValue: any) => {
-  // 1. Atualizar no banco
+// Estado local para aprovações
+const [itemApprovals, setItemApprovals] = useState<Record<string, {priceOk: boolean, qtyOk: boolean}>>({});
+
+// Ao marcar checkbox
+const handleItemApproval = async (itemId: string, field: 'price' | 'quantity', checked: boolean) => {
   await supabase
     .from('purchase_order_items')
-    .update({ [field]: newValue })
+    .update({ [`trader_${field}_approved`]: checked })
     .eq('id', itemId);
-  
-  // 2. Registrar alteração
-  await logChange({
-    orderId: order.id,
-    itemId: itemId,
-    changeType: 'item_field',
-    fieldName: field,
-    oldValue: String(oldValue),
-    newValue: String(newValue),
-    isCritical: ['unit_price_usd', 'quantity'].includes(field)
-  });
-  
-  // 3. Recalcular total do pedido
-  await recalculateOrderTotal();
 };
 ```
 
----
-
-### RLS - Já Configurada
-
-A política RLS para traders já permite atualizações:
-```sql
--- purchase_order_items
-Policy: "Traders can update items for chinese supplier orders"
-Command: UPDATE
-Using: has_role('trader') AND supplier.country = 'china'
+**Layout da nova linha:**
+```
+| # | PIC | CODE | ... | Q'TY | ☐ | FOB | ☐ | AMOUNT | AÇÃO |
+                           qty    $
 ```
 
----
+#### 3. Modificar `TraderHeaderApprovals.tsx`
 
-### Fluxo Completo
-
-1. Trader abre pedido `pending_trader_review`
-2. Vê checkboxes de aprovação no header
-3. Pode editar ETD diretamente (clicando no campo)
-4. Pode editar preço/quantidade de cada item na tabela
-5. Cada alteração é salva e logada automaticamente
-6. Marca os 3 checkboxes de aprovação
-7. Clica "Confirmar Pedido"
-8. Se houve alteração crítica -> `pending_buyer_approval`
-9. Se não houve -> `confirmed`
-
----
-
-### Resumo das Entregas
-
-| Componente | Função |
-|------------|--------|
-| `TraderHeaderApprovals` | Checkboxes + ETD editável no header |
-| `EditableOrderItemsTable` | Tabela com edição inline |
-| `PurchaseOrderDetails` | Integração dos novos componentes |
-
----
-
-### Detalhes Técnicos
-
-**Estrutura do EditableOrderItemsTable:**
-```typescript
-interface EditableItemRow {
-  item: OrderItem;
-  isEditing: boolean;
-  editedValues: {
-    unit_price_usd: number;
-    quantity: number;
-  };
-  isSaving: boolean;
-}
-
-// Estados por linha para edição independente
-const [editingItems, setEditingItems] = useState<Record<string, EditableItemRow>>({});
-```
-
-**Estrutura do TraderHeaderApprovals:**
+**Adicionar props para contagem:**
 ```typescript
 interface TraderHeaderApprovalsProps {
   order: PurchaseOrder;
   totalValue: number;
   totalQuantity: number;
+  itemsCount: number;
+  itemsWithPriceApproved: number;  // novo
+  itemsWithQtyApproved: number;    // novo
   onOrderUpdated: () => void;
 }
-
-// Estado para edição inline do ETD
-const [isEditingEtd, setIsEditingEtd] = useState(false);
-const [editedEtd, setEditedEtd] = useState(order.etd || '');
 ```
 
-**Atualização automática de total:**
+**Exibir progresso:**
+```
+☐ ETD: 15/03/2026 [✓]    ☐ Preços: $45,230 (8/10 OK)    ☐ Qtd: 5000 pcs (8/10 OK)
+```
+
+#### 4. Modificar `PurchaseOrderDetails.tsx`
+
+Calcular contagens de aprovações por item e passar para os componentes.
+
+---
+
+### Fluxo do Usuário
+
+1. Trader abre pedido em `pending_trader_review`
+2. Vê a tabela de itens com checkboxes de preço e quantidade
+3. Confere cada item:
+   - Edita preço/quantidade se necessário
+   - Marca ☐ preço OK e ☐ quantidade OK
+4. No header, vê progresso: "Preços: 8/10 OK"
+5. Quando todos os itens estão OK, pode marcar aprovação final no header
+6. Clica "Confirmar Pedido"
+
+---
+
+### Visualização do Layout
+
+**Tabela com checkboxes:**
+```
+┌────┬─────┬────────┬───────┬─────┬────────┬─────┬──────────┬───────┐
+│ #  │ PIC │ CODE   │ Q'TY  │ ☐   │ FOB    │ ☐   │ AMOUNT   │ AÇÃO  │
+├────┼─────┼────────┼───────┼─────┼────────┼─────┼──────────┼───────┤
+│ 1  │ 📷  │ 001480 │ 1,000 │ ☑   │ $0.45  │ ☑   │ $450.00  │ ✏️    │
+│ 2  │ 📷  │ 001488 │ 500   │ ☐   │ $0.32  │ ☑   │ $160.00  │ ✏️    │
+└────┴─────┴────────┴───────┴─────┴────────┴─────┴──────────┴───────┘
+```
+
+**Header com progresso:**
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ ☐ ETD: 15/03/2026 ✓   ☐ Preços: $610 (1/2)   ☐ Qtd: 1500 (2/2)     │
+│                                               [Confirmar Pedido]     │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Resumo das Mudanças
+
+| Arquivo | Alteração |
+|---------|-----------|
+| **SQL Migration** | Adicionar `trader_price_approved` e `trader_quantity_approved` em `purchase_order_items` |
+| `EditableOrderItemsTable.tsx` | Adicionar 2 colunas de checkbox (preço OK, qtd OK) |
+| `TraderHeaderApprovals.tsx` | Mostrar progresso de aprovações por item |
+| `PurchaseOrderDetails.tsx` | Calcular contagens e passar para componentes |
+
+---
+
+### Detalhes Técnicos
+
+**Estrutura do EditableOrderItemsTable atualizada:**
 ```typescript
-const updateOrderTotal = async () => {
-  const { data: items } = await supabase
-    .from('purchase_order_items')
-    .select('quantity, unit_price_usd')
-    .eq('purchase_order_id', orderId);
-  
-  const newTotal = items.reduce((sum, item) => 
-    sum + (item.quantity * (item.unit_price_usd || 0)), 0);
-  
-  await supabase
-    .from('purchase_orders')
-    .update({ total_value_usd: newTotal })
-    .eq('id', orderId);
-};
+// Carregar aprovações dos itens
+const { data: itemsWithApprovals } = useQuery({
+  queryKey: ['order-items-approvals', orderId],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from('purchase_order_items')
+      .select('id, trader_price_approved, trader_quantity_approved')
+      .eq('purchase_order_id', orderId);
+    return data;
+  }
+});
+
+// Callback para aprovar item
+const approveItemMutation = useMutation({
+  mutationFn: async ({ itemId, field, value }) => {
+    await supabase
+      .from('purchase_order_items')
+      .update({ [`trader_${field}_approved`]: value })
+      .eq('id', itemId);
+  }
+});
 ```
+
+**Interface de props atualizada:**
+```typescript
+interface EditableOrderItemsTableProps {
+  orderId: string;
+  items: OrderItem[];
+  showImages?: boolean;
+  onTotalsChanged: () => void;
+  onApprovalsChanged?: (priceCount: number, qtyCount: number) => void;  // novo
+}
+```
+
