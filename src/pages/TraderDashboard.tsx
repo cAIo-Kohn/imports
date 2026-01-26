@@ -190,10 +190,13 @@ export default function TraderDashboard() {
                     onClick={() => navigate(`/purchase-orders/${order.id}`)}
                   >
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="font-mono">
-                          {order.order_number}
-                        </Badge>
+                      <div className="flex flex-col">
+                        <span className="font-medium">
+                          {order.reference_number || order.order_number}
+                        </span>
+                        {order.reference_number && (
+                          <span className="text-xs text-muted-foreground">{order.order_number}</span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
