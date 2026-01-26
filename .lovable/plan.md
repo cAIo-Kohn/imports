@@ -1,75 +1,108 @@
 
 
-## Plano: Exibir Número de Referência no Painel do Trader
+## Plano: Simplificar Colunas da Tabela no Painel do Trader
 
-### Problema Identificado
+### Objetivo
 
-Na página `/trader` (TraderDashboard.tsx), o número do pedido exibido na coluna "Pedido" mostra apenas o `order_number` (PO-2026-0002) e não exibe o `reference_number` (AMOR-26001), que é o número importante para o matching com uploads.
+Modificar a tabela de pedidos em `/trader` para exibir apenas as colunas solicitadas:
+- Pedido
+- Fornecedor  
+- Data Criação
+- ETD
+- Containers (quantidade extraída das notas)
+- Total Amount
 
-**Código atual (linha 194-196):**
-```tsx
-<Badge variant="outline" className="font-mono">
-  {order.order_number}
-</Badge>
-```
-
-Na página `/purchase-orders`, a exibição está correta (linhas 301-307):
-```tsx
-<div className="flex flex-col">
-  <span>{order.reference_number || order.order_number}</span>
-  {order.reference_number && (
-    <span className="text-xs text-muted-foreground">{order.order_number}</span>
-  )}
-</div>
-```
-
----
-
-### Solução
-
-Modificar a exibição na coluna "Pedido" do `TraderDashboard.tsx` para usar a mesma lógica de `PurchaseOrders.tsx`:
-- Mostrar `reference_number` como principal (quando disponível)
-- Mostrar `order_number` como subtexto secundário
+Remover as colunas atuais: **Itens** e **Qtd Total**.
 
 ---
 
 ### Arquivo a Modificar
 
-#### `src/pages/TraderDashboard.tsx` (linhas 192-197)
+#### `src/pages/TraderDashboard.tsx`
+
+#### 1. Adicionar import da função `extractContainerInfo` (linha 11)
+
+```typescript
+import { extractContainerInfo } from '@/lib/utils';
+```
+
+#### 2. Modificar o cabeçalho da tabela (linhas 173-183)
 
 **De:**
 ```tsx
-<TableCell>
-  <div className="flex items-center gap-2">
-    <Badge variant="outline" className="font-mono">
-      {order.order_number}
-    </Badge>
-  </div>
+<TableRow>
+  <TableHead>Pedido</TableHead>
+  <TableHead>Fornecedor</TableHead>
+  <TableHead>Data Criação</TableHead>
+  <TableHead>ETD</TableHead>
+  <TableHead className="text-right">Itens</TableHead>
+  <TableHead className="text-right">Qtd Total</TableHead>
+  <TableHead className="text-right">Valor Total</TableHead>
+  <TableHead></TableHead>
+</TableRow>
+```
+
+**Para:**
+```tsx
+<TableRow>
+  <TableHead>Pedido</TableHead>
+  <TableHead>Fornecedor</TableHead>
+  <TableHead>Data Criação</TableHead>
+  <TableHead>ETD</TableHead>
+  <TableHead>Containers</TableHead>
+  <TableHead className="text-right">Total Amount</TableHead>
+  <TableHead></TableHead>
+</TableRow>
+```
+
+#### 3. Modificar as células da tabela (linhas 222-238)
+
+**De:**
+```tsx
+<TableCell className="text-right">
+  {order.purchase_order_items?.length || 0}
+</TableCell>
+<TableCell className="text-right font-medium">
+  {calculateTotalQty(order.purchase_order_items).toLocaleString('pt-BR')}
+</TableCell>
+<TableCell className="text-right font-medium">
+  ${calculateOrderTotal(order.purchase_order_items).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}
 </TableCell>
 ```
 
 **Para:**
 ```tsx
 <TableCell>
-  <div className="flex flex-col">
-    <span className="font-medium">
-      {order.reference_number || order.order_number}
-    </span>
-    {order.reference_number && (
-      <span className="text-xs text-muted-foreground">{order.order_number}</span>
-    )}
-  </div>
+  <span className="text-sm">
+    {extractContainerInfo(order.notes)}
+  </span>
+</TableCell>
+<TableCell className="text-right font-medium">
+  ${calculateOrderTotal(order.purchase_order_items).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}
 </TableCell>
 ```
 
+#### 4. Remover função não utilizada `calculateTotalQty` (linhas 59-61)
+
+Pode ser removida, pois não será mais utilizada na tabela.
+
 ---
 
-### Resultado Esperado
+### Resultado Visual
 
 | Antes | Depois |
 |-------|--------|
-| `PO-2026-0002` | **AMOR-26001** |
-|  | `PO-2026-0002` (texto pequeno) |
+| Pedido, Fornecedor, Data Criação, ETD, Itens, Qtd Total, Valor Total | Pedido, Fornecedor, Data Criação, ETD, Containers, Total Amount |
 
-O trader verá o número de referência do comprador (AMOR-26001) como identificador principal do pedido, facilitando a correspondência com o arquivo de upload.
+### Exemplo de Exibição
+
+| Pedido | Fornecedor | Data Criação | ETD | Containers | Total Amount |
+|--------|------------|--------------|-----|------------|--------------|
+| AMOR-26001 | JIANGSU JILONG... | 26/01/2026 | Não definido | 2x 40HQ | $125,000.00 |
 
