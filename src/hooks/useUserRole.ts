@@ -32,6 +32,9 @@ export function useUserRole() {
   const isTrader = hasRole('trader');
   const isViewer = hasRole('viewer');
 
+  // Helper para verificar se é APENAS trader (sem outras roles privilegiadas)
+  const isOnlyTrader = isTrader && !isAdmin && !isBuyer;
+
   const canManageOrders = isAdmin || isBuyer;
   const canApproveAsTrader = isTrader;
 
@@ -43,6 +46,7 @@ export function useUserRole() {
     isBuyer,
     isTrader,
     isViewer,
+    isOnlyTrader,
     canManageOrders,
     canApproveAsTrader,
   };
