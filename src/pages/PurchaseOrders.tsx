@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Plus, Search, FileText, Container, DollarSign, Calendar, Truck, Clock, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
@@ -302,8 +303,21 @@ export default function PurchaseOrders() {
                         : '-'
                       }
                     </TableCell>
-                    <TableCell>
-                      {extractContainerInfo(order.notes)}
+                    <TableCell className="max-w-[150px]">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-sm line-clamp-1 cursor-help block">
+                              {extractContainerInfo(order.notes)}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-sm">
+                            <p className="text-sm whitespace-pre-wrap">
+                              {extractContainerInfo(order.notes)}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </TableCell>
                     <TableCell>
                       {order.total_value_usd 
