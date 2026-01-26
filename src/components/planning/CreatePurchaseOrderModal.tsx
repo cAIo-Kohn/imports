@@ -23,6 +23,7 @@ export function CreatePurchaseOrderModal({ open, onOpenChange, onSuccess }: Crea
   const { toast } = useToast();
   
   const [supplierId, setSupplierId] = useState('');
+  const [referenceNumber, setReferenceNumber] = useState('');
   const [orderDate, setOrderDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [notes, setNotes] = useState('');
 
@@ -58,6 +59,7 @@ export function CreatePurchaseOrderModal({ open, onOpenChange, onSuccess }: Crea
         .from('purchase_orders')
         .insert({
           order_number: orderNumber,
+          reference_number: referenceNumber.trim() || null,
           supplier_id: supplierId,
           order_date: orderDate,
           notes: notes || null,
@@ -89,6 +91,7 @@ export function CreatePurchaseOrderModal({ open, onOpenChange, onSuccess }: Crea
 
   const handleClose = () => {
     setSupplierId('');
+    setReferenceNumber('');
     setOrderDate(format(new Date(), 'yyyy-MM-dd'));
     setNotes('');
     onOpenChange(false);
@@ -128,6 +131,16 @@ export function CreatePurchaseOrderModal({ open, onOpenChange, onSuccess }: Crea
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="reference-number">Número do Pedido (Referência)</Label>
+            <Input
+              id="reference-number"
+              value={referenceNumber}
+              onChange={(e) => setReferenceNumber(e.target.value)}
+              placeholder="Ex: AMOR-26001"
+            />
           </div>
 
           <div className="space-y-2">

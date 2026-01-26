@@ -22,6 +22,7 @@ import { extractContainerInfo } from '@/lib/utils';
 interface PurchaseOrder {
   id: string;
   order_number: string;
+  reference_number: string | null;
   order_date: string;
   etd: string | null;
   status: string;
@@ -107,6 +108,7 @@ export default function PurchaseOrders() {
         .select(`
           id,
           order_number,
+          reference_number,
           order_date,
           etd,
           status,
@@ -133,6 +135,7 @@ export default function PurchaseOrders() {
     const query = searchQuery.toLowerCase();
     return (
       order.order_number.toLowerCase().includes(query) ||
+      (order.reference_number && order.reference_number.toLowerCase().includes(query)) ||
       order.suppliers.company_name.toLowerCase().includes(query)
     );
   });
@@ -295,7 +298,14 @@ export default function PurchaseOrders() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => navigate(`/purchase-orders/${order.id}`)}
                   >
-                    <TableCell className="font-medium">{order.order_number}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex flex-col">
+                        <span>{order.reference_number || order.order_number}</span>
+                        {order.reference_number && (
+                          <span className="text-xs text-muted-foreground">{order.order_number}</span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>{order.suppliers.company_name}</TableCell>
                     <TableCell>
                       {order.etd 
