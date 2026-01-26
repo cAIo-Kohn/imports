@@ -321,6 +321,7 @@ export function OrderSimulationFooter({
       if (!user) throw new Error('Usuário não autenticado');
       if (draft.items.length === 0) throw new Error('Nenhum item para criar pedido');
       if (!selectedSupplier || selectedSupplier === 'all') throw new Error('Selecione um fornecedor');
+      if (!selectedUnit || selectedUnit === 'all') throw new Error('Selecione uma unidade de destino para criar o pedido');
 
       const { data: orderNumber, error: rpcError } = await supabase
         .rpc('generate_purchase_order_number');
@@ -355,7 +356,7 @@ export function OrderSimulationFooter({
       const orderItems = draft.items.map(item => ({
         purchase_order_id: order.id,
         product_id: item.productId,
-        unit_id: selectedUnit !== 'all' ? selectedUnit : null,
+        unit_id: selectedUnit,
         quantity: item.quantity,
         unit_price_usd: products.find(p => p.id === item.productId)?.fob_price_usd || null,
         expected_arrival: draft.monthKey,
