@@ -1,84 +1,184 @@
 
-Goal: Make `/development` fit the screen so you never need to horizontally scroll the whole page to reach “New Item” (and other top controls). Horizontal scroll should happen only inside the Kanban area.
+## Plan: Restructure Development Flow with Card Types and Activity History
 
-What’s happening (root cause)
-- Your `DashboardLayout` wraps every page inside: `div.flex-1 p-6 overflow-auto`
-- Because it’s `overflow-auto`, when the Kanban content is wider than the viewport, the layout container itself becomes horizontally scrollable.
-- Result: the entire page (including the header with “New Item”) shifts left/right. That’s why the button can become “off-screen”.
+### Understanding the Requirements
 
-High-level fix
-1) Prevent horizontal scrolling at the layout level (keep only vertical scrolling there).
-2) Ensure `/development` (and the Kanban board) can shrink inside flex layouts by using `min-w-0` in the right places.
-3) Keep horizontal scrolling inside the Kanban’s ScrollArea only.
+You want to reorganize the flow to:
 
-Changes to implement
+1. **One card = One pending subject/sample** with all history tracked inside
+2. **Resolved cards go to a "Solved" bucket** - hidden by default, filterable
+3. **Two creation flows:**
+   - **New Items**: Individual product OR grouped products (e.g., a whole pet products line)
+   - **New Task**: Non-product tasks (pending things to solve)
+4. **Both sides (Brazil team + Traders) can create and act on cards**
+5. **Every update tracked with date, user name, and content**
 
-A) Update the global layout to block horizontal scroll
-File: `src/components/layout/DashboardLayout.tsx`
+---
 
-- Change the children wrapper from:
-  - `className="flex-1 p-6 overflow-auto"`
-- To:
-  - `className="flex-1 p-6 overflow-y-auto overflow-x-hidden min-w-0"`
+### Current State Analysis
 
-- Also add `min-w-0` to the `<main>` container so wide children don’t force the whole main area wider than the viewport:
-  - `className="flex-1 flex flex-col min-w-0"`
+| What Exists | What Needs to Change |
+|-------------|---------------------|
+| 9 Kanban columns (backlog to rejected) | Simplify to fewer columns + "Solved" bucket |
+| `item_type`: new_item, sample, development | Change to: `item`, `item_group`, `task` |
+| Comments track activity | Need structured activity log with event types |
+| Single items only | Support grouped items with child products |
+| All items visible | Filter to hide "solved" by default |
 
-Why this works
-- `overflow-x-hidden` ensures the page container cannot scroll sideways.
-- `min-w-0` allows flex children to shrink instead of forcing layout overflow (this is a common “why is my flex layout causing horizontal scroll?” fix).
+---
 
-B) Adjust `/development` wrapper so it doesn’t create left overflow
-File: `src/pages/Development.tsx`
+### Database Changes
 
-- Remove the negative margin hack `-m-6` (it can cause content to extend to the left, and with layout overflow rules it can become clipped or create weird “wide to the left” behavior).
-- Replace with a safe flex layout that:
-  - stays full width
-  - prevents the page itself from scrolling horizontally
-  - allows the Kanban region to handle its own scroll
+#### 1. New Enum for Card Type
+```sql
+-- Replace development_item_type enum
+CREATE TYPE development_card_type AS ENUM ('item', 'item_group', 'task');
+```
 
-Proposed structure:
-- Outer wrapper: `className="flex flex-col h-full w-full min-w-0 overflow-hidden"`
-- Header: `className="flex-shrink-0 ... w-full"`
-- Kanban container: `className="flex-1 min-w-0 overflow-hidden"`
+#### 2. Simplified Status Enum
+```sql
+-- Simplify status workflow
+CREATE TYPE development_card_status AS ENUM (
+  'pending',        -- New / Open
+  'in_progress',    -- Being worked on
+  'waiting',        -- Waiting for response (from either side)
+  'solved'          -- Resolved / Done
+);
+```
 
-Optional improvement (if you want the header to remain visible while you scroll vertically inside the page):
-- Make the header sticky: `sticky top-0 z-20` (only if needed; your current layout already keeps it visually separated).
+#### 3. New Table: `development_card_products` (for grouped items)
+```sql
+CREATE TABLE development_card_products (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  card_id UUID REFERENCES development_items(id) ON DELETE CASCADE NOT NULL,
+  product_code TEXT NOT NULL,
+  product_name TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  created_by UUID NOT NULL
+);
+```
 
-C) Ensure Kanban scroll is contained and doesn’t “leak” to parents
-File: `src/components/development/KanbanBoard.tsx`
+#### 4. Enhanced Activity Log Table
+Replace simple comments with structured activity log:
+```sql
+CREATE TABLE development_card_activity (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  card_id UUID REFERENCES development_items(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID NOT NULL,
+  activity_type TEXT NOT NULL, -- 'comment', 'status_change', 'sample_added', 'product_added', etc.
+  content TEXT,                -- Message or description
+  metadata JSONB,              -- Store old/new values, sample info, etc.
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+```
 
-- Ensure the ScrollArea root fills available width and is shrinkable:
-  - `className="h-full w-full min-w-0"`
-- Ensure the inner flex row is allowed to be wider than the viewport (so the ScrollArea is the scroller), without affecting parent width:
-  - Add `w-max` to the inner container (the one that holds the columns)
+#### 5. Update `development_items` Table
+```sql
+ALTER TABLE development_items 
+  ADD COLUMN card_type development_card_type DEFAULT 'item',
+  ADD COLUMN is_solved BOOLEAN DEFAULT false;
+```
 
-Example direction:
-- `<ScrollArea className="h-full w-full min-w-0">`
-- Inner: `className="flex w-max ..."`
+---
 
-This makes the “big width” exist only inside the ScrollArea’s scrollable viewport instead of influencing layout width.
+### Simplified Workflow
 
-Verification / Testing checklist
-1) Open `/development`:
-   - “New Item” must be visible immediately without any horizontal page scroll.
-   - Swiping/trackpad horizontal scroll should move the Kanban columns only.
-2) Check other pages quickly (Products, Suppliers) to ensure:
-   - Vertical scroll still works (it will).
-   - Any wide tables still scroll horizontally inside their own containers (Products already uses `overflow-x-auto` around the table, so it should be fine).
-3) Confirm there is no global horizontal scrollbar in the main dashboard content area.
+```text
++------------------+     +---------------+     +-----------+     +----------+
+|     PENDING      | --> |  IN PROGRESS  | --> |  WAITING  | --> |  SOLVED  |
++------------------+     +---------------+     +-----------+     +----------+
+       ^                        |                   |
+       |                        v                   v
+       +------------------------+-------------------+
+                    (can move back if needed)
+```
 
-Nice-to-have (optional, if you still feel it’s “1 mile” to navigate columns)
-After the layout fix, if you still want faster navigation:
-- Add a “Jump to column” dropdown in the header (Backlog, In Progress, …) that scrolls the Kanban to that column automatically.
-- Add left/right arrow buttons to scroll one “screen width” at a time.
-These reduce manual horizontal scrolling even inside the Kanban.
+- **Pending**: New cards, not yet started
+- **In Progress**: Actively being worked on
+- **Waiting**: Waiting for supplier, sample, or response
+- **Solved**: Resolved (hidden by default, filterable)
 
-Files we’ll touch
-- `src/components/layout/DashboardLayout.tsx` (stop layout-level horizontal scrolling)
-- `src/pages/Development.tsx` (remove negative margin, add `min-w-0`/containment)
-- `src/components/development/KanbanBoard.tsx` (ensure scroll containment with `w-full min-w-0` + `w-max`)
+---
 
-Expected outcome
-- Header (including “New Item”) is always reachable and does not move sideways.
-- Only the Kanban columns area scrolls horizontally, which is the intended behavior.
+### UI Changes
+
+#### 1. New "Create Card" Modal with Two Tabs
+
+**Tab 1: New Item(s)**
+- Radio: Individual / Group
+- If Individual: product code, supplier, description
+- If Group: group name (e.g., "Pet Products Line 2024"), then add items inside
+
+**Tab 2: New Task**
+- Title, description, priority, due date
+- No product code or supplier required
+
+#### 2. Card Detail Drawer - Activity Tab Redesign
+
+Show a unified timeline with all events:
+```
+[Avatar] John Doe - Jan 27, 2026 at 14:30
+Changed status from "Pending" to "In Progress"
+
+[Avatar] Maria Silva - Jan 27, 2026 at 15:45
+Added comment:
+"Requested quote from supplier, waiting for response"
+
+[Avatar] Trader Wang - Jan 28, 2026 at 09:00
+Added sample tracking:
+Courier: DHL | Tracking: 1234567890
+
+[Avatar] John Doe - Jan 29, 2026 at 10:00
+Received sample, moving to review
+```
+
+#### 3. Kanban Board Simplification
+
+From 9 columns to 3 + filter:
+- **Pending** | **In Progress** | **Waiting**
+- Toggle/filter to show "Solved" cards
+
+#### 4. Card Display for Groups
+
+For grouped items, show:
+- Group name
+- Item count badge (e.g., "5 products")
+- Expandable list when clicked
+
+---
+
+### Files to Create/Modify
+
+| File | Action | Description |
+|------|--------|-------------|
+| Database migration | Create | New tables and enum changes |
+| `src/pages/Development.tsx` | Modify | Simplify columns, add solved filter |
+| `src/components/development/CreateCardModal.tsx` | Create | New modal with tabs for Item/Task |
+| `src/components/development/CardDetailDrawer.tsx` | Modify | Unified activity timeline |
+| `src/components/development/UnifiedActivityTimeline.tsx` | Create | Combined activity log component |
+| `src/components/development/GroupedItemsEditor.tsx` | Create | For adding/managing items in a group |
+| `src/components/development/DevelopmentCard.tsx` | Modify | Show card type icon, group badge |
+
+---
+
+### Access Control
+
+Both teams can create and update cards:
+- **Admin/Buyer**: Full access
+- **Trader**: Can create cards, add comments, add samples, update status
+
+The current RLS already allows Admin and Buyer to manage. We need to add Trader insert/update permissions.
+
+---
+
+### Summary
+
+| Change | Impact |
+|--------|--------|
+| Simplify status to 4 values | Less horizontal scroll, clearer workflow |
+| Add card types (item, group, task) | Separate product development from tasks |
+| Unified activity log | All history in one place with structured events |
+| Support grouped items | Track a line of products together |
+| "Solved" filter | Hide resolved items by default |
+| Trader access | Both teams can collaborate |
