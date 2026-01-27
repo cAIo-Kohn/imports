@@ -1,40 +1,30 @@
 import { useRef } from 'react';
 import { KanbanColumn } from './KanbanColumn';
-import { DevelopmentItem, DevelopmentItemStatus } from '@/pages/Development';
+import { DevelopmentItem, DevelopmentCardStatus } from '@/pages/Development';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface KanbanBoardProps {
-  itemsByStatus: Record<DevelopmentItemStatus, DevelopmentItem[]>;
-  statusOrder: DevelopmentItemStatus[];
+  itemsByStatus: Record<DevelopmentCardStatus, DevelopmentItem[]>;
+  statusOrder: DevelopmentCardStatus[];
   isLoading: boolean;
   onCardClick: (itemId: string) => void;
-  onStatusChange: (itemId: string, newStatus: DevelopmentItemStatus) => void;
+  onStatusChange: (itemId: string, newStatus: DevelopmentCardStatus) => void;
   canManage: boolean;
 }
 
-const STATUS_LABELS: Record<DevelopmentItemStatus, string> = {
-  backlog: 'Backlog',
+const STATUS_LABELS: Record<DevelopmentCardStatus, string> = {
+  pending: 'Pending',
   in_progress: 'In Progress',
-  waiting_supplier: 'Waiting Supplier',
-  sample_requested: 'Sample Requested',
-  sample_in_transit: 'Sample In Transit',
-  sample_received: 'Sample Received',
-  under_review: 'Under Review',
-  approved: 'Approved',
-  rejected: 'Rejected',
+  waiting: 'Waiting',
+  solved: 'Solved',
 };
 
-const STATUS_COLORS: Record<DevelopmentItemStatus, string> = {
-  backlog: 'bg-slate-100 border-slate-300',
+const STATUS_COLORS: Record<DevelopmentCardStatus, string> = {
+  pending: 'bg-slate-100 border-slate-300',
   in_progress: 'bg-blue-50 border-blue-300',
-  waiting_supplier: 'bg-amber-50 border-amber-300',
-  sample_requested: 'bg-purple-50 border-purple-300',
-  sample_in_transit: 'bg-cyan-50 border-cyan-300',
-  sample_received: 'bg-teal-50 border-teal-300',
-  under_review: 'bg-orange-50 border-orange-300',
-  approved: 'bg-green-50 border-green-300',
-  rejected: 'bg-red-50 border-red-300',
+  waiting: 'bg-amber-50 border-amber-300',
+  solved: 'bg-green-50 border-green-300',
 };
 
 export function KanbanBoard({
@@ -50,7 +40,7 @@ export function KanbanBoard({
   if (isLoading) {
     return (
       <div className="flex gap-4 p-6 h-full overflow-x-auto">
-        {statusOrder.slice(0, 5).map((status) => (
+        {statusOrder.slice(0, 3).map((status) => (
           <div key={status} className="flex-shrink-0 w-[300px]">
             <Skeleton className="h-8 w-32 mb-4" />
             <div className="space-y-3">
@@ -73,7 +63,7 @@ export function KanbanBoard({
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e: React.DragEvent, targetStatus: DevelopmentItemStatus) => {
+  const handleDrop = (e: React.DragEvent, targetStatus: DevelopmentCardStatus) => {
     e.preventDefault();
     const itemId = e.dataTransfer.getData('itemId');
     if (itemId && canManage) {

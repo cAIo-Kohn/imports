@@ -5,9 +5,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Filter } from 'lucide-react';
+import { Plus, Search, Filter, Eye, EyeOff } from 'lucide-react';
 import { KanbanBoard } from '@/components/development/KanbanBoard';
-import { CreateItemModal } from '@/components/development/CreateItemModal';
+import { CreateCardModal } from '@/components/development/CreateCardModal';
 import { ItemDetailDrawer } from '@/components/development/ItemDetailDrawer';
 import {
   Select,
@@ -16,8 +16,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Toggle } from '@/components/ui/toggle';
 import { toast } from '@/hooks/use-toast';
 
+// New simplified types
+export type DevelopmentCardStatus = 'pending' | 'in_progress' | 'waiting' | 'solved';
+export type DevelopmentCardType = 'item' | 'item_group' | 'task';
+export type DevelopmentItemPriority = 'low' | 'medium' | 'high' | 'urgent';
+
+// Legacy types kept for backward compatibility during transition
 export type DevelopmentItemStatus = 
   | 'backlog' 
   | 'in_progress' 
@@ -29,7 +36,6 @@ export type DevelopmentItemStatus =
   | 'approved' 
   | 'rejected';
 
-export type DevelopmentItemPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type DevelopmentItemType = 'new_item' | 'sample' | 'development';
 
 export interface DevelopmentItem {
@@ -39,6 +45,8 @@ export interface DevelopmentItem {
   status: DevelopmentItemStatus;
   priority: DevelopmentItemPriority;
   item_type: DevelopmentItemType;
+  card_type: DevelopmentCardType;
+  is_solved: boolean;
   product_code: string | null;
   supplier_id: string | null;
   assigned_to: string | null;
@@ -50,28 +58,46 @@ export interface DevelopmentItem {
   supplier?: { id: string; company_name: string } | null;
   assigned_profile?: { id: string; full_name: string | null; email: string | null } | null;
   samples_count?: number;
+  products_count?: number;
 }
 
-const STATUS_ORDER: DevelopmentItemStatus[] = [
-  'backlog',
+// New simplified status order (3 active + 1 solved)
+const STATUS_ORDER: DevelopmentCardStatus[] = [
+  'pending',
   'in_progress',
-  'waiting_supplier',
-  'sample_requested',
-  'sample_in_transit',
-  'sample_received',
-  'under_review',
-  'approved',
-  'rejected',
+  'waiting',
 ];
+
+// Map old statuses to new ones for display purposes
+const mapOldStatusToNew = (oldStatus: DevelopmentItemStatus): DevelopmentCardStatus => {
+  switch (oldStatus) {
+    case 'backlog':
+      return 'pending';
+    case 'in_progress':
+      return 'in_progress';
+    case 'waiting_supplier':
+    case 'sample_requested':
+    case 'sample_in_transit':
+    case 'sample_received':
+    case 'under_review':
+      return 'waiting';
+    case 'approved':
+    case 'rejected':
+      return 'solved';
+    default:
+      return 'pending';
+  }
+};
 
 export default function Development() {
   const { user } = useAuth();
-  const { canManageOrders } = useUserRole();
+  const { canManageOrders, isTrader } = useUserRole();
   const queryClient = useQueryClient();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
-  const [supplierFilter, setSupplierFilter] = useState<string>('all');
+  const [cardTypeFilter, setCardTypeFilter] = useState<string>('all');
+  const [showSolved, setShowSolved] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
@@ -96,14 +122,28 @@ export default function Development() {
         .select('item_id')
         .in('item_id', itemIds);
 
-      const countMap = (sampleCounts || []).reduce((acc, s) => {
+      // Fetch product counts for groups
+      const { data: productCounts } = await supabase
+        .from('development_card_products')
+        .select('card_id')
+        .in('card_id', itemIds);
+
+      const sampleCountMap = (sampleCounts || []).reduce((acc, s) => {
         acc[s.item_id] = (acc[s.item_id] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const productCountMap = (productCounts || []).reduce((acc, p) => {
+        acc[p.card_id] = (acc[p.card_id] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
 
       return data.map(item => ({
         ...item,
-        samples_count: countMap[item.id] || 0,
+        card_type: item.card_type || 'item',
+        is_solved: item.is_solved || false,
+        samples_count: sampleCountMap[item.id] || 0,
+        products_count: productCountMap[item.id] || 0,
       })) as DevelopmentItem[];
     },
   });
@@ -124,12 +164,37 @@ export default function Development() {
 
   // Update item status mutation
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ itemId, newStatus }: { itemId: string; newStatus: DevelopmentItemStatus }) => {
+    mutationFn: async ({ itemId, newStatus }: { itemId: string; newStatus: DevelopmentCardStatus }) => {
+      // Map new status to old status for database (using the old enum until full migration)
+      const statusMap: Record<DevelopmentCardStatus, DevelopmentItemStatus> = {
+        pending: 'backlog',
+        in_progress: 'in_progress',
+        waiting: 'waiting_supplier',
+        solved: 'approved',
+      };
+      
+      const dbStatus = statusMap[newStatus];
+      const isSolved = newStatus === 'solved';
+      
       const { error } = await supabase
         .from('development_items')
-        .update({ status: newStatus })
+        .update({ 
+          status: dbStatus,
+          is_solved: isSolved,
+        })
         .eq('id', itemId);
       if (error) throw error;
+
+      // Log the activity
+      if (user?.id) {
+        await supabase.from('development_card_activity').insert({
+          card_id: itemId,
+          user_id: user.id,
+          activity_type: 'status_change',
+          content: `Status changed to ${newStatus}`,
+          metadata: { new_status: newStatus },
+        });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-items'] });
@@ -150,28 +215,45 @@ export default function Development() {
       item.product_code?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesPriority = priorityFilter === 'all' || item.priority === priorityFilter;
-    const matchesSupplier = supplierFilter === 'all' || item.supplier_id === supplierFilter;
+    const matchesCardType = cardTypeFilter === 'all' || item.card_type === cardTypeFilter;
     
-    return matchesSearch && matchesPriority && matchesSupplier;
+    // Map old status to new for solved filtering
+    const mappedStatus = mapOldStatusToNew(item.status);
+    const matchesSolvedFilter = showSolved ? mappedStatus === 'solved' : mappedStatus !== 'solved';
+    
+    return matchesSearch && matchesPriority && matchesCardType && matchesSolvedFilter;
   });
 
-  // Group items by status
+  // Group items by new status
   const itemsByStatus = STATUS_ORDER.reduce((acc, status) => {
-    acc[status] = filteredItems.filter(item => item.status === status);
+    acc[status] = filteredItems.filter(item => {
+      const mappedStatus = mapOldStatusToNew(item.status);
+      return mappedStatus === status;
+    });
     return acc;
-  }, {} as Record<DevelopmentItemStatus, DevelopmentItem[]>);
+  }, {} as Record<DevelopmentCardStatus, DevelopmentItem[]>);
+
+  // Add solved items when showing solved
+  if (showSolved) {
+    itemsByStatus['solved'] = filteredItems.filter(item => 
+      mapOldStatusToNew(item.status) === 'solved'
+    );
+  }
 
   const handleCardClick = (itemId: string) => {
     setSelectedItemId(itemId);
   };
 
-  const handleStatusChange = (itemId: string, newStatus: DevelopmentItemStatus) => {
-    if (canManageOrders) {
+  const handleStatusChange = (itemId: string, newStatus: DevelopmentCardStatus) => {
+    if (canManageOrders || isTrader) {
       updateStatusMutation.mutate({ itemId, newStatus });
     }
   };
 
   const selectedItem = items.find(item => item.id === selectedItemId);
+
+  // Check if user can manage (admin, buyer, or trader)
+  const canManage = canManageOrders || isTrader;
 
   return (
     <div className="flex flex-col h-full w-full min-w-0 overflow-hidden">
@@ -179,15 +261,15 @@ export default function Development() {
       <div className="flex-shrink-0 p-4 md:p-6 border-b bg-background w-full">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold">New Items & Samples</h1>
+            <h1 className="text-2xl font-bold">Development Cards</h1>
             <p className="text-muted-foreground">
-              Manage product development and sample tracking
+              Track items, samples, and tasks
             </p>
           </div>
-          {canManageOrders && (
+          {canManage && (
             <Button onClick={() => setIsCreateModalOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              New Item
+              New Card
             </Button>
           )}
         </div>
@@ -203,6 +285,7 @@ export default function Development() {
               className="pl-9"
             />
           </div>
+          
           <Select value={priorityFilter} onValueChange={setPriorityFilter}>
             <SelectTrigger className="w-[140px]">
               <Filter className="h-4 w-4 mr-2" />
@@ -216,19 +299,28 @@ export default function Development() {
               <SelectItem value="low">Low</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={supplierFilter} onValueChange={setSupplierFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Supplier" />
+
+          <Select value={cardTypeFilter} onValueChange={setCardTypeFilter}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Suppliers</SelectItem>
-              {suppliers.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.company_name}
-                </SelectItem>
-              ))}
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="item">Single Item</SelectItem>
+              <SelectItem value="item_group">Item Group</SelectItem>
+              <SelectItem value="task">Task</SelectItem>
             </SelectContent>
           </Select>
+
+          <Toggle
+            pressed={showSolved}
+            onPressedChange={setShowSolved}
+            variant="outline"
+            className="gap-2"
+          >
+            {showSolved ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            {showSolved ? 'Showing Solved' : 'Show Solved'}
+          </Toggle>
         </div>
       </div>
 
@@ -236,16 +328,16 @@ export default function Development() {
       <div className="flex-1 min-w-0 overflow-hidden">
         <KanbanBoard
           itemsByStatus={itemsByStatus}
-          statusOrder={STATUS_ORDER}
+          statusOrder={showSolved ? [...STATUS_ORDER, 'solved'] : STATUS_ORDER}
           isLoading={isLoading}
           onCardClick={handleCardClick}
           onStatusChange={handleStatusChange}
-          canManage={canManageOrders}
+          canManage={canManage}
         />
       </div>
 
       {/* Create Modal */}
-      <CreateItemModal
+      <CreateCardModal
         open={isCreateModalOpen}
         onOpenChange={setIsCreateModalOpen}
       />

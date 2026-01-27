@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
-import { X, Package, MessageSquare, FileText } from 'lucide-react';
+import { Package, MessageSquare, FileText, Layers } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -24,10 +25,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { DevelopmentItem, DevelopmentItemStatus, DevelopmentItemPriority } from '@/pages/Development';
+import { DevelopmentItem, DevelopmentCardStatus, DevelopmentItemPriority, DevelopmentCardType } from '@/pages/Development';
 import { SampleTrackingCard } from './SampleTrackingCard';
 import { AddSampleForm } from './AddSampleForm';
-import { ActivityTimeline } from './ActivityTimeline';
+import { UnifiedActivityTimeline } from './UnifiedActivityTimeline';
+import { GroupedItemsEditor } from './GroupedItemsEditor';
 import { cn } from '@/lib/utils';
 
 interface ItemDetailDrawerProps {
@@ -36,16 +38,11 @@ interface ItemDetailDrawerProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const STATUS_OPTIONS: { value: DevelopmentItemStatus; label: string }[] = [
-  { value: 'backlog', label: 'Backlog' },
+const STATUS_OPTIONS: { value: DevelopmentCardStatus; label: string }[] = [
+  { value: 'pending', label: 'Pending' },
   { value: 'in_progress', label: 'In Progress' },
-  { value: 'waiting_supplier', label: 'Waiting Supplier' },
-  { value: 'sample_requested', label: 'Sample Requested' },
-  { value: 'sample_in_transit', label: 'Sample In Transit' },
-  { value: 'sample_received', label: 'Sample Received' },
-  { value: 'under_review', label: 'Under Review' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
+  { value: 'waiting', label: 'Waiting' },
+  { value: 'solved', label: 'Solved' },
 ];
 
 const PRIORITY_STYLES: Record<DevelopmentItemPriority, string> = {
@@ -55,10 +52,56 @@ const PRIORITY_STYLES: Record<DevelopmentItemPriority, string> = {
   low: 'bg-slate-400 text-white',
 };
 
+const CARD_TYPE_LABELS: Record<DevelopmentCardType, string> = {
+  item: 'Single Item',
+  item_group: 'Item Group',
+  task: 'Task',
+};
+
+// Map old status to new simplified status
+const mapOldToNewStatus = (oldStatus: string): DevelopmentCardStatus => {
+  switch (oldStatus) {
+    case 'backlog':
+      return 'pending';
+    case 'in_progress':
+      return 'in_progress';
+    case 'waiting_supplier':
+    case 'sample_requested':
+    case 'sample_in_transit':
+    case 'sample_received':
+    case 'under_review':
+      return 'waiting';
+    case 'approved':
+    case 'rejected':
+      return 'solved';
+    default:
+      return 'pending';
+  }
+};
+
+// Map new status to old status for database
+const mapNewToOldStatus = (newStatus: DevelopmentCardStatus): string => {
+  switch (newStatus) {
+    case 'pending':
+      return 'backlog';
+    case 'in_progress':
+      return 'in_progress';
+    case 'waiting':
+      return 'waiting_supplier';
+    case 'solved':
+      return 'approved';
+    default:
+      return 'backlog';
+  }
+};
+
 export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerProps) {
-  const { canManageOrders } = useUserRole();
+  const { canManageOrders, isTrader } = useUserRole();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('details');
+
+  const canManage = canManageOrders || isTrader;
 
   // Fetch samples for this item
   const { data: samples = [] } = useQuery({
@@ -78,16 +121,40 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
 
   // Update item mutation
   const updateMutation = useMutation({
-    mutationFn: async (updates: Partial<DevelopmentItem>) => {
+    mutationFn: async (updates: Partial<DevelopmentItem> & { newStatus?: DevelopmentCardStatus }) => {
       if (!item?.id) return;
+      
+      const dbUpdates: Record<string, unknown> = {};
+      
+      if (updates.newStatus) {
+        dbUpdates.status = mapNewToOldStatus(updates.newStatus);
+        dbUpdates.is_solved = updates.newStatus === 'solved';
+        
+        // Log status change
+        if (user?.id) {
+          await supabase.from('development_card_activity').insert({
+            card_id: item.id,
+            user_id: user.id,
+            activity_type: 'status_change',
+            content: `Status changed to ${updates.newStatus}`,
+            metadata: { new_status: updates.newStatus },
+          });
+        }
+      }
+      
+      if (updates.description !== undefined) dbUpdates.description = updates.description;
+      if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
+      if (updates.due_date !== undefined) dbUpdates.due_date = updates.due_date;
+
       const { error } = await supabase
         .from('development_items')
-        .update(updates)
+        .update(dbUpdates)
         .eq('id', item.id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      queryClient.invalidateQueries({ queryKey: ['development-card-activity', item?.id] });
       toast({ title: 'Success', description: 'Item updated' });
     },
     onError: () => {
@@ -97,6 +164,9 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
 
   if (!item) return null;
 
+  const currentStatus = mapOldToNewStatus(item.status);
+  const cardType = item.card_type || 'item';
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
@@ -104,12 +174,15 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
           <div className="flex items-start justify-between">
             <div className="flex-1 pr-8">
               <SheetTitle className="text-lg">{item.title}</SheetTitle>
-              <div className="flex items-center gap-2 mt-2">
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <Badge variant="outline" className="text-xs">
+                  {CARD_TYPE_LABELS[cardType]}
+                </Badge>
                 <Badge className={cn('text-xs', PRIORITY_STYLES[item.priority])}>
                   {item.priority}
                 </Badge>
                 {item.product_code && (
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant="outline" className="text-xs font-mono">
                     {item.product_code}
                   </Badge>
                 )}
@@ -118,12 +191,12 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
           </div>
 
           {/* Status Selector */}
-          {canManageOrders && (
+          {canManage && (
             <div className="space-y-2">
               <Label>Status</Label>
               <Select
-                value={item.status}
-                onValueChange={(v) => updateMutation.mutate({ status: v as DevelopmentItemStatus })}
+                value={currentStatus}
+                onValueChange={(v) => updateMutation.mutate({ newStatus: v as DevelopmentCardStatus })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -141,11 +214,17 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
         </SheetHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className={cn("grid w-full", cardType === 'item_group' ? 'grid-cols-4' : 'grid-cols-3')}>
             <TabsTrigger value="details" className="flex items-center gap-1">
               <FileText className="h-3 w-3" />
               Details
             </TabsTrigger>
+            {cardType === 'item_group' && (
+              <TabsTrigger value="products" className="flex items-center gap-1">
+                <Layers className="h-3 w-3" />
+                Items
+              </TabsTrigger>
+            )}
             <TabsTrigger value="samples" className="flex items-center gap-1">
               <Package className="h-3 w-3" />
               Samples ({samples.length})
@@ -160,7 +239,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
           <TabsContent value="details" className="space-y-4 mt-4">
             <div className="space-y-2">
               <Label>Description</Label>
-              {canManageOrders ? (
+              {canManage ? (
                 <Textarea
                   value={item.description || ''}
                   onChange={(e) => updateMutation.mutate({ description: e.target.value })}
@@ -177,7 +256,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Priority</Label>
-                {canManageOrders ? (
+                {canManage ? (
                   <Select
                     value={item.priority}
                     onValueChange={(v) => updateMutation.mutate({ priority: v as DevelopmentItemPriority })}
@@ -199,7 +278,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
 
               <div className="space-y-2">
                 <Label>Due Date</Label>
-                {canManageOrders ? (
+                {canManage ? (
                   <Input
                     type="date"
                     value={item.due_date || ''}
@@ -227,9 +306,16 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
             </div>
           </TabsContent>
 
+          {/* Products Tab (for groups) */}
+          {cardType === 'item_group' && (
+            <TabsContent value="products" className="mt-4">
+              <GroupedItemsEditor cardId={item.id} canEdit={canManage} />
+            </TabsContent>
+          )}
+
           {/* Samples Tab */}
           <TabsContent value="samples" className="space-y-4 mt-4">
-            {canManageOrders && <AddSampleForm itemId={item.id} />}
+            {canManage && <AddSampleForm itemId={item.id} />}
             
             <div className="space-y-3">
               {samples.length === 0 ? (
@@ -238,15 +324,15 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                 </p>
               ) : (
                 samples.map((sample) => (
-                  <SampleTrackingCard key={sample.id} sample={sample} canEdit={canManageOrders} />
+                  <SampleTrackingCard key={sample.id} sample={sample} canEdit={canManage} />
                 ))
               )}
             </div>
           </TabsContent>
 
-          {/* Activity Tab */}
+          {/* Activity Tab - Now using unified timeline */}
           <TabsContent value="activity" className="mt-4">
-            <ActivityTimeline itemId={item.id} canComment={canManageOrders} />
+            <UnifiedActivityTimeline cardId={item.id} canComment={canManage} />
           </TabsContent>
         </Tabs>
       </SheetContent>

@@ -1,0 +1,420 @@
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { toast } from '@/hooks/use-toast';
+import { DevelopmentItemPriority, DevelopmentCardType } from '@/pages/Development';
+import { Package, ListTodo, Plus, X } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+
+interface CreateCardModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+interface GroupProduct {
+  productCode: string;
+  productName: string;
+  notes: string;
+}
+
+export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  
+  const [activeTab, setActiveTab] = useState<'item' | 'task'>('item');
+  
+  // Item form state
+  const [itemMode, setItemMode] = useState<'individual' | 'group'>('individual');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState<DevelopmentItemPriority>('medium');
+  const [productCode, setProductCode] = useState('');
+  const [supplierId, setSupplierId] = useState<string>('');
+  const [dueDate, setDueDate] = useState('');
+  
+  // Group products state
+  const [groupProducts, setGroupProducts] = useState<GroupProduct[]>([]);
+  const [newProductCode, setNewProductCode] = useState('');
+  const [newProductName, setNewProductName] = useState('');
+
+  // Fetch suppliers
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers-list'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('suppliers')
+        .select('id, company_name')
+        .eq('is_active', true)
+        .order('company_name');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const cardType: DevelopmentCardType = activeTab === 'task' 
+        ? 'task' 
+        : itemMode === 'group' 
+          ? 'item_group' 
+          : 'item';
+
+      // Create the main card
+      const { data: card, error } = await supabase
+        .from('development_items')
+        .insert({
+          title,
+          description: description || null,
+          priority,
+          item_type: 'new_item', // Keep for backward compatibility
+          card_type: cardType,
+          product_code: itemMode === 'individual' ? productCode || null : null,
+          supplier_id: activeTab === 'item' ? (supplierId || null) : null,
+          due_date: dueDate || null,
+          created_by: user?.id,
+          status: 'backlog', // Maps to 'pending' in new flow
+          is_solved: false,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // If it's a group, add the child products
+      if (cardType === 'item_group' && groupProducts.length > 0) {
+        const productsToInsert = groupProducts.map(p => ({
+          card_id: card.id,
+          product_code: p.productCode,
+          product_name: p.productName || null,
+          notes: p.notes || null,
+          created_by: user?.id,
+        }));
+
+        const { error: productsError } = await supabase
+          .from('development_card_products')
+          .insert(productsToInsert);
+
+        if (productsError) throw productsError;
+      }
+
+      // Log creation activity
+      await supabase.from('development_card_activity').insert({
+        card_id: card.id,
+        user_id: user?.id,
+        activity_type: 'created',
+        content: `Created ${cardType === 'task' ? 'task' : cardType === 'item_group' ? 'item group' : 'item'}`,
+        metadata: { card_type: cardType },
+      });
+
+      return card;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      toast({
+        title: 'Success',
+        description: 'Card created successfully',
+      });
+      resetForm();
+      onOpenChange(false);
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to create card',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const resetForm = () => {
+    setActiveTab('item');
+    setItemMode('individual');
+    setTitle('');
+    setDescription('');
+    setPriority('medium');
+    setProductCode('');
+    setSupplierId('');
+    setDueDate('');
+    setGroupProducts([]);
+    setNewProductCode('');
+    setNewProductName('');
+  };
+
+  const handleAddProduct = () => {
+    if (!newProductCode.trim()) {
+      toast({
+        title: 'Validation Error',
+        description: 'Product code is required',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setGroupProducts([
+      ...groupProducts,
+      {
+        productCode: newProductCode.trim(),
+        productName: newProductName.trim(),
+        notes: '',
+      },
+    ]);
+    setNewProductCode('');
+    setNewProductName('');
+  };
+
+  const handleRemoveProduct = (index: number) => {
+    setGroupProducts(groupProducts.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) {
+      toast({
+        title: 'Validation Error',
+        description: 'Title is required',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (itemMode === 'group' && groupProducts.length === 0) {
+      toast({
+        title: 'Validation Error',
+        description: 'Add at least one product to the group',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    createMutation.mutate();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Create New Card</DialogTitle>
+        </DialogHeader>
+
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'item' | 'task')}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="item" className="flex items-center gap-2">
+              <Package className="h-4 w-4" />
+              New Item(s)
+            </TabsTrigger>
+            <TabsTrigger value="task" className="flex items-center gap-2">
+              <ListTodo className="h-4 w-4" />
+              New Task
+            </TabsTrigger>
+          </TabsList>
+
+          <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+            {/* Item Tab */}
+            <TabsContent value="item" className="space-y-4 mt-0">
+              {/* Individual vs Group Selection */}
+              <div className="space-y-2">
+                <Label>Item Type</Label>
+                <RadioGroup
+                  value={itemMode}
+                  onValueChange={(v) => setItemMode(v as 'individual' | 'group')}
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="individual" id="individual" />
+                    <Label htmlFor="individual" className="cursor-pointer">
+                      Individual Item
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="group" id="group" />
+                    <Label htmlFor="group" className="cursor-pointer">
+                      Group of Items
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="title">
+                  {itemMode === 'group' ? 'Group Name *' : 'Title *'}
+                </Label>
+                <Input
+                  id="title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={itemMode === 'group' ? 'e.g., Pet Products Line 2024' : 'Enter item title'}
+                />
+              </div>
+
+              {/* Individual: Product Code */}
+              {itemMode === 'individual' && (
+                <div className="space-y-2">
+                  <Label htmlFor="productCode">Product Code</Label>
+                  <Input
+                    id="productCode"
+                    value={productCode}
+                    onChange={(e) => setProductCode(e.target.value)}
+                    placeholder="e.g., 12345"
+                  />
+                </div>
+              )}
+
+              {/* Group: Add Products */}
+              {itemMode === 'group' && (
+                <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
+                  <Label>Products in this Group</Label>
+                  
+                  {/* List of added products */}
+                  {groupProducts.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {groupProducts.map((p, idx) => (
+                        <Badge
+                          key={idx}
+                          variant="secondary"
+                          className="flex items-center gap-1 py-1"
+                        >
+                          <span className="font-mono">{p.productCode}</span>
+                          {p.productName && (
+                            <span className="text-muted-foreground">- {p.productName}</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveProduct(idx)}
+                            className="ml-1 hover:text-destructive"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add product form */}
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Product Code"
+                      value={newProductCode}
+                      onChange={(e) => setNewProductCode(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="Name (optional)"
+                      value={newProductName}
+                      onChange={(e) => setNewProductName(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={handleAddProduct}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>Supplier</Label>
+                <Select value={supplierId} onValueChange={setSupplierId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select supplier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {suppliers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.company_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </TabsContent>
+
+            {/* Task Tab */}
+            <TabsContent value="task" className="space-y-4 mt-0">
+              <div className="space-y-2">
+                <Label htmlFor="taskTitle">Task Title *</Label>
+                <Input
+                  id="taskTitle"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="What needs to be done?"
+                />
+              </div>
+            </TabsContent>
+
+            {/* Common Fields */}
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Enter description"
+                rows={3}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Priority</Label>
+                <Select value={priority} onValueChange={(v) => setPriority(v as DevelopmentItemPriority)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="dueDate">Due Date</Label>
+                <Input
+                  id="dueDate"
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? 'Creating...' : 'Create Card'}
+              </Button>
+            </div>
+          </form>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
+  );
+}
