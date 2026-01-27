@@ -1,238 +1,105 @@
 
 
-## Plan: Units Management Page
+## Plan: Fix 8-Digit Product Code Recognition in Supplier Import
 
-### Overview
+### Problem
 
-Implement a fully functional Units management page that displays existing units and allows creating new ones. A new `estabelecimento_code` column will be added to enable automatic recognition in file uploads.
+The supplier invoice import at `/suppliers` fails to recognize product codes with 8 digits (like `40600101`). The current code only accepts 5-6 digit codes.
 
----
+### Root Cause
 
-### Current State
+In `src/components/suppliers/ImportSupplierInvoiceModal.tsx`:
 
-| Unit Name | City | State | Estabelecimento Code |
-|-----------|------|-------|---------------------|
-| Matriz | - | - | 1 (hardcoded) |
-| Filial Pernambuco | Recife | PE | 9 (hardcoded) |
-| Filial Rio de Janeiro | Rio de Janeiro | RJ | 10 (hardcoded) |
+**Line 176** - Regex validation is too restrictive:
+```typescript
+if (/^\d{5,6}$/.test(codeCell)) {  // ❌ Rejects 8-digit codes
+```
 
-The `import-products` edge function has a **hardcoded mapping** that needs to be made dynamic.
+**Line 184** - Normalization assumes 6 digits max:
+```typescript
+code: codeCell.padStart(6, '0'),  // ❌ Doesn't help 8-digit codes
+```
 
----
+### Database Verification
 
-### Database Changes
+Products with 8-digit codes exist in the database:
+- `40600101`, `40600103`, `40600104`, `40600121`, etc.
 
-**Add new column to `units` table:**
+### Solution
 
-```sql
-ALTER TABLE public.units 
-ADD COLUMN estabelecimento_code integer UNIQUE;
+Update the regex and normalization to support codes from 5-8 digits:
 
--- Populate existing units
-UPDATE public.units SET estabelecimento_code = 1 WHERE name = 'Matriz';
-UPDATE public.units SET estabelecimento_code = 9 WHERE name = 'Filial Pernambuco';
-UPDATE public.units SET estabelecimento_code = 10 WHERE name = 'Filial Rio de Janeiro';
+```typescript
+// Line 176: Accept 5-8 digit codes
+if (/^\d{5,8}$/.test(codeCell)) {
+  
+  // Line 184: Keep code as-is (no padding needed for 8-digit codes)
+  code: codeCell,  // Remove padStart - use original code
 ```
 
 ---
-
-### Files to Create
-
-| File | Purpose |
-|------|---------|
-| `src/components/units/CreateUnitModal.tsx` | Modal form for creating new units |
-| `src/components/units/EditUnitModal.tsx` | Modal form for editing existing units |
-| `src/components/units/DeleteUnitDialog.tsx` | Confirmation dialog for deleting units |
 
 ### Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/pages/Units.tsx` | Full implementation with data fetching, table, and modals |
-| `supabase/functions/import-products/index.ts` | Replace hardcoded mapping with dynamic lookup using `estabelecimento_code` |
+| `src/components/suppliers/ImportSupplierInvoiceModal.tsx` | Update regex to accept 5-8 digits, remove unnecessary padding |
 
 ---
 
-### Implementation Details
+### Technical Details
 
-#### 1. Units Page (`src/pages/Units.tsx`)
-
-**Features:**
-- Fetch and display all units in a table
-- Search by name, city, or state
-- Show linked products count per unit
-- "New Unit" button opens modal
-- Click row to edit
-- Delete button with confirmation
-
-**Table Columns:**
-| Column | Description |
-|--------|-------------|
-| Name | Unit name |
-| Establishment Code | DATASUL code (1, 9, 10, etc.) |
-| Location | City, State |
-| Contact | Responsible name, email, phone |
-| Products | Count of linked products |
-| Status | Active/Inactive badge |
-| Actions | Edit, Delete buttons |
-
-#### 2. CreateUnitModal Component
-
-**Form Fields:**
-- Name (required)
-- Estabelecimento Code (required, unique integer)
-- CNPJ
-- Address, City, State, ZIP Code
-- Phone, Fax
-- Responsible Name, Email, Phone
-
-**Validation:**
-- Name required
-- Estabelecimento Code required and must be unique
-
-#### 3. EditUnitModal Component
-
-Similar to CreateUnitModal but pre-populated with existing data.
-
-#### 4. DeleteUnitDialog Component
-
-**Behavior:**
-- Show warning if unit has linked products
-- Prevent deletion if products are linked (or cascade delete links)
-- Confirmation required
-
-#### 5. Update import-products Edge Function
-
-**Current (hardcoded):**
+**Before:**
 ```typescript
-const unitMapping: Record<number, string> = {};
-for (const unit of units || []) {
-  if (unit.name === 'Matriz') unitMapping[1] = unit.id;
-  if (unit.name === 'Filial Pernambuco') unitMapping[9] = unit.id;
-  if (unit.name === 'Filial Rio de Janeiro') unitMapping[10] = unit.id;
+// Check if it looks like a product code (5-6 digits)
+if (/^\d{5,6}$/.test(codeCell)) {
+  // ...
+  products.push({
+    code: codeCell.padStart(6, '0'), // Normalize to 6 digits
+    description: descCell,
+    supplierSpecs: cleanedSpecs
+  });
 }
 ```
 
-**New (dynamic):**
+**After:**
 ```typescript
-const { data: units, error: unitsError } = await supabase
-  .from('units')
-  .select('id, name, estabelecimento_code');
-
-const unitMapping: Record<number, string> = {};
-for (const unit of units || []) {
-  if (unit.estabelecimento_code) {
-    unitMapping[unit.estabelecimento_code] = unit.id;
-  }
+// Check if it looks like a product code (5-8 digits)
+if (/^\d{5,8}$/.test(codeCell)) {
+  // ...
+  products.push({
+    code: codeCell, // Keep original code format
+    description: descCell,
+    supplierSpecs: cleanedSpecs
+  });
 }
 ```
 
-This way, any new unit with an `estabelecimento_code` will automatically be recognized in product imports.
+---
+
+### Matching Logic
+
+The existing matching logic uses `normalizeProductCode()` which removes leading zeros:
+
+```typescript
+function normalizeProductCode(code: string): string {
+  return code.replace(/^0+/, '');
+}
+```
+
+This will correctly match:
+- File code `40600101` → normalized `40600101`
+- DB code `40600101` → normalized `40600101` ✓
+- File code `009071` → normalized `9071`
+- DB code `9071` → normalized `9071` ✓
+
+The normalization logic is already correct for 8-digit codes.
 
 ---
 
-### Technical Section
+### Summary
 
-#### Database Migration
-
-```sql
--- Add estabelecimento_code column
-ALTER TABLE public.units 
-ADD COLUMN estabelecimento_code integer;
-
--- Add unique constraint
-ALTER TABLE public.units
-ADD CONSTRAINT units_estabelecimento_code_unique UNIQUE (estabelecimento_code);
-
--- Populate existing units with known codes
-UPDATE public.units SET estabelecimento_code = 1 WHERE name = 'Matriz';
-UPDATE public.units SET estabelecimento_code = 9 WHERE name = 'Filial Pernambuco';
-UPDATE public.units SET estabelecimento_code = 10 WHERE name = 'Filial Rio de Janeiro';
-```
-
-#### CreateUnitModal Form Schema
-
-```typescript
-const formSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  estabelecimento_code: z.coerce.number().int().positive('Code must be positive'),
-  cnpj: z.string().optional(),
-  address: z.string().optional(),
-  city: z.string().optional(),
-  state: z.string().optional(),
-  zip_code: z.string().optional(),
-  phone: z.string().optional(),
-  fax: z.string().optional(),
-  responsible_name: z.string().optional(),
-  responsible_email: z.string().email().optional().or(z.literal('')),
-  responsible_phone: z.string().optional(),
-});
-```
-
-#### Units Query in Page
-
-```typescript
-const { data: units, isLoading, refetch } = useQuery({
-  queryKey: ['units', search],
-  queryFn: async () => {
-    let query = supabase
-      .from('units')
-      .select('*')
-      .order('name');
-
-    if (search) {
-      query = query.or(`name.ilike.%${search}%,city.ilike.%${search}%`);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return data;
-  }
-});
-```
-
-#### Product Count per Unit
-
-```typescript
-const { data: productCounts } = useQuery({
-  queryKey: ['unit-product-counts'],
-  queryFn: async () => {
-    const { data, error } = await supabase
-      .from('product_units')
-      .select('unit_id');
-    
-    if (error) throw error;
-    
-    const counts: Record<string, number> = {};
-    for (const pu of data || []) {
-      counts[pu.unit_id] = (counts[pu.unit_id] || 0) + 1;
-    }
-    return counts;
-  }
-});
-```
-
----
-
-### User Flow
-
-1. **View Units**: User navigates to `/units` and sees table with existing units
-2. **Create Unit**: Click "New Unit" → Fill form including estabelecimento code → Save
-3. **Edit Unit**: Click row → Modal opens with data → Modify → Save
-4. **Delete Unit**: Click delete icon → Confirmation dialog → Delete (if no linked products)
-5. **Automatic Recognition**: When importing products, the `estabelecimento_code` in the file automatically matches the unit
-
----
-
-### Files Summary
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/pages/Units.tsx` | Modify | Complete page implementation |
-| `src/components/units/CreateUnitModal.tsx` | Create | Form modal for new units |
-| `src/components/units/EditUnitModal.tsx` | Create | Form modal for editing units |
-| `src/components/units/DeleteUnitDialog.tsx` | Create | Delete confirmation dialog |
-| `supabase/functions/import-products/index.ts` | Modify | Dynamic unit mapping |
-
-**Database migration:** Add `estabelecimento_code` column to `units` table
+A single file change with two line edits:
+1. Expand regex from `{5,6}` to `{5,8}`
+2. Remove `padStart(6, '0')` and use original code
 
