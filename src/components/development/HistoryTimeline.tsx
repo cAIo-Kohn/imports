@@ -308,11 +308,14 @@ export function HistoryTimeline({ cardId, cardCreatedAt, creatorName, showAttent
     );
   }
 
-  // Find the triggering action for attention banner (exclude resolved questions)
-  const triggerActivity = activities.find(a => 
-    ['question', 'commercial_update', 'ownership_change'].includes(a.activity_type) &&
-    !(a.activity_type === 'question' && a.metadata?.resolved)
+  // Find the triggering action for attention banner (prioritize unresolved questions)
+  const unresolvedQuestion = activities.find(a => 
+    a.activity_type === 'question' && !a.metadata?.resolved
   );
+  const otherTriggerActivity = activities.find(a => 
+    ['commercial_update', 'ownership_change'].includes(a.activity_type)
+  );
+  const triggerActivity = unresolvedQuestion || otherTriggerActivity;
 
   return (
     <div className="space-y-6 py-4">
