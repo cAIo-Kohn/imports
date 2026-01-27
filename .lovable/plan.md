@@ -1,282 +1,218 @@
 
-## Plan: PV vs Actual Performance Card + Month Rollover System
+
+## Plan: 18-Month Projection with Dynamic PV Copying
 
 ### Overview
 
-This plan adds two key features to the Demand Planning system:
-1. **Performance Indicator Card** - A small card next to "ESTOQUE" showing PV vs Actual sales for the last 3 months with completed history
-2. **Month Rollover Button ("Virar")** - A workflow to advance the 12-month projection window, requiring mandatory uploads
+When the user selects 18 months in the stock projection dropdown, extend the projection window from 12 months (Jan/26-Dec/26) to 18 months (Jan/26-Jun/27). For the extended months (Jan-Jun/27), the system needs to:
+
+1. **Copy PV (Forecast)** from the corresponding months of the previous year (Jan-Jun/26)
+2. **Use History** from the most recent available year as it becomes available
+
+### Current Data State (Example)
+
+| Data Type | Period Available |
+|-----------|-----------------|
+| Forecasts (PV) | Jan/2026 - Dec/2026 |
+| History (Actual) | Jan/2025 - Dec/2025 |
+
+### Desired Behavior
+
+When viewing **18 months** (Jan/26 - Jun/27):
+
+| Month | PV Source | History Source |
+|-------|-----------|----------------|
+| Jan/26 | `sales_forecasts` (Jan/26) | `sales_history` (Jan/25) |
+| ... | ... | ... |
+| Dec/26 | `sales_forecasts` (Dec/26) | `sales_history` (Dec/25) |
+| Jan/27 | Copy from `sales_forecasts` (Jan/26) | Use Jan/26 history if available, else Jan/25 |
+| Feb/27 | Copy from `sales_forecasts` (Feb/26) | Use Feb/26 history if available, else Feb/25 |
+| ... | ... | ... |
+| Jun/27 | Copy from `sales_forecasts` (Jun/26) | Use Jun/26 history if available, else Jun/25 |
+
+### After First Rollover (Feb/26)
+
+When January 2026 actual sales are uploaded as history:
+
+| Month | PV Source | History Source |
+|-------|-----------|----------------|
+| Feb/26 | `sales_forecasts` (Feb/26) | `sales_history` (Feb/25) |
+| ... | ... | ... |
+| Jan/27 | Copy from `sales_forecasts` (Jan/26) | **Jan/26 actual** (uploaded) |
+| Feb/27 | Copy from `sales_forecasts` (Feb/26) | Feb/25 (no Feb/26 yet) |
 
 ---
 
-### Feature 1: Performance Card (PV vs Actual)
+## File to Modify
 
-#### Visual Design
+### `src/pages/SupplierPlanning.tsx`
 
-The performance card will appear in the product header area, next to the stock (ESTOQUE) indicator:
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│ 007727                       ESTOQUE     PERFORMANCE (Last 3M)         │
-│ CHALEIRA ELETRICA INOX...       0        ▲ 105.2% (+520 units)         │
-│                                           Jan: 98% | Feb: 112% | Mar: - │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-**Display Logic:**
-- Shows only months where we have both PV (forecast) AND Actual (history) data
-- Calculates: `Actual / PV * 100` for each month
-- Color coding:
-  - **Green (▲)**: Actual > PV (selling more than expected)
-  - **Red (▼)**: Actual < PV (selling less than expected)  
-  - **Yellow (-)**: Within 5% of target
-- Shows overall average and per-month breakdown on hover
-
-#### Files to Create/Modify
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/components/planning/PerformanceIndicator.tsx` | Create | New component for the mini performance card |
-| `src/components/planning/ProductProjectionCard.tsx` | Modify | Add the performance indicator in the header |
-| `src/components/planning/ProductProjectionRow.tsx` | Modify | Add performance data to the row layout |
-| `src/pages/SupplierPlanning.tsx` | Modify | Fetch history data for PV months and calculate performance |
-
-#### Data Requirements
-
-The performance calculation needs:
-1. **Sales Forecast (PV)** for past months (already loaded)
-2. **Sales History (Actual)** for same months (need to extend query)
-
-**Example Calculation (Jan 2026):**
-- PV: 1,000 units
-- Actual: 1,050 units
-- Performance: 105% (+50 units)
+Modify the projection calculation logic in the `productProjections` useMemo hook.
 
 ---
 
-### Feature 2: Month Rollover ("Virar")
+## Implementation Details
 
-#### Workflow
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│ Demand Planning                                    [🔄 Rollover Month]  │
-└─────────────────────────────────────────────────────────────────────────┘
-         │
-         ▼ Click "Rollover Month"
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     ROLLOVER MONTH                                       │
-│                                                                          │
-│ Current Period: Jan/2026 - Dec/2026                                     │
-│ New Period: Feb/2026 - Jan/2027                                         │
-│                                                                          │
-│ ⚠ Required Uploads to Rollover:                                        │
-│                                                                          │
-│ ☑ Inventory      [Upload] → uploaded 01/Feb ✓                          │
-│ ☐ History (Jan)  [Upload] → not uploaded                               │
-│ ☑ Arrivals       [Upload] → uploaded 01/Feb ✓                          │
-│ ☑ Forecast       [Upload] → uploaded 01/Feb ✓                          │
-│                                                                          │
-│ 📅 Date Validation: Today is Feb 3, 2026 ✓                              │
-│                                                                          │
-│ [Cancel]                    [Rollover] (disabled until all uploads done)│
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-#### Rollover Logic
-
-1. **Date Validation**: Current date must be >= 1st day of the new month
-   - If today is Jan 31, cannot rollover to Feb yet
-   - If today is Feb 1+, can rollover
-
-2. **Required Uploads**: All 4 file types must be uploaded with data for the new period:
-   - **Inventory**: snapshot_date >= new month start
-   - **History**: year_month for the month being "closed" (Jan 2026)
-   - **Arrivals**: arrival_date >= new month start
-   - **Forecast**: year_month covering the new 12-month window
-
-3. **Rollover Action**: The system doesn't need to modify data - it just validates that data exists for the new period. The 12-month window calculation uses `startOfMonth(now)` which will naturally shift forward.
-
-4. **System Date Setting** (Optional Enhancement): Store a "current_planning_month" setting to allow manual override for testing.
-
-#### Files to Create
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/components/planning/RolloverMonthModal.tsx` | Create | Modal with checklist and rollover workflow |
-| `src/pages/DemandPlanning.tsx` | Modify | Add "Rollover Month" button |
-
----
-
-### Technical Implementation Details
-
-#### 1. PerformanceIndicator Component
+### Current Logic (Line 536)
 
 ```typescript
-interface PerformanceData {
-  monthKey: string;
-  monthLabel: string;
-  forecast: number;
-  actual: number;
-  percentage: number; // actual/forecast * 100
-  delta: number; // actual - forecast
-}
+const monthKey = format(month, 'yyyy-MM-dd');
+const forecast = productForecasts.get(monthKey) || 0;
+```
 
-interface PerformanceIndicatorProps {
-  performanceData: PerformanceData[];
-  className?: string;
+This only works when forecasts exist for the target month. For months beyond the 12-month window (e.g., Jan/27), no forecast data exists.
+
+### New Logic: Smart Forecast Lookup
+
+```typescript
+const monthKey = format(month, 'yyyy-MM-dd');
+let forecast = productForecasts.get(monthKey) || 0;
+
+// If no forecast for this month, try copying from same month 1 year prior
+if (forecast === 0) {
+  const sameMonthLastYear = subYears(month, 1);
+  const fallbackKey = format(sameMonthLastYear, 'yyyy-MM-dd');
+  forecast = productForecasts.get(fallbackKey) || 0;
 }
 ```
 
-**Visual States:**
-- No data: "No completed months"
-- 1-3 months: Show individual month percentages
-- Trend icon based on last month vs previous
+### New Logic: Smart History Lookup
 
-#### 2. Performance Calculation in SupplierPlanning
+Currently (Line 554-556):
+```typescript
+const historyMonth = subYears(month, 1);
+const historyKey = format(historyMonth, 'yyyy-MM-dd');
+const historyLastYear = productHistory.get(historyKey) || 0;
+```
 
-Extend the existing projection calculation to include:
+This always looks 1 year back. For extended months like Jan/27, we want:
+1. Check if Jan/26 history exists (most recent) → use it
+2. Else fall back to Jan/25
+
+**New Logic:**
 
 ```typescript
-// Calculate performance for months where we have both PV and History
-const performanceByProduct = useMemo(() => {
-  // Get current month
-  const currentMonth = startOfMonth(new Date());
+// For history: prefer most recent available year
+// Try year-1, then year-2 (cascade fallback)
+const historyMonth1YearBack = subYears(month, 1);
+const historyKey1 = format(historyMonth1YearBack, 'yyyy-MM-dd');
+
+const historyMonth2YearsBack = subYears(month, 2);
+const historyKey2 = format(historyMonth2YearsBack, 'yyyy-MM-dd');
+
+// Use most recent available: first try 1 year back, then 2 years back
+const historyLastYear = productHistory.get(historyKey1) || productHistory.get(historyKey2) || 0;
+```
+
+---
+
+## Visual Indicator (Optional Enhancement)
+
+Add a visual cue to indicate when data is "copied" vs "actual":
+
+- **Copied PV**: Show in italics or with a small indicator (e.g., `*`)
+- **Actual PV**: Normal display
+
+This helps users understand when they're looking at extended projections.
+
+---
+
+## Code Changes Summary
+
+```
+src/pages/SupplierPlanning.tsx
+│
+├── Line 536: Update forecast lookup with fallback
+│   - If no forecast for monthKey, try subYears(month, 1)
+│
+├── Lines 554-556: Update history lookup with cascade fallback
+│   - Try historyMonth-1yr first
+│   - Fall back to historyMonth-2yr if not found
+│
+└── (Optional) Add isCopiedForecast flag to MonthProjection interface
+    - Pass to ProductProjectionCard/Row for visual indicator
+```
+
+---
+
+## Technical Section
+
+### Forecast Fallback Algorithm
+
+```typescript
+function getForecast(month: Date, forecastsMap: Map<string, number>): { value: number; isCopied: boolean } {
+  const monthKey = format(month, 'yyyy-MM-dd');
   
-  // Look at past 3 months (if they exist in our data)
-  const performanceMonths: PerformanceData[] = [];
-  
-  for (let i = 1; i <= 3; i++) {
-    const pastMonth = subMonths(currentMonth, i);
-    const monthKey = format(pastMonth, 'yyyy-MM-dd');
-    
-    const forecast = forecastsByProduct.get(productId)?.get(monthKey) || 0;
-    const actual = historyByProduct.get(productId)?.get(monthKey) || 0;
-    
-    // Only include if we have both values
-    if (forecast > 0 && actual > 0) {
-      performanceMonths.push({
-        monthKey,
-        monthLabel: format(pastMonth, 'MMM/yy'),
-        forecast,
-        actual,
-        percentage: Math.round((actual / forecast) * 100),
-        delta: actual - forecast,
-      });
-    }
+  // Direct lookup
+  let forecast = forecastsMap.get(monthKey);
+  if (forecast !== undefined && forecast > 0) {
+    return { value: forecast, isCopied: false };
   }
   
-  return performanceMonths;
-}, [forecastsByProduct, historyByProduct]);
-```
-
-#### 3. RolloverMonthModal Component
-
-```typescript
-interface RolloverValidation {
-  inventoryReady: boolean;
-  inventoryDate: string | null;
-  historyReady: boolean;
-  historyMonth: string | null;
-  arrivalsReady: boolean;
-  arrivalsDate: string | null;
-  forecastReady: boolean;
-  forecastRange: string | null;
-  dateValid: boolean;
-  currentDate: Date;
-  newMonthStart: Date;
+  // Fallback: same month, 1 year prior
+  const fallbackMonth = subYears(month, 1);
+  const fallbackKey = format(fallbackMonth, 'yyyy-MM-dd');
+  forecast = forecastsMap.get(fallbackKey);
+  if (forecast !== undefined && forecast > 0) {
+    return { value: forecast, isCopied: true };
+  }
+  
+  return { value: 0, isCopied: false };
 }
 ```
 
-**Validation Queries:**
-- Inventory: `SELECT MAX(snapshot_date) FROM inventory_snapshots WHERE snapshot_date >= '2026-02-01'`
-- History: `SELECT COUNT(*) FROM sales_history WHERE year_month = '2026-01-01'`
-- Arrivals: `SELECT MAX(arrival_date) FROM scheduled_arrivals WHERE arrival_date >= '2026-02-01'`
-- Forecast: `SELECT MIN(year_month), MAX(year_month) FROM sales_forecasts WHERE year_month >= '2026-02-01'`
+### History Fallback Algorithm
+
+```typescript
+function getHistoryLastYear(month: Date, historyMap: Map<string, number>): number {
+  // Cascade through available years: -1, -2, -3...
+  for (let yearsBack = 1; yearsBack <= 3; yearsBack++) {
+    const histMonth = subYears(month, yearsBack);
+    const histKey = format(histMonth, 'yyyy-MM-dd');
+    const value = historyMap.get(histKey);
+    if (value !== undefined && value > 0) {
+      return value;
+    }
+  }
+  return 0;
+}
+```
+
+### Example Timeline
+
+**Today: January 2026**
+
+| Month | Forecast Source | History Source |
+|-------|-----------------|----------------|
+| Jan/26 | Actual (Jan/26) | Jan/25 |
+| Jun/26 | Actual (Jun/26) | Jun/25 |
+| Dec/26 | Actual (Dec/26) | Dec/25 |
+| Jan/27 | **Copied (Jan/26)** | Jan/25 |
+| Jun/27 | **Copied (Jun/26)** | Jun/25 |
+
+**After Rollover to February 2026** (Jan/26 history uploaded):
+
+| Month | Forecast Source | History Source |
+|-------|-----------------|----------------|
+| Feb/26 | Actual (Feb/26) | Feb/25 |
+| Dec/26 | Actual (Dec/26) | Dec/25 |
+| Jan/27 | Copied (Jan/26) | **Jan/26 actual** |
+| Jun/27 | Copied (Jun/26) | Jun/25 |
 
 ---
 
-### UI/UX Considerations
+## Edge Cases
 
-1. **Performance Card Placement**: 
-   - Desktop: Next to ESTOQUE, same row
-   - Mobile: Below ESTOQUE, stacked
-
-2. **Color Scheme**:
-   - Green (#22c55e): > 100% (over-performing)
-   - Red (#ef4444): < 95% (under-performing)
-   - Yellow (#eab308): 95-105% (on target)
-
-3. **Rollover Button**:
-   - Only visible to Admin/Buyer roles
-   - Disabled state with tooltip explaining what's missing
-   - Confirmation dialog before final rollover
+1. **No forecast data at all**: Show 0 (no fallback possible)
+2. **No history data at all**: Show 0
+3. **Partial year data**: Use whatever is available
+4. **Switching between 12/18 months**: Recalculates automatically
 
 ---
 
-### Migration Path
+## Files Summary
 
-Since the user mentioned:
-- Forecasts: Jan 2026 - Dec 2026
-- History: Will be uploaded monthly starting with Jan 2026 actual
+| File | Changes |
+|------|---------|
+| `src/pages/SupplierPlanning.tsx` | Update forecast and history lookup logic with fallback chains |
 
-The system should handle:
-1. **Empty History State**: "No completed months yet" 
-2. **First Month Completed**: Show Jan 2026 performance after History import
-3. **Rolling 3-Month Window**: Always show most recent 3 months with data
-
----
-
-### Files Summary
-
-| File | Action | Purpose |
-|------|--------|---------|
-| `src/components/planning/PerformanceIndicator.tsx` | Create | Mini card showing PV vs Actual |
-| `src/components/planning/RolloverMonthModal.tsx` | Create | Modal for month rollover workflow |
-| `src/components/planning/ProductProjectionCard.tsx` | Modify | Add PerformanceIndicator to header |
-| `src/components/planning/ProductProjectionRow.tsx` | Modify | Add performance data display |
-| `src/pages/SupplierPlanning.tsx` | Modify | Calculate performance metrics |
-| `src/pages/DemandPlanning.tsx` | Modify | Add Rollover button and modal |
-
----
-
-### Technical Section
-
-#### Performance Calculation Formula
-```
-Performance % = (Actual Sales / Forecast) × 100
-Delta = Actual - Forecast
-Trend = Current Month Performance - Previous Month Performance
-```
-
-#### Edge Cases
-1. **No forecast for month**: Skip that month in calculation
-2. **No history for month**: Skip that month (not yet uploaded)
-3. **Zero forecast**: Show as "N/A" to avoid division by zero
-4. **First month of system**: Show "No data yet"
-
-#### Data Flow
-```
-SupplierPlanning.tsx
-    │
-    ├─► Fetch sales_history (extends to include past months)
-    ├─► Fetch sales_forecasts (already includes past months)
-    │
-    ▼
-Calculate performanceByProduct Map<productId, PerformanceData[]>
-    │
-    ▼
-Pass to ProductProjectionCard / ProductProjectionRow
-    │
-    ▼
-PerformanceIndicator renders the mini card
-```
-
-#### Rollover State Machine
-```
-Initial State: "Check Requirements"
-    │
-    ├─► All 4 uploads present + date valid → "Ready"
-    │
-    └─► Missing uploads → "Not Ready" (show missing items)
-```
