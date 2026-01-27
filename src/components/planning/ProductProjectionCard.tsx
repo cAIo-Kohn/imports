@@ -2,8 +2,8 @@ import React, { memo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, TrendingDown } from 'lucide-react';
 import { ArrivalInput } from './ArrivalInput';
+import { ForecastInput } from './ForecastInput';
 import { PerformanceIndicator, type PerformanceData } from './PerformanceIndicator';
 
 interface MonthProjection {
@@ -46,6 +46,8 @@ interface ProductProjectionCardProps {
   onSelectProduct: (productId: string | null) => void;
   onArrivalChange: (productId: string, monthKey: string, value: string) => void;
   onArrivalBlur?: (productId: string, monthKey: string) => void;
+  onForecastChange?: (productId: string, monthKey: string, value: number) => void;
+  canEditForecast?: boolean;
 }
 
 export const ProductProjectionCard = memo(function ProductProjectionCard({
@@ -55,6 +57,8 @@ export const ProductProjectionCard = memo(function ProductProjectionCard({
   onSelectProduct,
   onArrivalChange,
   onArrivalBlur,
+  onForecastChange,
+  canEditForecast = false,
 }: ProductProjectionCardProps) {
   const handleClick = () => {
     onSelectProduct(isSelected ? null : productProj.product.id);
@@ -115,25 +119,25 @@ export const ProductProjectionCard = memo(function ProductProjectionCard({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {/* Row 1: PV (Sales Forecast) */}
+              {/* Row 1: PV (Sales Forecast) - Now Editable */}
               <TableRow className="hover:bg-muted/20">
                 <TableCell className="text-center py-1 bg-muted/20 font-medium text-muted-foreground">
                   PV
                 </TableCell>
                 {productProj.projections.map((proj, i) => (
-                  <TableCell key={i} className="text-center py-1 px-1">
-                    <div className="flex items-center justify-center gap-0.5">
-                      <span>
-                        {proj.forecast > 0 ? proj.forecast.toLocaleString('pt-BR') : '-'}
-                      </span>
-                      {proj.forecast > 0 && proj.historyLastYear > 0 && (
-                        proj.forecast > proj.historyLastYear ? (
-                          <TrendingUp className="h-3 w-3 text-orange-500" />
-                        ) : proj.forecast < proj.historyLastYear ? (
-                          <TrendingDown className="h-3 w-3 text-primary" />
-                        ) : null
-                      )}
-                    </div>
+                  <TableCell 
+                    key={i} 
+                    className="text-center py-1 px-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ForecastInput
+                      productId={productProj.product.id}
+                      monthKey={proj.monthKey}
+                      currentForecast={proj.forecast}
+                      historyLastYear={proj.historyLastYear}
+                      onValueChange={onForecastChange || (() => {})}
+                      canEdit={canEditForecast}
+                    />
                   </TableCell>
                 ))}
                 <TableCell className="text-center py-1 px-1 bg-muted/20 font-semibold">
