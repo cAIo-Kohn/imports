@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TrendingUp, TrendingDown, AlertTriangle, Package, Search, Filter, RefreshCw, ArrowLeft } from 'lucide-react';
-import { ProjectionChart } from '@/components/planning/ProjectionChart';
+
 import { OrderSimulationFooter } from '@/components/planning/OrderSimulationFooter';
 import { ProductProjectionCard } from '@/components/planning/ProductProjectionCard';
 import { SmartOrderBuilder } from '@/components/planning/SmartOrderBuilder';
@@ -855,31 +855,13 @@ export default function SupplierPlanning() {
         </Button>
       </div>
 
-      {/* Chart for selected product */}
-      {selectedProductData && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <span>{selectedProductData.product.code}</span>
-              <span className="text-muted-foreground font-normal">-</span>
-              <span className="font-normal truncate">{selectedProductData.product.technical_description}</span>
-            </CardTitle>
-            <CardDescription>
-              Stock projection for the next {monthsAhead} months
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ProjectionChart projections={selectedProductData.projections} />
-          </CardContent>
-        </Card>
-      )}
 
       {/* Projection Cards */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle>Stock Projection</CardTitle>
           <CardDescription className="text-xs">
-            Click a product to view the chart. Enter values in the "Arrival" row to simulate purchases.
+            Enter values in the "Arrival" row to simulate purchases.
           </CardDescription>
         </CardHeader>
         <CardContent>
