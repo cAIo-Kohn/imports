@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -87,6 +87,29 @@ export function ActionsPanel({
       return data;
     },
   });
+
+  // Real-time subscription for samples
+  useEffect(() => {
+    const channel = supabase
+      .channel(`samples-${cardId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'development_item_samples',
+          filter: `item_id=eq.${cardId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['development-item-samples', cardId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [cardId, queryClient]);
 
   // Add message mutation
   const addMessageMutation = useMutation({
