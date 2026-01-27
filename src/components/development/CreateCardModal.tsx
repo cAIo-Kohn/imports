@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import {
   Dialog,
   DialogContent,
@@ -25,6 +26,7 @@ import { toast } from '@/hooks/use-toast';
 import { DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
 import { Package, ListTodo, Plus, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { ImageUpload } from './ImageUpload';
 
 interface CreateCardModalProps {
   open: boolean;
@@ -39,6 +41,7 @@ interface GroupProduct {
 
 export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
   const { user } = useAuth();
+  const { isBuyer, isTrader } = useUserRole();
   const queryClient = useQueryClient();
   
   const [activeTab, setActiveTab] = useState<'item' | 'task'>('item');
@@ -47,7 +50,8 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
   const [itemMode, setItemMode] = useState<'individual' | 'group'>('individual');
   const [productCategory, setProductCategory] = useState<DevelopmentProductCategory | ''>('');
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const [desiredOutcome, setDesiredOutcome] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [priority, setPriority] = useState<DevelopmentItemPriority>('medium');
   const [productCode, setProductCode] = useState('');
   const [supplierId, setSupplierId] = useState<string>('');
@@ -57,6 +61,9 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
   const [groupProducts, setGroupProducts] = useState<GroupProduct[]>([]);
   const [newProductCode, setNewProductCode] = useState('');
   const [newProductName, setNewProductName] = useState('');
+
+  // Determine user's role for cross-team notification
+  const createdByRole = isTrader ? 'trader' : 'buyer';
 
   // Fetch suppliers
   const { data: suppliers = [] } = useQuery({
@@ -80,13 +87,14 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
           ? 'item_group' 
           : 'item';
 
-      // Create the main card
+      // Create the main card with new fields
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: card, error } = await (supabase
         .from('development_items') as any)
         .insert({
           title,
-          description: description || null,
+          description: desiredOutcome || null,
+          image_url: imageUrl,
           priority,
           item_type: 'new_item',
           card_type: cardType,
@@ -95,6 +103,8 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
           supplier_id: activeTab === 'item' ? (supplierId || null) : null,
           due_date: dueDate || null,
           created_by: user?.id,
+          created_by_role: createdByRole,
+          is_new_for_other_team: true,
           status: 'backlog',
           is_solved: false,
         })
@@ -154,7 +164,8 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
     setItemMode('individual');
     setProductCategory('');
     setTitle('');
-    setDescription('');
+    setDesiredOutcome('');
+    setImageUrl(null);
     setPriority('medium');
     setProductCode('');
     setSupplierId('');
@@ -196,6 +207,16 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
       toast({
         title: 'Validation Error',
         description: 'Title is required',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Desired outcome is required for items (not tasks)
+    if (activeTab === 'item' && !desiredOutcome.trim()) {
+      toast({
+        title: 'Validation Error',
+        description: 'Desired Outcome is required',
         variant: 'destructive',
       });
       return;
@@ -374,6 +395,30 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
                 </div>
               )}
 
+              {/* Picture Upload */}
+              <div className="space-y-2">
+                <Label>Picture</Label>
+                <ImageUpload
+                  value={imageUrl}
+                  onChange={setImageUrl}
+                  folder="cards"
+                />
+              </div>
+
+              {/* Desired Outcome - Required for items */}
+              <div className="space-y-2">
+                <Label htmlFor="desiredOutcome">
+                  Desired Outcome <span className="text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="desiredOutcome"
+                  value={desiredOutcome}
+                  onChange={(e) => setDesiredOutcome(e.target.value)}
+                  placeholder="What is the expected outcome? e.g., Develop a new supplier in China for this item"
+                  rows={3}
+                />
+              </div>
+
               <div className="space-y-2">
                 <Label>Supplier</Label>
                 <Select value={supplierId} onValueChange={setSupplierId}>
@@ -402,19 +447,18 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
                   placeholder="What needs to be done?"
                 />
               </div>
-            </TabsContent>
 
-            {/* Common Fields */}
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Enter description"
-                rows={3}
-              />
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="taskDescription">Description</Label>
+                <Textarea
+                  id="taskDescription"
+                  value={desiredOutcome}
+                  onChange={(e) => setDesiredOutcome(e.target.value)}
+                  placeholder="Enter description"
+                  rows={3}
+                />
+              </div>
+            </TabsContent>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
