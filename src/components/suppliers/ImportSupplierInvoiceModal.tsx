@@ -172,19 +172,19 @@ function extractProductCodes(rows: any[][]): { code: string; description: string
     const descCell = descColIndex !== -1 ? (row[descColIndex]?.toString().trim() || '') : '';
     const techCell = techColIndex !== -1 ? (row[techColIndex]?.toString().trim() || '') : '';
     
-    // Check if it looks like a product code (5-6 digits)
-    if (/^\d{5,6}$/.test(codeCell)) {
+        // Check if it looks like a product code (5-8 digits)
+        if (/^\d{5,8}$/.test(codeCell)) {
       // Clean up technical specs - convert HTML line breaks to newlines
       const cleanedSpecs = techCell
         .replace(/<br\s*\/?>/gi, '\n')
         .replace(/\n+/g, '\n')
         .trim();
       
-      products.push({
-        code: codeCell.padStart(6, '0'), // Normalize to 6 digits
-        description: descCell,
-        supplierSpecs: cleanedSpecs
-      });
+          products.push({
+            code: codeCell, // Keep original code format
+            description: descCell,
+            supplierSpecs: cleanedSpecs
+          });
     }
   }
   
