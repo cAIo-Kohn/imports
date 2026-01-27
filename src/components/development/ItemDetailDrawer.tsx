@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -18,7 +18,7 @@ import { toast } from '@/hooks/use-toast';
 import { DevelopmentItem, DevelopmentCardStatus } from '@/pages/Development';
 import { CardInfoSection } from './CardInfoSection';
 import { HistoryTimeline } from './HistoryTimeline';
-import { ActionsPanel } from './ActionsPanel';
+import { ActionsPanel, ActionsPanelRef } from './ActionsPanel';
 import { DeleteCardDialog } from './DeleteCardDialog';
 
 interface ItemDetailDrawerProps {
@@ -48,10 +48,16 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const actionsPanelRef = useRef<ActionsPanelRef>(null);
 
   const canManage = canManageOrders || isTrader;
   const canDelete = canManage;
   const canRestore = isAdmin;
+  
+  // Handler for reply to question button
+  const handleReplyToQuestion = () => {
+    actionsPanelRef.current?.focusReply('comment');
+  };
 
   // Fetch creator profile
   const { data: creatorProfile } = useQuery({
@@ -291,6 +297,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                   itemWithNewFields.current_owner === (isBuyer ? 'mor' : 'arc')
                 )
               }
+              onReplyToQuestion={handleReplyToQuestion}
             />
           </div>
         </ScrollArea>
@@ -299,6 +306,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
         {canManage && !isDeleted && (
           <div className="flex-shrink-0 border-t bg-background p-4">
             <ActionsPanel
+              ref={actionsPanelRef}
               cardId={item.id}
               cardType={cardType}
               fobPriceUsd={itemWithNewFields.fob_price_usd}

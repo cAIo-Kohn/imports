@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,6 +27,10 @@ import { MoveCardModal } from './MoveCardModal';
 import { AddSampleForm } from './AddSampleForm';
 import { SampleTrackingCard } from './SampleTrackingCard';
 
+export interface ActionsPanelRef {
+  focusReply: (type?: 'comment' | 'question') => void;
+}
+
 interface ActionsPanelProps {
   cardId: string;
   cardType: 'item' | 'item_group' | 'task';
@@ -47,7 +51,7 @@ const CONTAINER_TYPES = [
 
 type MessageType = 'comment' | 'question';
 
-export function ActionsPanel({
+export const ActionsPanel = forwardRef<ActionsPanelRef, ActionsPanelProps>(function ActionsPanel({
   cardId,
   cardType,
   fobPriceUsd,
@@ -57,10 +61,14 @@ export function ActionsPanel({
   currentOwner,
   canEdit,
   onOwnerChange,
-}: ActionsPanelProps) {
+}, ref) {
   const { user } = useAuth();
   const { isTrader, isBuyer } = useUserRole();
   const queryClient = useQueryClient();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Accordion state - controlled
+  const [openSections, setOpenSections] = useState<string[]>([]);
 
   // Message state
   const [messageType, setMessageType] = useState<MessageType>('comment');
@@ -73,6 +81,18 @@ export function ActionsPanel({
   const [localMoq, setLocalMoq] = useState(moq?.toString() || '');
   const [localQtyPerContainer, setLocalQtyPerContainer] = useState(qtyPerContainer?.toString() || '');
   const [localContainerType, setLocalContainerType] = useState(containerType || '');
+
+  // Expose focusReply method via ref
+  useImperativeHandle(ref, () => ({
+    focusReply: (type: 'comment' | 'question' = 'comment') => {
+      setMessageType(type);
+      setOpenSections(prev => prev.includes('messaging') ? prev : [...prev, 'messaging']);
+      // Focus textarea after accordion opens
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 100);
+    },
+  }));
 
   // Fetch samples
   const { data: samples = [] } = useQuery({
@@ -234,7 +254,7 @@ export function ActionsPanel({
 
   return (
     <div className="space-y-2">
-      <Accordion type="multiple" defaultValue={[]} className="w-full">
+      <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="w-full">
         {/* Messaging Section */}
         <AccordionItem value="messaging" className="border rounded-lg px-3">
           <AccordionTrigger className="py-3 hover:no-underline">
@@ -259,6 +279,7 @@ export function ActionsPanel({
               </Tabs>
               
               <Textarea
+                ref={textareaRef}
                 value={messageContent}
                 onChange={(e) => setMessageContent(e.target.value)}
                 placeholder={messageType === 'question' 
@@ -409,4 +430,4 @@ export function ActionsPanel({
       />
     </div>
   );
-}
+});

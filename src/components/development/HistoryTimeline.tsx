@@ -11,9 +11,11 @@ import {
   DollarSign,
   Image,
   Plus,
-  CheckCircle2
+  CheckCircle2,
+  Reply
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface Activity {
@@ -35,6 +37,7 @@ interface HistoryTimelineProps {
   cardCreatedAt: string;
   creatorName?: string;
   showAttentionBanner?: boolean;
+  onReplyToQuestion?: () => void;
 }
 
 const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
@@ -95,7 +98,7 @@ function groupByDate(activities: Activity[]): Record<string, Activity[]> {
 }
 
 // Attention Banner Component for highlighting important actions
-function AttentionBanner({ activity }: { activity: Activity }) {
+function AttentionBanner({ activity, onReply }: { activity: Activity; onReply?: () => void }) {
   const isQuestion = activity.activity_type === 'question';
   const isCommercial = activity.activity_type === 'commercial_update';
   const isOwnershipChange = activity.activity_type === 'ownership_change';
@@ -117,18 +120,31 @@ function AttentionBanner({ activity }: { activity: Activity }) {
       isCommercial && "bg-emerald-50 border-emerald-300 dark:bg-emerald-950/30 dark:border-emerald-700",
       isOwnershipChange && "bg-blue-50 border-blue-300 dark:bg-blue-950/30 dark:border-blue-700",
     )}>
-      <div className="flex items-center gap-2 font-medium mb-2">
-        {isQuestion && <HelpCircle className="h-5 w-5 text-purple-600 dark:text-purple-400" />}
-        {isCommercial && <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />}
-        {isOwnershipChange && <ArrowRight className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
-        <span className={cn(
-          "text-sm",
-          isQuestion && "text-purple-800 dark:text-purple-200",
-          isCommercial && "text-emerald-800 dark:text-emerald-200",
-          isOwnershipChange && "text-blue-800 dark:text-blue-200",
-        )}>
-          {isQuestion ? "Question for you" : isCommercial ? "Commercial data updated" : "Card moved to you"}
-        </span>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 font-medium">
+          {isQuestion && <HelpCircle className="h-5 w-5 text-purple-600 dark:text-purple-400" />}
+          {isCommercial && <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />}
+          {isOwnershipChange && <ArrowRight className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
+          <span className={cn(
+            "text-sm",
+            isQuestion && "text-purple-800 dark:text-purple-200",
+            isCommercial && "text-emerald-800 dark:text-emerald-200",
+            isOwnershipChange && "text-blue-800 dark:text-blue-200",
+          )}>
+            {isQuestion ? "Question for you" : isCommercial ? "Commercial data updated" : "Card moved to you"}
+          </span>
+        </div>
+        {isQuestion && onReply && (
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={onReply}
+            className="bg-white hover:bg-purple-100 border-purple-300 text-purple-700 dark:bg-purple-950 dark:hover:bg-purple-900 dark:border-purple-600 dark:text-purple-200"
+          >
+            <Reply className="h-3 w-3 mr-1" />
+            Reply
+          </Button>
+        )}
       </div>
       <div className="bg-white dark:bg-background rounded-lg p-3 border">
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
@@ -154,7 +170,7 @@ function AttentionBanner({ activity }: { activity: Activity }) {
 }
 
 
-export function HistoryTimeline({ cardId, cardCreatedAt, creatorName, showAttentionBanner }: HistoryTimelineProps) {
+export function HistoryTimeline({ cardId, cardCreatedAt, creatorName, showAttentionBanner, onReplyToQuestion }: HistoryTimelineProps) {
   const queryClient = useQueryClient();
 
   const { data: activities = [], isLoading } = useQuery({
@@ -269,7 +285,7 @@ export function HistoryTimeline({ cardId, cardCreatedAt, creatorName, showAttent
     <div className="space-y-6 py-4">
       {/* Attention Banner */}
       {showAttentionBanner && triggerActivity && (
-        <AttentionBanner activity={triggerActivity} />
+        <AttentionBanner activity={triggerActivity} onReply={onReplyToQuestion} />
       )}
       
       {sortedDates.map((dateKey) => (
