@@ -87,6 +87,9 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
           ? 'item_group' 
           : 'item';
 
+      // Determine initial owner: buyer creates → ARC; trader creates → MOR
+      const initialOwner = isTrader ? 'mor' : 'arc';
+
       // Create the main card with new fields
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: card, error } = await (supabase
@@ -105,6 +108,7 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
           created_by: user?.id,
           created_by_role: createdByRole,
           is_new_for_other_team: true,
+          current_owner: initialOwner,
           status: 'backlog',
           is_solved: false,
         })

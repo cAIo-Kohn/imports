@@ -6,7 +6,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Search, Filter, Eye, EyeOff, Trash2 } from 'lucide-react';
-import { KanbanBoard } from '@/components/development/KanbanBoard';
+import { TeamSection } from '@/components/development/TeamSection';
 import { CreateCardModal } from '@/components/development/CreateCardModal';
 import { ItemDetailDrawer } from '@/components/development/ItemDetailDrawer';
 import {
@@ -39,6 +39,8 @@ export type DevelopmentItemStatus =
 
 export type DevelopmentItemType = 'new_item' | 'sample' | 'development';
 
+export type DevelopmentCardOwner = 'mor' | 'arc';
+
 export interface DevelopmentItem {
   id: string;
   title: string;
@@ -59,6 +61,7 @@ export interface DevelopmentItem {
   updated_at: string;
   deleted_at: string | null;
   deleted_by: string | null;
+  current_owner: DevelopmentCardOwner;
   supplier?: { id: string; company_name: string } | null;
   assigned_profile?: { id: string; full_name: string | null; email: string | null } | null;
   samples_count?: number;
@@ -149,6 +152,7 @@ export default function Development() {
         is_solved: item.is_solved || false,
         deleted_at: item.deleted_at || null,
         deleted_by: item.deleted_by || null,
+        current_owner: item.current_owner || 'arc',
         samples_count: sampleCountMap[item.id] || 0,
         products_count: productCountMap[item.id] || 0,
       })) as DevelopmentItem[];
@@ -235,30 +239,59 @@ export default function Development() {
     return matchesSearch && matchesPriority && matchesCardType && matchesSolvedFilter && matchesDeletedFilter;
   });
 
-  // Group items by new status
-  const itemsByStatus = STATUS_ORDER.reduce((acc, status) => {
-    acc[status] = filteredItems.filter(item => {
-      const mappedStatus = mapOldStatusToNew(item.status);
-      return mappedStatus === status;
-    });
-    return acc;
-  }, {} as Record<DevelopmentCardStatus, DevelopmentItem[]>);
-
-  // Add solved items when showing solved
-  if (showSolved) {
-    itemsByStatus['solved'] = filteredItems.filter(item => 
-      mapOldStatusToNew(item.status) === 'solved'
-    );
-  }
+  // Group items by owner (MOR/ARC)
+  const morItems = filteredItems.filter(item => item.current_owner === 'mor');
+  const arcItems = filteredItems.filter(item => item.current_owner === 'arc');
 
   const handleCardClick = (itemId: string) => {
     setSelectedItemId(itemId);
   };
 
-  const handleStatusChange = (itemId: string, newStatus: DevelopmentCardStatus) => {
-    if (canManageOrders || isTrader) {
-      updateStatusMutation.mutate({ itemId, newStatus });
+  // Handle drag and drop between sections
+  const handleDragStart = (e: React.DragEvent, itemId: string) => {
+    e.dataTransfer.setData('itemId', itemId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDropToOwner = async (e: React.DragEvent, targetOwner: DevelopmentCardOwner) => {
+    e.preventDefault();
+    const itemId = e.dataTransfer.getData('itemId');
+    if (!itemId || !canManage) return;
+
+    const item = items.find(i => i.id === itemId);
+    if (!item || item.current_owner === targetOwner) return;
+
+    // Update the owner
+    const { error } = await (supabase.from('development_items') as any)
+      .update({ 
+        current_owner: targetOwner,
+        is_new_for_other_team: true,
+      })
+      .eq('id', itemId);
+
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to move card', variant: 'destructive' });
+      return;
     }
+
+    // Log the movement
+    if (user?.id) {
+      await supabase.from('development_card_activity').insert({
+        card_id: itemId,
+        user_id: user.id,
+        activity_type: 'ownership_change',
+        content: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}`,
+        metadata: { new_owner: targetOwner },
+      });
+    }
+
+    queryClient.invalidateQueries({ queryKey: ['development-items'] });
+    toast({ title: 'Success', description: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}` });
   };
 
   const selectedItem = items.find(item => item.id === selectedItemId);
@@ -348,16 +381,37 @@ export default function Development() {
         </div>
       </div>
 
-      {/* Kanban Board */}
-      <div className="flex-1 min-w-0 overflow-hidden">
-        <KanbanBoard
-          itemsByStatus={itemsByStatus}
-          statusOrder={showSolved ? [...STATUS_ORDER, 'solved'] : STATUS_ORDER}
-          isLoading={isLoading}
-          onCardClick={handleCardClick}
-          onStatusChange={handleStatusChange}
-          canManage={canManage}
-        />
+      {/* Two-Section Layout: MOR / ARC */}
+      <div className="flex-1 min-w-0 overflow-hidden p-4 md:p-6">
+        <div className="flex gap-4 md:gap-6 h-full">
+          {/* MOR (Brazil) Section */}
+          <TeamSection
+            title="MOR (Brazil)"
+            subtitle="Cards waiting for Brazil's input"
+            items={morItems}
+            colorClass="border-blue-300 bg-blue-50/30"
+            flagEmoji="🇧🇷"
+            onCardClick={handleCardClick}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDropToOwner(e, 'mor')}
+            canManage={canManage}
+          />
+
+          {/* ARC (China) Section */}
+          <TeamSection
+            title="ARC (China)"
+            subtitle="Cards waiting for China's action"
+            items={arcItems}
+            colorClass="border-emerald-300 bg-emerald-50/30"
+            flagEmoji="🇨🇳"
+            onCardClick={handleCardClick}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDropToOwner(e, 'arc')}
+            canManage={canManage}
+          />
+        </div>
       </div>
 
       {/* Create Modal */}

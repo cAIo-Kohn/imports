@@ -468,7 +468,9 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                 moq={itemWithNewFields.moq}
                 qtyPerContainer={itemWithNewFields.qty_per_container}
                 containerType={itemWithNewFields.container_type}
+                currentOwner={itemWithNewFields.current_owner || 'arc'}
                 canEdit={canManage}
+                onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
               />
             )}
 
@@ -507,7 +509,12 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
 
           {/* Activity Tab - Now using unified timeline */}
           <TabsContent value="activity" className="mt-4">
-            <UnifiedActivityTimeline cardId={item.id} canComment={canManage} />
+            <UnifiedActivityTimeline 
+              cardId={item.id} 
+              canComment={canManage} 
+              currentOwner={itemWithNewFields.current_owner || 'arc'}
+              onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
+            />
           </TabsContent>
         </Tabs>
 
