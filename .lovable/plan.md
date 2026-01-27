@@ -1,150 +1,137 @@
 
-## Plan: Restructure Development Flow with Card Types and Activity History
+## Plan: Enhance Development Cards with Pictures, Cross-Team Notifications & Commercial Fields
 
-### Understanding the Requirements
+### Summary of Changes
 
-You want to reorganize the flow to:
+Based on your requirements, here's what we'll implement:
 
-1. **One card = One pending subject/sample** with all history tracked inside
-2. **Resolved cards go to a "Solved" bucket** - hidden by default, filterable
-3. **Two creation flows:**
-   - **New Items**: Individual product OR grouped products (e.g., a whole pet products line)
-   - **New Task**: Non-product tasks (pending things to solve)
-4. **Both sides (Brazil team + Traders) can create and act on cards**
-5. **Every update tracked with date, user name, and content**
-
----
-
-### Current State Analysis
-
-| What Exists | What Needs to Change |
-|-------------|---------------------|
-| 9 Kanban columns (backlog to rejected) | Simplify to fewer columns + "Solved" bucket |
-| `item_type`: new_item, sample, development | Change to: `item`, `item_group`, `task` |
-| Comments track activity | Need structured activity log with event types |
-| Single items only | Support grouped items with child products |
-| All items visible | Filter to hide "solved" by default |
+| Feature | Description |
+|---------|-------------|
+| **Picture Upload** | Upload or camera capture for cards and grouped products |
+| **Rename "Description"** | Change to "Desired Outcome" (required field) |
+| **Cross-Team Flag** | New cards show distinct status for the other team |
+| **Commercial Fields** | FOB price, MOQ, quantity per container with container type |
+| **Enhanced Activity** | Comments and tracking in the existing activity timeline |
 
 ---
 
 ### Database Changes
 
-#### 1. New Enum for Card Type
+#### 1. Create Storage Bucket for Development Images
 ```sql
--- Replace development_item_type enum
-CREATE TYPE development_card_type AS ENUM ('item', 'item_group', 'task');
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('development-images', 'development-images', true);
+
+-- RLS policies for the bucket
+CREATE POLICY "Authenticated users can upload images"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'development-images');
+
+CREATE POLICY "Anyone can view images"
+ON storage.objects FOR SELECT TO authenticated
+USING (bucket_id = 'development-images');
+
+CREATE POLICY "Users can delete their own images"
+ON storage.objects FOR DELETE TO authenticated
+USING (bucket_id = 'development-images');
 ```
 
-#### 2. Simplified Status Enum
+#### 2. Add New Columns to `development_items`
 ```sql
--- Simplify status workflow
-CREATE TYPE development_card_status AS ENUM (
-  'pending',        -- New / Open
-  'in_progress',    -- Being worked on
-  'waiting',        -- Waiting for response (from either side)
-  'solved'          -- Resolved / Done
-);
+ALTER TABLE development_items
+  ADD COLUMN image_url TEXT,                    -- Picture for individual items
+  ADD COLUMN created_by_role TEXT,              -- 'buyer' or 'trader' to know origin
+  ADD COLUMN is_new_for_other_team BOOLEAN DEFAULT true,  -- Flag for cross-team notification
+  ADD COLUMN fob_price_usd NUMERIC,             -- FOB price (set by trader)
+  ADD COLUMN moq INTEGER,                       -- Minimum order quantity
+  ADD COLUMN qty_per_container INTEGER,         -- Quantity per container
+  ADD COLUMN container_type TEXT;               -- '20ft', '40ft', '40hq'
 ```
 
-#### 3. New Table: `development_card_products` (for grouped items)
+#### 3. Add Image Column to `development_card_products` (for grouped items)
 ```sql
-CREATE TABLE development_card_products (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  card_id UUID REFERENCES development_items(id) ON DELETE CASCADE NOT NULL,
-  product_code TEXT NOT NULL,
-  product_name TEXT,
-  notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  created_by UUID NOT NULL
-);
+ALTER TABLE development_card_products
+  ADD COLUMN image_url TEXT;  -- Picture for individual products within a group
 ```
-
-#### 4. Enhanced Activity Log Table
-Replace simple comments with structured activity log:
-```sql
-CREATE TABLE development_card_activity (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  card_id UUID REFERENCES development_items(id) ON DELETE CASCADE NOT NULL,
-  user_id UUID NOT NULL,
-  activity_type TEXT NOT NULL, -- 'comment', 'status_change', 'sample_added', 'product_added', etc.
-  content TEXT,                -- Message or description
-  metadata JSONB,              -- Store old/new values, sample info, etc.
-  created_at TIMESTAMPTZ DEFAULT now() NOT NULL
-);
-```
-
-#### 5. Update `development_items` Table
-```sql
-ALTER TABLE development_items 
-  ADD COLUMN card_type development_card_type DEFAULT 'item',
-  ADD COLUMN is_solved BOOLEAN DEFAULT false;
-```
-
----
-
-### Simplified Workflow
-
-```text
-+------------------+     +---------------+     +-----------+     +----------+
-|     PENDING      | --> |  IN PROGRESS  | --> |  WAITING  | --> |  SOLVED  |
-+------------------+     +---------------+     +-----------+     +----------+
-       ^                        |                   |
-       |                        v                   v
-       +------------------------+-------------------+
-                    (can move back if needed)
-```
-
-- **Pending**: New cards, not yet started
-- **In Progress**: Actively being worked on
-- **Waiting**: Waiting for supplier, sample, or response
-- **Solved**: Resolved (hidden by default, filterable)
 
 ---
 
 ### UI Changes
 
-#### 1. New "Create Card" Modal with Two Tabs
+#### 1. CreateCardModal.tsx - Enhanced Form
 
-**Tab 1: New Item(s)**
-- Radio: Individual / Group
-- If Individual: product code, supplier, description
-- If Group: group name (e.g., "Pet Products Line 2024"), then add items inside
+**For Individual Items:**
+- Add "Desired Outcome" (required) - renamed from Description
+- Add Picture upload/camera button
+- Keep Priority and Due Date
 
-**Tab 2: New Task**
-- Title, description, priority, due date
-- No product code or supplier required
+**For Grouped Items:**
+- Group-level picture (optional)
+- Each product in the group can have its own picture (in the "Items" tab after creation)
 
-#### 2. Card Detail Drawer - Activity Tab Redesign
-
-Show a unified timeline with all events:
-```
-[Avatar] John Doe - Jan 27, 2026 at 14:30
-Changed status from "Pending" to "In Progress"
-
-[Avatar] Maria Silva - Jan 27, 2026 at 15:45
-Added comment:
-"Requested quote from supplier, waiting for response"
-
-[Avatar] Trader Wang - Jan 28, 2026 at 09:00
-Added sample tracking:
-Courier: DHL | Tracking: 1234567890
-
-[Avatar] John Doe - Jan 29, 2026 at 10:00
-Received sample, moving to review
+**Field Order:**
+```text
+Product Category: [Final Product / Raw Material] *
+Item Type: [Individual / Group]
+Title: _______________
+Product Code: _______________ (individual only)
+Picture: [Upload] [Camera]
+Desired Outcome: _______________ * (required)
+Supplier: [dropdown]
+Priority: [dropdown]
+Due Date: [date picker]
 ```
 
-#### 3. Kanban Board Simplification
+#### 2. Cross-Team Notification System
 
-From 9 columns to 3 + filter:
-- **Pending** | **In Progress** | **Waiting**
-- Toggle/filter to show "Solved" cards
+**How it works:**
+1. When Brazil (buyer) creates a card → `created_by_role = 'buyer'` and `is_new_for_other_team = true`
+2. When China (trader) views Kanban → cards with `is_new_for_other_team = true` AND `created_by_role = 'buyer'` show with a distinct "NEW" badge
+3. When trader opens the card → mark `is_new_for_other_team = false`
+4. Vice versa for trader-created cards viewed by buyers
 
-#### 4. Card Display for Groups
+**Visual Indicator:**
+- Cards created by the other team show with:
+  - A pulsing "NEW" badge
+  - Highlighted border (e.g., blue glow for buyer-created, green for trader-created)
 
-For grouped items, show:
-- Group name
-- Item count badge (e.g., "5 products")
-- Expandable list when clicked
+#### 3. ItemDetailDrawer.tsx - Enhanced Details Tab
+
+**Add new "Commercial" section (visible after card is created):**
+```text
+┌─────────────────────────────────────────┐
+│ Details | Items | Samples | Activity    │
+├─────────────────────────────────────────┤
+│ DESIRED OUTCOME                         │
+│ [Develop a new supplier in China...]    │
+│                                         │
+│ PICTURE                                 │
+│ [thumbnail] [Change] [Remove]           │
+│                                         │
+│ ─────────── COMMERCIAL DATA ──────────  │
+│ FOB Price (USD):  $_______              │
+│ MOQ:              _______               │
+│ Qty/Container:    _______ [20ft ▼]      │
+│                                         │
+│ Priority: [Medium ▼]   Due: [date]      │
+│ Supplier: [name]                        │
+└─────────────────────────────────────────┘
+```
+
+#### 4. GroupedItemsEditor.tsx - Add Picture per Product
+
+Each product in a group can have its own picture:
+```text
+┌─────────────────────────────────────────┐
+│ [+ Add Product]                         │
+├─────────────────────────────────────────┤
+│ [🖼️] ABC123 - Pet Bowl          [X]     │
+│ [🖼️] ABC124 - Pet Feeder        [X]     │
+│ [📷] DEF456 - Pet Water Bottle  [X]     │
+└─────────────────────────────────────────┘
+```
+- 🖼️ = has image (click to view/change)
+- 📷 = no image (click to add)
 
 ---
 
@@ -152,23 +139,82 @@ For grouped items, show:
 
 | File | Action | Description |
 |------|--------|-------------|
-| Database migration | Create | New tables and enum changes |
-| `src/pages/Development.tsx` | Modify | Simplify columns, add solved filter |
-| `src/components/development/CreateCardModal.tsx` | Create | New modal with tabs for Item/Task |
-| `src/components/development/CardDetailDrawer.tsx` | Modify | Unified activity timeline |
-| `src/components/development/UnifiedActivityTimeline.tsx` | Create | Combined activity log component |
-| `src/components/development/GroupedItemsEditor.tsx` | Create | For adding/managing items in a group |
-| `src/components/development/DevelopmentCard.tsx` | Modify | Show card type icon, group badge |
+| Database migration | Create | Storage bucket + new columns |
+| `src/components/development/ImageUpload.tsx` | Create | Reusable image upload component with camera support |
+| `src/components/development/CreateCardModal.tsx` | Modify | Add picture field, rename Description → Desired Outcome, mark as required |
+| `src/components/development/ItemDetailDrawer.tsx` | Modify | Add commercial fields section, show/edit picture |
+| `src/components/development/GroupedItemsEditor.tsx` | Modify | Add picture per product |
+| `src/components/development/DevelopmentCard.tsx` | Modify | Show "NEW" badge for cross-team cards |
+| `src/components/development/CommercialDataSection.tsx` | Create | Component for FOB, MOQ, Qty/Container fields |
+| `src/pages/Development.tsx` | Modify | Mark cards as "seen" when opened, pass origin info |
 
 ---
 
-### Access Control
+### Technical Details
 
-Both teams can create and update cards:
-- **Admin/Buyer**: Full access
-- **Trader**: Can create cards, add comments, add samples, update status
+#### Image Upload Component
+```typescript
+// ImageUpload.tsx - handles both file upload and camera
+interface ImageUploadProps {
+  value: string | null;
+  onChange: (url: string | null) => void;
+  folder: string; // 'cards' or 'products'
+}
 
-The current RLS already allows Admin and Buyer to manage. We need to add Trader insert/update permissions.
+// Uses Supabase Storage API:
+// - Upload: supabase.storage.from('development-images').upload(path, file)
+// - URL: supabase.storage.from('development-images').getPublicUrl(path)
+```
+
+#### Cross-Team Detection Logic
+```typescript
+// In DevelopmentCard.tsx
+const isNewForMe = item.is_new_for_other_team && (
+  (isBuyer && item.created_by_role === 'trader') ||
+  (isTrader && item.created_by_role === 'buyer')
+);
+
+if (isNewForMe) {
+  // Show "NEW" badge and highlight
+}
+```
+
+#### Container Type Options
+```typescript
+const CONTAINER_TYPES = [
+  { value: '20ft', label: '20ft Container' },
+  { value: '40ft', label: '40ft Container' },
+  { value: '40hq', label: '40ft High Cube' },
+];
+```
+
+---
+
+### Workflow Example
+
+**Scenario: Brazil creates a PE Strap card**
+
+1. **Brazil Buyer creates card:**
+   - Category: Raw Material
+   - Type: Individual
+   - Title: "PE Strap"
+   - Picture: [uploads photo]
+   - Desired Outcome: "Develop a new supplier in China for this item"
+   - Priority: Medium
+   - Due Date: Feb 15, 2026
+
+2. **Card saved with:**
+   - `created_by_role = 'buyer'`
+   - `is_new_for_other_team = true`
+
+3. **China Trader sees the card:**
+   - Card has "NEW" badge + highlighted border
+   - Clicks to open → badge disappears (marked as seen)
+   - Adds comment: "ok, I'll start looking for factories. What volume do you buy per year?"
+   - Later fills in: FOB $0.15, MOQ 100,000 pcs, 50,000/container (40ft)
+   - Adds sample tracking when ready
+
+4. **Brazil sees updates in Activity tab**
 
 ---
 
@@ -176,9 +222,8 @@ The current RLS already allows Admin and Buyer to manage. We need to add Trader 
 
 | Change | Impact |
 |--------|--------|
-| Simplify status to 4 values | Less horizontal scroll, clearer workflow |
-| Add card types (item, group, task) | Separate product development from tasks |
-| Unified activity log | All history in one place with structured events |
-| Support grouped items | Track a line of products together |
-| "Solved" filter | Hide resolved items by default |
-| Trader access | Both teams can collaborate |
+| Storage bucket for images | Pictures can be uploaded/viewed |
+| "Desired Outcome" field | Clearer purpose, required for items |
+| Cross-team flag | Each side knows when new demands arrive |
+| Commercial fields | Traders can provide pricing/MOQ/container info |
+| Per-product images in groups | Flexible image attachment for groups |
