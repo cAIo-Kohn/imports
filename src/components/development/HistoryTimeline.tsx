@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { 
@@ -93,6 +94,8 @@ function groupByDate(activities: Activity[]): Record<string, Activity[]> {
 }
 
 export function HistoryTimeline({ cardId, cardCreatedAt, creatorName }: HistoryTimelineProps) {
+  const queryClient = useQueryClient();
+
   const { data: activities = [], isLoading } = useQuery({
     queryKey: ['development-card-activity', cardId],
     queryFn: async () => {
@@ -122,6 +125,29 @@ export function HistoryTimeline({ cardId, cardCreatedAt, creatorName }: HistoryT
       })) as Activity[];
     },
   });
+
+  // Real-time subscription for activity updates
+  useEffect(() => {
+    const channel = supabase
+      .channel(`activity-${cardId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'development_card_activity',
+          filter: `card_id=eq.${cardId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [cardId, queryClient]);
 
   // Add card creation as the first activity
   const allActivities: Activity[] = [
