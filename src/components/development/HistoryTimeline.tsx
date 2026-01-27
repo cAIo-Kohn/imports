@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { 
   MessageCircle, 
@@ -12,10 +13,13 @@ import {
   Image,
   Plus,
   CheckCircle2,
-  Reply
+  Reply,
+  Check
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
 interface Activity {
@@ -171,7 +175,35 @@ function AttentionBanner({ activity, onReply }: { activity: Activity; onReply?: 
 
 
 export function HistoryTimeline({ cardId, cardCreatedAt, creatorName, showAttentionBanner, onReplyToQuestion }: HistoryTimelineProps) {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
+
+  // Mutation to mark question as resolved
+  const resolveQuestionMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      if (!user?.id) throw new Error('Not authenticated');
+      
+      const { error } = await supabase
+        .from('development_card_activity')
+        .update({
+          metadata: {
+            resolved: true,
+            resolved_at: new Date().toISOString(),
+            resolved_by: user.id,
+          },
+        })
+        .eq('id', activityId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+      toast({ title: 'Question marked as resolved' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to resolve question', variant: 'destructive' });
+    },
+  });
 
   const { data: activities = [], isLoading } = useQuery({
     queryKey: ['development-card-activity', cardId],
@@ -276,9 +308,10 @@ export function HistoryTimeline({ cardId, cardCreatedAt, creatorName, showAttent
     );
   }
 
-  // Find the triggering action for attention banner
+  // Find the triggering action for attention banner (exclude resolved questions)
   const triggerActivity = activities.find(a => 
-    ['question', 'commercial_update', 'ownership_change'].includes(a.activity_type)
+    ['question', 'commercial_update', 'ownership_change'].includes(a.activity_type) &&
+    !(a.activity_type === 'question' && a.metadata?.resolved)
   );
 
   return (
@@ -297,53 +330,82 @@ export function HistoryTimeline({ cardId, cardCreatedAt, creatorName, showAttent
           </div>
           
           <div className="space-y-3">
-            {groupedActivities[dateKey].map((activity) => (
-              <div 
-                key={activity.id} 
-                className={cn(
-                  "flex gap-3 p-3 rounded-lg border",
-                  ACTIVITY_STYLES[activity.activity_type] || ACTIVITY_STYLES.comment
-                )}
-              >
-                <Avatar className="h-7 w-7 flex-shrink-0">
-                  <AvatarFallback className="text-xs bg-background">
-                    {getInitials(activity.profile)}
-                  </AvatarFallback>
-                </Avatar>
-                
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm">
-                      {activity.profile?.full_name || activity.profile?.email || 'Unknown'}
-                    </span>
-                    <span className="flex items-center gap-1 text-xs">
-                      {ACTIVITY_ICONS[activity.activity_type] || ACTIVITY_ICONS.comment}
-                      {ACTIVITY_LABELS[activity.activity_type] || activity.activity_type}
-                    </span>
-                    <span className="text-xs opacity-70">
-                      {format(parseISO(activity.created_at), 'HH:mm')}
-                    </span>
-                  </div>
+            {groupedActivities[dateKey].map((activity) => {
+              const isQuestion = activity.activity_type === 'question';
+              const isResolved = isQuestion && activity.metadata?.resolved;
+              
+              return (
+                <div 
+                  key={activity.id} 
+                  className={cn(
+                    "flex gap-3 p-3 rounded-lg border",
+                    isResolved 
+                      ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800"
+                      : ACTIVITY_STYLES[activity.activity_type] || ACTIVITY_STYLES.comment
+                  )}
+                >
+                  <Avatar className="h-7 w-7 flex-shrink-0">
+                    <AvatarFallback className="text-xs bg-background">
+                      {getInitials(activity.profile)}
+                    </AvatarFallback>
+                  </Avatar>
                   
-                  {activity.content && (
-                    <p className="text-sm mt-1 whitespace-pre-wrap">
-                      {activity.activity_type === 'question' ? (
-                        <span className="italic">"{activity.content}"</span>
-                      ) : (
-                        activity.content
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-sm">
+                        {activity.profile?.full_name || activity.profile?.email || 'Unknown'}
+                      </span>
+                      <span className="flex items-center gap-1 text-xs">
+                        {isResolved ? <Check className="h-3.5 w-3.5" /> : (ACTIVITY_ICONS[activity.activity_type] || ACTIVITY_ICONS.comment)}
+                        {isResolved ? 'question resolved' : (ACTIVITY_LABELS[activity.activity_type] || activity.activity_type)}
+                      </span>
+                      <span className="text-xs opacity-70">
+                        {format(parseISO(activity.created_at), 'HH:mm')}
+                      </span>
+                      {isResolved && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200">
+                          Resolved
+                        </Badge>
                       )}
-                    </p>
-                  )}
-                  
-                  {/* Metadata display for certain types */}
-                  {activity.activity_type === 'commercial_update' && activity.metadata && (
-                    <p className="text-xs mt-1 opacity-80">
-                      {activity.metadata.field?.replace('_', ' ')}: {activity.metadata.value}
-                    </p>
-                  )}
+                    </div>
+                    
+                    {activity.content && (
+                      <p className={cn(
+                        "text-sm mt-1 whitespace-pre-wrap",
+                        isResolved && "line-through opacity-70"
+                      )}>
+                        {isQuestion ? (
+                          <span className="italic">"{activity.content}"</span>
+                        ) : (
+                          activity.content
+                        )}
+                      </p>
+                    )}
+                    
+                    {/* Mark as resolved button for unresolved questions */}
+                    {isQuestion && !isResolved && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mt-2 h-7 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-100 dark:text-purple-400 dark:hover:bg-purple-900"
+                        onClick={() => resolveQuestionMutation.mutate(activity.id)}
+                        disabled={resolveQuestionMutation.isPending}
+                      >
+                        <Check className="h-3 w-3 mr-1" />
+                        {resolveQuestionMutation.isPending ? 'Resolving...' : 'Mark as Resolved'}
+                      </Button>
+                    )}
+                    
+                    {/* Metadata display for certain types */}
+                    {activity.activity_type === 'commercial_update' && activity.metadata && (
+                      <p className="text-xs mt-1 opacity-80">
+                        {activity.metadata.field?.replace('_', ' ')}: {activity.metadata.value}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ))}
