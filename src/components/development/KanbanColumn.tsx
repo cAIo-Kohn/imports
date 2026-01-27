@@ -1,16 +1,16 @@
 import { DevelopmentCard } from './DevelopmentCard';
-import { DevelopmentItem, DevelopmentItemStatus } from '@/pages/Development';
+import { DevelopmentItem, DevelopmentCardStatus } from '@/pages/Development';
 import { cn } from '@/lib/utils';
 
 interface KanbanColumnProps {
-  status: DevelopmentItemStatus;
+  status: DevelopmentCardStatus;
   label: string;
   colorClass: string;
   items: DevelopmentItem[];
   onCardClick: (itemId: string) => void;
   onDragStart: (e: React.DragEvent, itemId: string) => void;
   onDragOver: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent, status: DevelopmentItemStatus) => void;
+  onDrop: (e: React.DragEvent, status: DevelopmentCardStatus) => void;
   canManage: boolean;
 }
 
@@ -28,7 +28,7 @@ export function KanbanColumn({
   return (
     <div
       className={cn(
-        'flex-shrink-0 w-[220px] md:w-[260px] lg:w-[280px] xl:w-[300px] rounded-lg border-2 p-2 md:p-3 flex flex-col h-fit max-h-full',
+        'flex-shrink-0 w-[280px] md:w-[320px] lg:w-[350px] rounded-lg border-2 p-2 md:p-3 flex flex-col h-fit max-h-full',
         colorClass
       )}
       onDragOver={onDragOver}

@@ -35,6 +35,82 @@ export type Database = {
         }
         Relationships: []
       }
+      development_card_activity: {
+        Row: {
+          activity_type: string
+          card_id: string
+          content: string | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          user_id: string
+        }
+        Insert: {
+          activity_type: string
+          card_id: string
+          content?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          user_id: string
+        }
+        Update: {
+          activity_type?: string
+          card_id?: string
+          content?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "development_card_activity_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "development_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      development_card_products: {
+        Row: {
+          card_id: string
+          created_at: string
+          created_by: string
+          id: string
+          notes: string | null
+          product_code: string
+          product_name: string | null
+        }
+        Insert: {
+          card_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          notes?: string | null
+          product_code: string
+          product_name?: string | null
+        }
+        Update: {
+          card_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          notes?: string | null
+          product_code?: string
+          product_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "development_card_products_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "development_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       development_item_comments: {
         Row: {
           content: string
@@ -120,11 +196,13 @@ export type Database = {
       development_items: {
         Row: {
           assigned_to: string | null
+          card_type: Database["public"]["Enums"]["development_card_type"] | null
           created_at: string
           created_by: string
           description: string | null
           due_date: string | null
           id: string
+          is_solved: boolean | null
           item_type: Database["public"]["Enums"]["development_item_type"] | null
           position: number | null
           priority:
@@ -138,11 +216,15 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          card_type?:
+            | Database["public"]["Enums"]["development_card_type"]
+            | null
           created_at?: string
           created_by: string
           description?: string | null
           due_date?: string | null
           id?: string
+          is_solved?: boolean | null
           item_type?:
             | Database["public"]["Enums"]["development_item_type"]
             | null
@@ -158,11 +240,15 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          card_type?:
+            | Database["public"]["Enums"]["development_card_type"]
+            | null
           created_at?: string
           created_by?: string
           description?: string | null
           due_date?: string | null
           id?: string
+          is_solved?: boolean | null
           item_type?:
             | Database["public"]["Enums"]["development_item_type"]
             | null
@@ -1082,6 +1168,8 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "buyer" | "viewer" | "trader"
+      development_card_status: "pending" | "in_progress" | "waiting" | "solved"
+      development_card_type: "item" | "item_group" | "task"
       development_item_priority: "low" | "medium" | "high" | "urgent"
       development_item_status:
         | "backlog"
@@ -1238,6 +1326,8 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "buyer", "viewer", "trader"],
+      development_card_status: ["pending", "in_progress", "waiting", "solved"],
+      development_card_type: ["item", "item_group", "task"],
       development_item_priority: ["low", "medium", "high", "urgent"],
       development_item_status: [
         "backlog",
