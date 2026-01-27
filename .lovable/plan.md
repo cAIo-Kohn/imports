@@ -1,334 +1,120 @@
 
 
-## Plan: New Items and Samples - Task Management System
+## Plan: Responsive Kanban Layout for Development Page
 
-### Overview
+### Problem
 
-Create a new section called **"New Items and Samples"** positioned above Products in the sidebar. This will be a Trello/Notion-inspired task management system designed to handle:
+The current Kanban board forces all 9 columns to display with fixed 300px widths, creating ~2844px of horizontal scroll regardless of screen size. The user has to scroll extensively to see all cards and the "New Item" button.
 
-- New item developments between Brazil and China
-- Pending tasks and follow-ups
-- Sample request and tracking
-- Courier tracking for shipped samples
+### Solution
 
-The interface will feature a **Kanban board** with draggable cards, combined with a **detailed task view** for managing all aspects of product development.
-
----
-
-### Database Design
-
-#### 1. `development_items` Table (Main task/card)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| title | text | Item name/title (required) |
-| description | text | Detailed description |
-| status | enum | Current workflow stage |
-| priority | enum | low, medium, high, urgent |
-| item_type | enum | new_item, sample, development |
-| product_code | text | Reference product code (if exists) |
-| supplier_id | uuid | FK to suppliers |
-| assigned_to | uuid | FK to profiles (who is responsible) |
-| created_by | uuid | FK to profiles |
-| due_date | date | Target completion date |
-| created_at | timestamp | Creation date |
-| updated_at | timestamp | Last update |
-
-#### 2. `development_item_statuses` Enum
-
-| Status Key | Display Label | Description |
-|------------|---------------|-------------|
-| backlog | Backlog | Idea/pending evaluation |
-| in_progress | In Progress | Being worked on |
-| waiting_supplier | Waiting Supplier | Waiting for supplier response |
-| sample_requested | Sample Requested | Sample has been requested |
-| sample_in_transit | Sample In Transit | Sample shipped, tracking active |
-| sample_received | Sample Received | Sample arrived in Brazil |
-| under_review | Under Review | Sample being evaluated |
-| approved | Approved | Ready for production |
-| rejected | Rejected | Not proceeding |
-
-#### 3. `development_item_comments` Table (Activity/Notes)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| item_id | uuid | FK to development_items |
-| user_id | uuid | FK to profiles |
-| content | text | Comment content |
-| created_at | timestamp | When posted |
-
-#### 4. `development_item_samples` Table (Sample tracking)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| item_id | uuid | FK to development_items |
-| courier_name | text | DHL, FedEx, TNT, etc. |
-| tracking_number | text | Courier tracking code |
-| shipped_date | date | When shipped |
-| estimated_arrival | date | ETA |
-| actual_arrival | date | When received |
-| quantity | integer | Number of samples |
-| notes | text | Additional info |
-| status | enum | pending, in_transit, delivered, returned |
-| created_at | timestamp | Creation date |
+Make the Kanban board responsive by:
+1. **Reducing column widths** on smaller screens
+2. **Making columns fluid** to use available space
+3. **Ensuring the header stays fixed** so "New Item" is always visible
+4. **Adding responsive column sizing** based on viewport
 
 ---
-
-### User Interface
-
-#### Sidebar Navigation
-
-```text
-+-- New Items & Samples  <-- NEW (with Lightbulb icon)
-+-- Products
-+-- Suppliers
-+-- Units
-...
-```
-
-#### Main Page: Kanban Board View (`/development`)
-
-**Header:**
-- Title: "New Items & Samples"
-- Subtitle: "Manage product development and sample tracking"
-- Action buttons: "New Item", Filter dropdown, View toggle (Board/List)
-
-**Kanban Columns:**
-```text
-| Backlog | In Progress | Waiting Supplier | Sample Requested | Sample In Transit | Sample Received | Approved |
-|---------|-------------|------------------|------------------|-------------------|-----------------|----------|
-| [Card]  | [Card]      | [Card]           | [Card]           | [Card]            | [Card]          | [Card]   |
-| [Card]  | [Card]      |                  | [Card]           |                   |                 |          |
-|         |             |                  |                  |                   |                 |          |
-```
-
-**Card Preview:**
-```text
-+----------------------------+
-| [Priority] Item Title      |
-| Supplier Name              |
-| [Sample icon] 2 samples    |
-| Due: 15/02/2026            |
-| [Avatar] Assigned          |
-+----------------------------+
-```
-
-#### Item Detail Modal/Drawer
-
-When clicking a card, open a side drawer with:
-
-**Header Section:**
-- Title (editable)
-- Status dropdown
-- Priority badge
-- Close button
-
-**Main Content Tabs:**
-
-1. **Details Tab:**
-   - Description (rich text)
-   - Product Code reference
-   - Supplier selector
-   - Assigned to dropdown
-   - Due date picker
-   - Item type selector
-
-2. **Samples Tab:**
-   - List of sample shipments
-   - Add sample tracking form:
-     - Courier name
-     - Tracking number (with link to tracking site)
-     - Shipped date
-     - ETA
-     - Quantity
-   - Sample status badges
-
-3. **Activity Tab:**
-   - Timeline of comments and changes
-   - Add comment form
-   - Shows: "John added a comment", "Status changed to Sample Requested", etc.
-
----
-
-### Files to Create
-
-| File | Purpose |
-|------|---------|
-| `src/pages/Development.tsx` | Main Kanban board page |
-| `src/components/development/KanbanBoard.tsx` | Kanban layout with columns |
-| `src/components/development/KanbanColumn.tsx` | Single column component |
-| `src/components/development/DevelopmentCard.tsx` | Card preview component |
-| `src/components/development/CreateItemModal.tsx` | Modal for creating new items |
-| `src/components/development/ItemDetailDrawer.tsx` | Detailed view drawer |
-| `src/components/development/SampleTrackingCard.tsx` | Sample shipment display |
-| `src/components/development/AddSampleForm.tsx` | Form to add sample tracking |
-| `src/components/development/ActivityTimeline.tsx` | Comments/activity display |
 
 ### Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/App.tsx` | Add route `/development` |
-| `src/components/layout/AppSidebar.tsx` | Add "New Items & Samples" menu item above Products |
+| `src/components/development/KanbanBoard.tsx` | Use responsive column widths, remove fixed minWidth |
+| `src/components/development/KanbanColumn.tsx` | Support dynamic width, compact mode on smaller screens |
+| `src/components/development/DevelopmentCard.tsx` | Adjust card spacing for compact view |
 
 ---
 
-### Implementation Flow
+### Implementation Details
 
-#### Phase 1: Database Setup
+#### 1. KanbanBoard.tsx Changes
 
-```sql
--- Create enums
-CREATE TYPE development_item_status AS ENUM (
-  'backlog', 'in_progress', 'waiting_supplier', 
-  'sample_requested', 'sample_in_transit', 'sample_received',
-  'under_review', 'approved', 'rejected'
-);
-
-CREATE TYPE development_item_priority AS ENUM ('low', 'medium', 'high', 'urgent');
-
-CREATE TYPE development_item_type AS ENUM ('new_item', 'sample', 'development');
-
-CREATE TYPE sample_shipment_status AS ENUM ('pending', 'in_transit', 'delivered', 'returned');
-
--- Create main table
-CREATE TABLE public.development_items (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  title text NOT NULL,
-  description text,
-  status development_item_status NOT NULL DEFAULT 'backlog',
-  priority development_item_priority DEFAULT 'medium',
-  item_type development_item_type DEFAULT 'new_item',
-  product_code text,
-  supplier_id uuid REFERENCES suppliers(id),
-  assigned_to uuid,
-  created_by uuid NOT NULL,
-  due_date date,
-  position integer DEFAULT 0,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
--- Create samples table
-CREATE TABLE public.development_item_samples (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  item_id uuid REFERENCES development_items(id) ON DELETE CASCADE NOT NULL,
-  courier_name text,
-  tracking_number text,
-  shipped_date date,
-  estimated_arrival date,
-  actual_arrival date,
-  quantity integer DEFAULT 1,
-  notes text,
-  status sample_shipment_status DEFAULT 'pending',
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
--- Create comments table
-CREATE TABLE public.development_item_comments (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  item_id uuid REFERENCES development_items(id) ON DELETE CASCADE NOT NULL,
-  user_id uuid NOT NULL,
-  content text NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
--- RLS Policies
-ALTER TABLE development_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE development_item_samples ENABLE ROW LEVEL SECURITY;
-ALTER TABLE development_item_comments ENABLE ROW LEVEL SECURITY;
-
--- Policies for development_items
-CREATE POLICY "Authenticated users can view development_items"
-ON development_items FOR SELECT USING (true);
-
-CREATE POLICY "Admins and buyers can manage development_items"
-ON development_items FOR ALL USING (
-  has_role(auth.uid(), 'admin') OR has_role(auth.uid(), 'buyer')
-);
-
--- Similar policies for samples and comments tables
+**Current (forces fixed width):**
+```tsx
+<div
+  style={{ minWidth: `${statusOrder.length * 316}px` }}
+  className="flex gap-4 p-6 min-h-full"
+>
 ```
 
-#### Phase 2: Sidebar Update
+**New (responsive behavior):**
+```tsx
+// Remove hardcoded minWidth
+// Use responsive gap and padding
+<div
+  ref={boardRef}
+  className="flex gap-2 md:gap-3 lg:gap-4 p-4 md:p-6 min-h-full"
+>
+```
 
-Add new menu item in `AppSidebar.tsx`:
+#### 2. KanbanColumn.tsx Changes
+
+**Current:**
+```tsx
+className="flex-shrink-0 w-[300px] rounded-lg..."
+```
+
+**New (responsive widths):**
+```tsx
+// Smaller columns on smaller screens, expandable on larger
+className="flex-shrink-0 w-[220px] md:w-[260px] lg:w-[280px] xl:w-[300px] rounded-lg..."
+```
+
+**Width Breakdown:**
+| Screen Size | Column Width | Total for 9 cols |
+|-------------|--------------|------------------|
+| Base (<768px) | 220px | ~2020px |
+| md (768px+) | 260px | ~2380px |
+| lg (1024px+) | 280px | ~2560px |
+| xl (1280px+) | 300px | ~2740px |
+
+#### 3. Compact Card Spacing
+
+Reduce padding on smaller screens:
 
 ```tsx
-const menuItems = [
-  { title: 'Dashboard', url: '/', icon: LayoutDashboard },
-  { title: 'New Items & Samples', url: '/development', icon: Lightbulb }, // NEW
-  { title: 'Products', url: '/products', icon: Package },
-  // ...
-];
+// DevelopmentCard.tsx
+className="p-2 md:p-3"
+
+// Smaller text on mobile
+<h4 className="font-medium text-xs md:text-sm mb-1 md:mb-2 line-clamp-2">
 ```
 
-#### Phase 3: Main Page Implementation
+#### 4. Compact Header on Smaller Screens
 
-The Kanban board will use a horizontally scrollable layout with columns for each status. Cards can be dragged between columns to update status (using native drag-and-drop or a library like `@dnd-kit`).
+Reduce vertical space in the header:
 
-**Key Features:**
-- Horizontal scroll for columns
-- Drag-and-drop cards between columns
-- Click to open detail drawer
-- Inline status update via dropdown
-- Filter by supplier, priority, assigned user
-- Search by title or product code
-
-#### Phase 4: Card Detail Drawer
-
-A slide-out drawer showing:
-- Editable title and description
-- Status and priority selectors
-- Sample tracking list with courier links
-- Activity timeline with comments
-- Quick actions (assign, set due date)
+```tsx
+// Development.tsx header
+<div className="flex-shrink-0 p-4 md:p-6 border-b bg-background">
+```
 
 ---
 
-### Access Control
+### Visual Comparison
 
-Following existing patterns:
-- **Admin & Buyer:** Full CRUD access
-- **Viewer:** Read-only access
-- **Trader:** No access (hidden from sidebar like other sections)
+**Before:**
+- 9 columns x 300px = 2700px minimum width
+- Large gaps (16px) between columns
+- Header uses full padding
 
----
-
-### Technical Considerations
-
-1. **Drag and Drop:** Use native HTML5 drag-and-drop for simplicity, or consider `@dnd-kit` for smoother UX
-2. **Optimistic Updates:** Update UI immediately when moving cards, sync with database
-3. **Real-time (Optional):** Could enable Supabase realtime for multi-user collaboration
-4. **Position Ordering:** Use `position` column for card ordering within columns
-5. **Courier Tracking Links:** Generate tracking URLs based on courier name (DHL, FedEx, etc.)
+**After:**
+- Columns scale from 220px to 300px based on screen
+- Gaps reduce from 8px to 16px progressively
+- Tighter layout fits more content on screen
+- Maintains horizontal scroll but with less distance
 
 ---
 
-### Courier Tracking URL Patterns
+### Summary of Changes
 
-| Courier | URL Pattern |
-|---------|-------------|
-| DHL | `https://www.dhl.com/en/express/tracking.html?AWB={tracking}` |
-| FedEx | `https://www.fedex.com/fedextrack/?trknbr={tracking}` |
-| TNT | `https://www.tnt.com/express/en_us/site/tracking.html?searchType=con&cons={tracking}` |
-| UPS | `https://www.ups.com/track?tracknum={tracking}` |
-| SF Express | `https://www.sf-express.com/us/en/dynamic_function/waybill/#search/bill-number/{tracking}` |
+| File | Lines Changed | Description |
+|------|---------------|-------------|
+| `KanbanBoard.tsx` | ~3 lines | Remove minWidth, responsive gaps/padding |
+| `KanbanColumn.tsx` | ~2 lines | Responsive column widths |
+| `DevelopmentCard.tsx` | ~4 lines | Compact padding and text on mobile |
+| `Development.tsx` | ~2 lines | Reduce header padding on mobile |
 
----
-
-### Summary
-
-| Category | Count |
-|----------|-------|
-| New Database Tables | 3 |
-| New Enums | 4 |
-| New Pages | 1 |
-| New Components | 9 |
-| Modified Files | 2 |
-
-This implementation provides a complete task management system tailored for managing new product development and sample tracking between Brazil and China suppliers, following the existing design patterns and security model of the application.
+This approach maintains the horizontal Kanban layout (which is expected for this type of board) while making it more efficient for different screen sizes by reducing wasted space.
 
