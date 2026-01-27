@@ -36,22 +36,22 @@ serve(async (req) => {
 
     console.log(`Importing ${products.length} product rows...`);
 
-    // Fetch units mapping
+    // Fetch units mapping using estabelecimento_code
     const { data: units, error: unitsError } = await supabase
       .from('units')
-      .select('id, name');
+      .select('id, name, estabelecimento_code');
 
     if (unitsError) {
       console.error('Error fetching units:', unitsError);
       throw unitsError;
     }
 
-    // Create mapping for estabelecimento -> unit_id
+    // Create dynamic mapping for estabelecimento -> unit_id
     const unitMapping: Record<number, string> = {};
     for (const unit of units || []) {
-      if (unit.name === 'Matriz') unitMapping[1] = unit.id;
-      if (unit.name === 'Filial Pernambuco') unitMapping[9] = unit.id;
-      if (unit.name === 'Filial Rio de Janeiro') unitMapping[10] = unit.id;
+      if (unit.estabelecimento_code) {
+        unitMapping[unit.estabelecimento_code] = unit.id;
+      }
     }
 
     console.log('Unit mapping:', unitMapping);
