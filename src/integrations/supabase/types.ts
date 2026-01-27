@@ -208,6 +208,9 @@ export type Database = {
           priority:
             | Database["public"]["Enums"]["development_item_priority"]
             | null
+          product_category:
+            | Database["public"]["Enums"]["development_product_category"]
+            | null
           product_code: string | null
           status: Database["public"]["Enums"]["development_item_status"]
           supplier_id: string | null
@@ -232,6 +235,9 @@ export type Database = {
           priority?:
             | Database["public"]["Enums"]["development_item_priority"]
             | null
+          product_category?:
+            | Database["public"]["Enums"]["development_product_category"]
+            | null
           product_code?: string | null
           status?: Database["public"]["Enums"]["development_item_status"]
           supplier_id?: string | null
@@ -255,6 +261,9 @@ export type Database = {
           position?: number | null
           priority?:
             | Database["public"]["Enums"]["development_item_priority"]
+            | null
+          product_category?:
+            | Database["public"]["Enums"]["development_product_category"]
             | null
           product_code?: string | null
           status?: Database["public"]["Enums"]["development_item_status"]
@@ -1182,6 +1191,7 @@ export type Database = {
         | "approved"
         | "rejected"
       development_item_type: "new_item" | "sample" | "development"
+      development_product_category: "final_product" | "raw_material"
       sample_shipment_status:
         | "pending"
         | "in_transit"
@@ -1341,6 +1351,7 @@ export const Constants = {
         "rejected",
       ],
       development_item_type: ["new_item", "sample", "development"],
+      development_product_category: ["final_product", "raw_material"],
       sample_shipment_status: [
         "pending",
         "in_transit",
