@@ -533,7 +533,15 @@ export default function SupplierPlanning() {
 
         const monthProjections: MonthProjection[] = months.map((month, index) => {
           const monthKey = format(month, 'yyyy-MM-dd');
-          const forecast = productForecasts.get(monthKey) || 0;
+          
+          // Smart forecast lookup: try direct month first, then fallback to same month 1 year prior
+          // This enables 18-month projections by copying PV from the previous year
+          let forecast = productForecasts.get(monthKey) || 0;
+          if (forecast === 0) {
+            const fallbackMonth = subYears(month, 1);
+            const fallbackKey = format(fallbackMonth, 'yyyy-MM-dd');
+            forecast = productForecasts.get(fallbackKey) || 0;
+          }
           
           // Uploads (BLACK)
           const purchaseData = productPurchases.get(monthKey) || { quantity: 0, processNumbers: [] };
@@ -551,9 +559,18 @@ export default function SupplierPlanning() {
           // Total arrivals = uploads + app orders + pending input
           const totalArrivals = existingPurchases + appOrderArrivals + pendingArrival;
           
-          const historyMonth = subYears(month, 1);
-          const historyKey = format(historyMonth, 'yyyy-MM-dd');
-          const historyLastYear = productHistory.get(historyKey) || 0;
+          // Smart history lookup: cascade through available years (-1, -2, -3)
+          // This ensures the most recent available history is used for extended months
+          let historyLastYear = 0;
+          for (let yearsBack = 1; yearsBack <= 3; yearsBack++) {
+            const histMonth = subYears(month, yearsBack);
+            const histKey = format(histMonth, 'yyyy-MM-dd');
+            const histValue = productHistory.get(histKey);
+            if (histValue !== undefined && histValue > 0) {
+              historyLastYear = histValue;
+              break;
+            }
+          }
           
           const initialStock = index === 0 ? currentStock : runningBalance;
           const finalBalance = initialStock - forecast + totalArrivals;
