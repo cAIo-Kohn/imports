@@ -204,6 +204,8 @@ export type Database = {
           created_at: string
           created_by: string
           created_by_role: string | null
+          deleted_at: string | null
+          deleted_by: string | null
           description: string | null
           due_date: string | null
           fob_price_usd: number | null
@@ -236,6 +238,8 @@ export type Database = {
           created_at?: string
           created_by: string
           created_by_role?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           description?: string | null
           due_date?: string | null
           fob_price_usd?: number | null
@@ -270,6 +274,8 @@ export type Database = {
           created_at?: string
           created_by?: string
           created_by_role?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           description?: string | null
           due_date?: string | null
           fob_price_usd?: number | null

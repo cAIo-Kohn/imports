@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
-import { Package, MessageSquare, FileText, Layers } from 'lucide-react';
+import { Package, MessageSquare, FileText, Layers, Trash2, RotateCcw } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
@@ -31,6 +32,7 @@ import { UnifiedActivityTimeline } from './UnifiedActivityTimeline';
 import { GroupedItemsEditor } from './GroupedItemsEditor';
 import { ImageUpload } from './ImageUpload';
 import { CommercialDataSection } from './CommercialDataSection';
+import { DeleteCardDialog } from './DeleteCardDialog';
 import { cn } from '@/lib/utils';
 
 interface ItemDetailDrawerProps {
@@ -97,12 +99,15 @@ const mapNewToOldStatus = (newStatus: DevelopmentCardStatus): string => {
 };
 
 export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerProps) {
-  const { canManageOrders, isTrader, isBuyer } = useUserRole();
+  const { canManageOrders, isTrader, isBuyer, isAdmin } = useUserRole();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('details');
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const canManage = canManageOrders || isTrader;
+  const canDelete = canManage;
+  const canRestore = isAdmin;
 
   // Mark as seen when opened by the other team
   useEffect(() => {
@@ -186,6 +191,70 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
     },
   });
 
+  // Soft delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      if (!item?.id || !user?.id) return;
+      
+      const { error } = await (supabase.from('development_items') as any)
+        .update({ 
+          deleted_at: new Date().toISOString(),
+          deleted_by: user.id,
+        })
+        .eq('id', item.id);
+      if (error) throw error;
+
+      // Log the deletion in activity
+      await supabase.from('development_card_activity').insert({
+        card_id: item.id,
+        user_id: user.id,
+        activity_type: 'status_change',
+        content: 'Card deleted',
+        metadata: { action: 'deleted' },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      toast({ title: 'Success', description: 'Card deleted' });
+      setShowDeleteDialog(false);
+      onOpenChange(false);
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to delete card', variant: 'destructive' });
+    },
+  });
+
+  // Restore mutation (admin only)
+  const restoreMutation = useMutation({
+    mutationFn: async () => {
+      if (!item?.id || !user?.id) return;
+      
+      const { error } = await (supabase.from('development_items') as any)
+        .update({ 
+          deleted_at: null,
+          deleted_by: null,
+        })
+        .eq('id', item.id);
+      if (error) throw error;
+
+      // Log the restoration in activity
+      await supabase.from('development_card_activity').insert({
+        card_id: item.id,
+        user_id: user.id,
+        activity_type: 'status_change',
+        content: 'Card restored',
+        metadata: { action: 'restored' },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      toast({ title: 'Success', description: 'Card restored' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to restore card', variant: 'destructive' });
+    },
+  });
+
   if (!item) return null;
 
   // Cast to access new fields
@@ -193,6 +262,9 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
 
   const currentStatus = mapOldToNewStatus(item.status);
   const cardType = item.card_type || 'item';
+
+  // Check if item is deleted
+  const isDeleted = !!(itemWithNewFields.deleted_at);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -213,7 +285,38 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                     {item.product_code}
                   </Badge>
                 )}
+                {isDeleted && (
+                  <Badge variant="destructive" className="text-xs">
+                    Deleted
+                  </Badge>
+                )}
               </div>
+            </div>
+            
+            {/* Delete / Restore Buttons */}
+            <div className="flex gap-2">
+              {isDeleted && canRestore && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => restoreMutation.mutate()}
+                  disabled={restoreMutation.isPending}
+                  title="Restore card"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              )}
+              {!isDeleted && canDelete && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowDeleteDialog(true)}
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  title="Delete card"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
 
@@ -407,6 +510,24 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
             <UnifiedActivityTimeline cardId={item.id} canComment={canManage} />
           </TabsContent>
         </Tabs>
+
+        {/* Deleted info */}
+        {isDeleted && (
+          <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+            <p className="text-sm text-destructive">
+              This card was deleted on {format(new Date(itemWithNewFields.deleted_at), 'dd/MM/yyyy HH:mm')}
+            </p>
+          </div>
+        )}
+
+        {/* Delete Confirmation Dialog */}
+        <DeleteCardDialog
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          onConfirm={() => deleteMutation.mutate()}
+          cardTitle={item.title}
+          isDeleting={deleteMutation.isPending}
+        />
       </SheetContent>
     </Sheet>
   );

@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { Calendar, Package, Layers, ListTodo, Box, Leaf, Sparkles } from 'lucide-react';
+import { Calendar, Package, Layers, ListTodo, Box, Leaf, Sparkles, Trash2 } from 'lucide-react';
 import { DevelopmentItem, DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -59,12 +59,17 @@ export function DevelopmentCard({
     (isTrader && itemWithNewFields.created_by_role === 'buyer')
   );
 
+  // Check if this card is deleted
+  const isDeleted = !!(item as any).deleted_at;
+
   // Determine the highlight color based on who created it
   const highlightClass = isNewForMe
     ? itemWithNewFields.created_by_role === 'buyer'
       ? 'ring-2 ring-blue-400 ring-offset-1'
       : 'ring-2 ring-emerald-400 ring-offset-1'
-    : '';
+    : isDeleted
+      ? 'opacity-60 border-destructive'
+      : '';
   
   return (
     <div
@@ -80,6 +85,15 @@ export function DevelopmentCard({
     >
       {/* Card Type, Product Category & Priority */}
       <div className="flex items-center gap-1.5 mb-1 md:mb-2 flex-wrap">
+        {isDeleted && (
+          <Badge
+            variant="destructive"
+            className="text-[10px] px-1.5 py-0 flex items-center gap-1"
+          >
+            <Trash2 className="h-3 w-3" />
+            Deleted
+          </Badge>
+        )}
         {isNewForMe && (
           <Badge
             className="text-[10px] px-1.5 py-0 bg-gradient-to-r from-purple-500 to-pink-500 text-white animate-pulse flex items-center gap-1"

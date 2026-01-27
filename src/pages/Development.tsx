@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Filter, Eye, EyeOff } from 'lucide-react';
+import { Plus, Search, Filter, Eye, EyeOff, Trash2 } from 'lucide-react';
 import { KanbanBoard } from '@/components/development/KanbanBoard';
 import { CreateCardModal } from '@/components/development/CreateCardModal';
 import { ItemDetailDrawer } from '@/components/development/ItemDetailDrawer';
@@ -57,6 +57,8 @@ export interface DevelopmentItem {
   position: number;
   created_at: string;
   updated_at: string;
+  deleted_at: string | null;
+  deleted_by: string | null;
   supplier?: { id: string; company_name: string } | null;
   assigned_profile?: { id: string; full_name: string | null; email: string | null } | null;
   samples_count?: number;
@@ -93,13 +95,14 @@ const mapOldStatusToNew = (oldStatus: DevelopmentItemStatus): DevelopmentCardSta
 
 export default function Development() {
   const { user } = useAuth();
-  const { canManageOrders, isTrader } = useUserRole();
+  const { canManageOrders, isTrader, isAdmin } = useUserRole();
   const queryClient = useQueryClient();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [cardTypeFilter, setCardTypeFilter] = useState<string>('all');
   const [showSolved, setShowSolved] = useState(false);
+  const [showDeleted, setShowDeleted] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
@@ -144,6 +147,8 @@ export default function Development() {
         ...item,
         card_type: item.card_type || 'item',
         is_solved: item.is_solved || false,
+        deleted_at: item.deleted_at || null,
+        deleted_by: item.deleted_by || null,
         samples_count: sampleCountMap[item.id] || 0,
         products_count: productCountMap[item.id] || 0,
       })) as DevelopmentItem[];
@@ -223,7 +228,11 @@ export default function Development() {
     const mappedStatus = mapOldStatusToNew(item.status);
     const matchesSolvedFilter = showSolved ? mappedStatus === 'solved' : mappedStatus !== 'solved';
     
-    return matchesSearch && matchesPriority && matchesCardType && matchesSolvedFilter;
+    // Filter by deleted status - only admins can see deleted items
+    const isDeleted = !!item.deleted_at;
+    const matchesDeletedFilter = showDeleted ? isDeleted : !isDeleted;
+    
+    return matchesSearch && matchesPriority && matchesCardType && matchesSolvedFilter && matchesDeletedFilter;
   });
 
   // Group items by new status
@@ -323,6 +332,19 @@ export default function Development() {
             {showSolved ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
             {showSolved ? 'Showing Solved' : 'Show Solved'}
           </Toggle>
+
+          {/* Show Deleted toggle - Admin only */}
+          {isAdmin && (
+            <Toggle
+              pressed={showDeleted}
+              onPressedChange={setShowDeleted}
+              variant="outline"
+              className="gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              {showDeleted ? 'Showing Deleted' : 'Show Deleted'}
+            </Toggle>
+          )}
         </div>
       </div>
 
