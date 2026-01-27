@@ -34,7 +34,7 @@ export function DevelopmentCard({
   return (
     <div
       className={cn(
-        'bg-background rounded-md border shadow-sm p-3 cursor-pointer transition-all',
+        'bg-background rounded-md border shadow-sm p-2 md:p-3 cursor-pointer transition-all',
         'hover:shadow-md hover:border-primary/50',
         canDrag && 'cursor-grab active:cursor-grabbing'
       )}
@@ -43,14 +43,14 @@ export function DevelopmentCard({
       onDragStart={(e) => onDragStart(e, item.id)}
     >
       {/* Priority & Title */}
-      <div className="flex items-start gap-2 mb-2">
+      <div className="flex items-start gap-2 mb-1 md:mb-2">
         <Badge
           className={cn('text-[10px] px-1.5 py-0', PRIORITY_STYLES[item.priority])}
         >
           {PRIORITY_LABELS[item.priority]}
         </Badge>
       </div>
-      <h4 className="font-medium text-sm mb-2 line-clamp-2">{item.title}</h4>
+      <h4 className="font-medium text-xs md:text-sm mb-1 md:mb-2 line-clamp-2">{item.title}</h4>
 
       {/* Supplier */}
       {item.supplier && (

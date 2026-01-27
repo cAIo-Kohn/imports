@@ -28,7 +28,7 @@ export function KanbanColumn({
   return (
     <div
       className={cn(
-        'flex-shrink-0 w-[300px] rounded-lg border-2 p-3 flex flex-col h-fit max-h-full',
+        'flex-shrink-0 w-[220px] md:w-[260px] lg:w-[280px] xl:w-[300px] rounded-lg border-2 p-2 md:p-3 flex flex-col h-fit max-h-full',
         colorClass
       )}
       onDragOver={onDragOver}

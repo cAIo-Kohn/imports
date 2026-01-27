@@ -176,7 +176,7 @@ export default function Development() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex-shrink-0 p-6 border-b bg-background">
+      <div className="flex-shrink-0 p-4 md:p-6 border-b bg-background">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold">New Items & Samples</h1>
