@@ -34,6 +34,7 @@ interface HistoryTimelineProps {
   cardId: string;
   cardCreatedAt: string;
   creatorName?: string;
+  showAttentionBanner?: boolean;
 }
 
 const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
@@ -93,7 +94,67 @@ function groupByDate(activities: Activity[]): Record<string, Activity[]> {
   }, {} as Record<string, Activity[]>);
 }
 
-export function HistoryTimeline({ cardId, cardCreatedAt, creatorName }: HistoryTimelineProps) {
+// Attention Banner Component for highlighting important actions
+function AttentionBanner({ activity }: { activity: Activity }) {
+  const isQuestion = activity.activity_type === 'question';
+  const isCommercial = activity.activity_type === 'commercial_update';
+  const isOwnershipChange = activity.activity_type === 'ownership_change';
+  
+  const getInitials = (profile: Activity['profile']) => {
+    if (profile?.full_name) {
+      return profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    }
+    if (profile?.email) {
+      return profile.email[0].toUpperCase();
+    }
+    return '?';
+  };
+
+  return (
+    <div className={cn(
+      "rounded-lg p-4 mb-4 border-2 animate-pulse",
+      isQuestion && "bg-purple-50 border-purple-300 dark:bg-purple-950/30 dark:border-purple-700",
+      isCommercial && "bg-emerald-50 border-emerald-300 dark:bg-emerald-950/30 dark:border-emerald-700",
+      isOwnershipChange && "bg-blue-50 border-blue-300 dark:bg-blue-950/30 dark:border-blue-700",
+    )}>
+      <div className="flex items-center gap-2 font-medium mb-2">
+        {isQuestion && <HelpCircle className="h-5 w-5 text-purple-600 dark:text-purple-400" />}
+        {isCommercial && <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />}
+        {isOwnershipChange && <ArrowRight className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
+        <span className={cn(
+          "text-sm",
+          isQuestion && "text-purple-800 dark:text-purple-200",
+          isCommercial && "text-emerald-800 dark:text-emerald-200",
+          isOwnershipChange && "text-blue-800 dark:text-blue-200",
+        )}>
+          {isQuestion ? "Question for you" : isCommercial ? "Commercial data updated" : "Card moved to you"}
+        </span>
+      </div>
+      <div className="bg-white dark:bg-background rounded-lg p-3 border">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+          <Avatar className="h-5 w-5">
+            <AvatarFallback className="text-[10px]">{getInitials(activity.profile)}</AvatarFallback>
+          </Avatar>
+          <span>{activity.profile?.full_name || activity.profile?.email || 'Unknown'}</span>
+          <span className="opacity-70">• {format(parseISO(activity.created_at), 'HH:mm')}</span>
+        </div>
+        {activity.content && (
+          <p className="text-sm font-medium">
+            {isQuestion ? `"${activity.content}"` : activity.content}
+          </p>
+        )}
+        {isCommercial && activity.metadata && (
+          <p className="text-xs text-muted-foreground mt-1">
+            {activity.metadata.field?.replace('_', ' ')}: {activity.metadata.value}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+export function HistoryTimeline({ cardId, cardCreatedAt, creatorName, showAttentionBanner }: HistoryTimelineProps) {
   const queryClient = useQueryClient();
 
   const { data: activities = [], isLoading } = useQuery({
@@ -199,8 +260,18 @@ export function HistoryTimeline({ cardId, cardCreatedAt, creatorName }: HistoryT
     );
   }
 
+  // Find the triggering action for attention banner
+  const triggerActivity = activities.find(a => 
+    ['question', 'commercial_update', 'ownership_change'].includes(a.activity_type)
+  );
+
   return (
     <div className="space-y-6 py-4">
+      {/* Attention Banner */}
+      {showAttentionBanner && triggerActivity && (
+        <AttentionBanner activity={triggerActivity} />
+      )}
+      
       {sortedDates.map((dateKey) => (
         <div key={dateKey}>
           <div className="sticky top-0 bg-background py-1 mb-3">

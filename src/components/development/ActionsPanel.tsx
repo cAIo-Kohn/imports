@@ -234,7 +234,7 @@ export function ActionsPanel({
 
   return (
     <div className="space-y-2">
-      <Accordion type="multiple" defaultValue={['messaging']} className="w-full">
+      <Accordion type="multiple" defaultValue={[]} className="w-full">
         {/* Messaging Section */}
         <AccordionItem value="messaging" className="border rounded-lg px-3">
           <AccordionTrigger className="py-3 hover:no-underline">
