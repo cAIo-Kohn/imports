@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -55,9 +55,31 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   const canRestore = isAdmin;
   
   // Handler for reply to question button
-  const handleReplyToQuestion = () => {
+  const handleReplyToQuestion = useCallback(() => {
     actionsPanelRef.current?.focusReply('comment');
-  };
+  }, []);
+
+  // Keyboard shortcut: R to reply
+  useEffect(() => {
+    if (!open || !canManage) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input/textarea
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // R key to reply
+      if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        handleReplyToQuestion();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, canManage, handleReplyToQuestion]);
 
   // Fetch creator profile
   const { data: creatorProfile } = useQuery({
