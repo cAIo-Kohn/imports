@@ -16,6 +16,8 @@ import { ProductProjectionCard } from '@/components/planning/ProductProjectionCa
 import { SmartOrderBuilder } from '@/components/planning/SmartOrderBuilder';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
+import { useUserRole } from '@/hooks/useUserRole';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Product {
   id: string;
@@ -86,14 +88,16 @@ interface ProductProjection {
 export default function SupplierPlanning() {
   const { id: supplierId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { isAdmin, isBuyer } = useUserRole();
+  const { user } = useAuth();
+  
+  const canEditForecast = isAdmin || isBuyer;
   
   const [selectedUnit, setSelectedUnit] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showOnlyRuptures, setShowOnlyRuptures] = useState(false);
   const [monthsAhead, setMonthsAhead] = useState(12);
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
-  
-  
 
   const [pendingArrivals, setPendingArrivals] = useState<Record<string, number>>({});
   const [pendingArrivalsInput, setPendingArrivalsInput] = useState<Record<string, string>>({});
@@ -434,6 +438,51 @@ export default function SupplierPlanning() {
       return updated;
     });
   }, []);
+
+  // Handle forecast changes - save to database immediately
+  const handleForecastChange = useCallback(async (productId: string, monthKey: string, value: number) => {
+    if (selectedUnit === 'all') {
+      toast.error('Selecione uma unidade para editar a previsão');
+      return;
+    }
+
+    try {
+      // First, try to get existing forecast to match its version
+      const { data: existing } = await supabase
+        .from('sales_forecasts')
+        .select('version')
+        .eq('product_id', productId)
+        .eq('unit_id', selectedUnit)
+        .eq('year_month', monthKey)
+        .maybeSingle();
+
+      const version = existing?.version || 'manual';
+
+      const { error } = await supabase
+        .from('sales_forecasts')
+        .upsert({
+          product_id: productId,
+          unit_id: selectedUnit,
+          year_month: monthKey,
+          quantity: value,
+          version,
+          created_by: user?.id,
+        }, {
+          onConflict: 'product_id,unit_id,year_month,version'
+        });
+
+      if (error) {
+        console.error('Failed to save forecast:', error);
+        toast.error('Erro ao salvar previsão');
+      } else {
+        // Refetch forecasts to update UI
+        refetchForecasts();
+      }
+    } catch (err) {
+      console.error('Error saving forecast:', err);
+      toast.error('Erro ao salvar previsão');
+    }
+  }, [selectedUnit, user?.id, refetchForecasts]);
 
   const productProjections = useMemo(() => {
     const now = new Date();
@@ -852,6 +901,8 @@ export default function SupplierPlanning() {
                   onSelectProduct={setSelectedProduct}
                   onArrivalChange={handleArrivalChange}
                   onArrivalBlur={handleArrivalBlur}
+                  onForecastChange={handleForecastChange}
+                  canEditForecast={canEditForecast}
                 />
               ))
             )}

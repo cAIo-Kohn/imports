@@ -1,8 +1,8 @@
 import React, { memo } from 'react';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, TrendingDown } from 'lucide-react';
 import { ArrivalInput } from './ArrivalInput';
+import { ForecastInput } from './ForecastInput';
 
 interface MonthProjection {
   monthKey: string;
@@ -43,6 +43,8 @@ interface VirtualizedProductRowProps {
   onSelectProduct: (productId: string | null) => void;
   onArrivalChange: (productId: string, monthKey: string, value: string) => void;
   onArrivalBlur?: (productId: string, monthKey: string) => void;
+  onForecastChange?: (productId: string, monthKey: string, value: number) => void;
+  canEditForecast?: boolean;
   style?: React.CSSProperties;
   index?: number;
 }
@@ -54,6 +56,8 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
   onSelectProduct,
   onArrivalChange,
   onArrivalBlur,
+  onForecastChange,
+  canEditForecast = false,
   style,
   index = 0,
 }: VirtualizedProductRowProps) {
@@ -105,19 +109,15 @@ export const ProductProjectionRow = memo(function ProductProjectionRow({
           PV
         </TableCell>
         {productProj.projections.map((proj, i) => (
-          <TableCell key={i} className="text-center py-0.5 px-1">
-            <div className="flex items-center justify-center gap-0.5">
-              <span className="text-xs">
-                {proj.forecast > 0 ? proj.forecast.toLocaleString('pt-BR') : '-'}
-              </span>
-              {proj.forecast > 0 && proj.historyLastYear > 0 && (
-                proj.forecast > proj.historyLastYear ? (
-                  <TrendingUp className="h-3 w-3 text-orange-500" />
-                ) : proj.forecast < proj.historyLastYear ? (
-                  <TrendingDown className="h-3 w-3 text-primary" />
-                ) : null
-              )}
-            </div>
+          <TableCell key={i} className="text-center py-0.5 px-1" onClick={(e) => e.stopPropagation()}>
+            <ForecastInput
+              productId={productProj.product.id}
+              monthKey={proj.monthKey}
+              currentForecast={proj.forecast}
+              historyLastYear={proj.historyLastYear}
+              onValueChange={onForecastChange || (() => {})}
+              canEdit={canEditForecast}
+            />
           </TableCell>
         ))}
         <TableCell className="text-center py-0.5 px-1 bg-muted/20 font-semibold text-xs">
