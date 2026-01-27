@@ -1,136 +1,143 @@
 
 
-## Plan: Two-Section Dashboard (MOR/ARC) with Smart Card Ownership
+## Plan: Restructure Item Detail Drawer for Objective, Single-View Layout
 
-### Core Concept
+### Summary
 
-Instead of organizing cards by status columns (Pending, In Progress, Waiting), we'll organize by **team ownership**:
+Transform the current tab-based drawer into a unified, action-oriented single-view layout with three clear sections:
 
-| Section | Team | Description |
-|---------|------|-------------|
-| **MOR (Brazil)** | Buyers/Admins | Cards waiting for Brazil's input |
-| **ARC (China)** | Traders | Cards waiting for China's action |
-
-The **ball** determines which section holds the card. When you need a response from the other side, you "pass the ball" to them.
+| Section | Content | Purpose |
+|---------|---------|---------|
+| **Top** | Picture, Title, Status, Desired Outcome, Badges | Card context at a glance |
+| **Middle** | Activity Timeline (chronological history) | Full audit trail of all events |
+| **Bottom** | Action Panel (sticky) | Pending actions: comment/question, commercial data, samples |
 
 ---
 
-### Database Changes
+### Current vs. New Layout
 
-#### 1. Add Card Owner Field
-```sql
-ALTER TABLE development_items
-  ADD COLUMN current_owner TEXT DEFAULT 'arc' CHECK (current_owner IN ('mor', 'arc'));
+```text
+CURRENT (Tab-based)                    NEW (Single-view)
+┌─────────────────────┐               ┌─────────────────────┐
+│ Title + Badges      │               │ 🔝 CARD INFO        │
+│ Status Dropdown     │               │ ├─ Picture (if any) │
+├─────────────────────┤               │ ├─ Title + Badges   │
+│ [Details][Samples]  │               │ ├─ Desired Outcome  │
+│ [Activity][Items*]  │               │ └─ Status/Priority  │
+├─────────────────────┤               ├─────────────────────┤
+│                     │               │ 📜 HISTORY          │
+│   Tab Content       │               │ ├─ Created: Jan 27  │
+│   (varies)          │               │ ├─ Commented: ...   │
+│                     │               │ ├─ FOB price added  │
+│                     │               │ └─ Sample shipped   │
+│                     │               ├─────────────────────┤
+│                     │               │ ⚡ ACTIONS (sticky) │
+│                     │               │ ├─ Comment/Question │
+│                     │               │ ├─ Commercial Data  │
+│                     │               │ └─ + Add Sample     │
+└─────────────────────┘               └─────────────────────┘
 ```
 
-#### 2. New Activity Type: Question
-```sql
--- We'll use activity_type = 'question' to distinguish from comments
--- Questions always trigger card movement consideration
-```
-
 ---
 
-### Movement Logic
+### Detailed Section Breakdown
 
-| Action | Current Owner | Effect |
-|--------|---------------|--------|
-| **Brazil creates card** | → ARC | Brazil created it, now it's on China to act |
-| **ARC adds comment** | Stays ARC | Just an update, no action needed from Brazil |
-| **ARC adds question** | → MOR (with prompt) | Question requires Brazil's input |
-| **ARC fills FOB price** | Prompt: "Move to MOR?" | If yes → MOR; if no → stays ARC |
-| **ARC links supplier** | Prompt: "Move to MOR?" | If yes → MOR; if no → stays ARC |
-| **ARC sends sample** | Prompt: "Move to MOR?" | Brazil needs to receive and review |
-| **MOR answers question** | → ARC | Ball back to China |
-| **MOR approves/rejects** | → Solved | Card is done |
-
----
-
-### UI Redesign
-
-#### Dashboard Layout (Two Sections Side by Side)
+#### Section 1: Card Information (Top - Static)
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
-│ Development Cards                                     [+ New Card]  │
-│ Track items, samples, and tasks                                     │
-│ [Search...] [Priority ▼] [Type ▼] [Show Solved] [Show Deleted*]    │
-├──────────────────────────────┬──────────────────────────────────────┤
-│                              │                                      │
-│  🇧🇷 MOR (Brazil)            │  🇨🇳 ARC (China)                     │
-│  ─────────────────           │  ─────────────────                   │
-│                              │                                      │
-│  Cards waiting for           │  Cards waiting for                   │
-│  Brazil's input              │  China's action                      │
-│                              │                                      │
-│  ┌───────────────────┐       │  ┌───────────────────┐               │
-│  │ [NEW] PE Strap    │       │  │ Pet Bowl Line     │               │
-│  │ Raw Material      │       │  │ Final Product     │               │
-│  │ ARC quoted $0.15  │       │  │ Pending           │               │
-│  └───────────────────┘       │  └───────────────────┘               │
-│                              │                                      │
-│  ┌───────────────────┐       │  ┌───────────────────┐               │
-│  │ Packaging Tape    │       │  │ Label Supplier    │               │
-│  │ Question pending  │       │  │ In Progress       │               │
-│  └───────────────────┘       │  └───────────────────┘               │
-│                              │                                      │
-└──────────────────────────────┴──────────────────────────────────────┘
-```
-
-#### Activity Tab: Comments vs Questions
-
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│ Activity                                                            │
+│ [x] Close                                                     [🗑️]  │
 ├─────────────────────────────────────────────────────────────────────┤
+│ ┌─────────────┐                                                     │
+│ │             │  PE Strap                                           │
+│ │   [Image]   │  Raw Material • Single Item • medium priority       │
+│ │             │                                                     │
+│ └─────────────┘  Status: [Pending ▼]  |  Due: 15/02/2026            │
+├─────────────────────────────────────────────────────────────────────┤
+│ 📋 DESIRED OUTCOME                                                  │
 │ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ 💬 Add Comment                    ❓ Ask Question               │ │
-│ ├─────────────────────────────────────────────────────────────────┤ │
-│ │ [Write your message here...]                                    │ │
-│ │                                            [Send Comment]       │ │
+│ │ Price and MOQ for PE strap of our chairs.                       │ │
 │ └─────────────────────────────────────────────────────────────────┘ │
 │                                                                     │
-│ Timeline:                                                           │
-│ ─────────                                                           │
+│ 🏭 Supplier: Jiaxing Packaging Co. (or "Not assigned")              │
 │                                                                     │
-│ [Avatar] Trader Wang - Jan 28, 2026 at 10:00                        │
-│ 💬 commented:                                                       │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ "Ok, we'll start looking for factories. Will update soon."      │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-│                                                                     │
-│ [Avatar] Trader Wang - Jan 29, 2026 at 15:30                        │
-│ ❓ asked a question:                               [Card → MOR]     │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ "Found 3 factories. What volume do you buy per year?"           │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-│                                                                     │
-│ [Avatar] John Doe - Jan 30, 2026 at 09:00                           │
-│ 💬 replied:                                        [Card → ARC]     │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ "Around 500,000 units/year"                                     │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
+│ 👥 Products in Group: 3 items  [View/Edit →]  (only for groups)     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
----
+#### Section 2: History Timeline (Middle - Scrollable)
 
-### Movement Prompt Modal
-
-When ARC fills FOB price/supplier OR posts a question:
+This section shows ALL events in reverse chronological order:
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     Move Card to MOR?                               │
+│ 📜 HISTORY                                                          │
+├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  You've added commercial data / asked a question.                   │
-│  Does this require input from the Brazil team?                      │
+│ [Today]                                                             │
+│ ┌───────────────────────────────────────────────────────────────┐   │
+│ │ 📦 Trader Wang added sample tracking      10:30 AM            │   │
+│ │    DHL - 1234567890 • ETA: 05/02/2026                         │   │
+│ └───────────────────────────────────────────────────────────────┘   │
 │                                                                     │
-│  ┌────────────────────┐     ┌────────────────────┐                  │
-│  │   Yes, move to MOR │     │   No, keep with ARC│                  │
-│  └────────────────────┘     └────────────────────┘                  │
+│ [Yesterday]                                                         │
+│ ┌───────────────────────────────────────────────────────────────┐   │
+│ │ 💬 Trader Wang commented                   3:45 PM            │   │
+│ │    "Found 3 factories. Will send quotes tomorrow."            │   │
+│ └───────────────────────────────────────────────────────────────┘   │
 │                                                                     │
-│  Card will appear in MOR's section if you select "Yes".             │
+│ ┌───────────────────────────────────────────────────────────────┐   │
+│ │ 💰 Trader Wang updated FOB Price          2:30 PM             │   │
+│ │    Set to $0.15 USD                                           │   │
+│ └───────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│ ┌───────────────────────────────────────────────────────────────┐   │
+│ │ ⬅️ Card moved to MOR (Brazil)             2:31 PM             │   │
+│ └───────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│ [Jan 27, 2026]                                                      │
+│ ┌───────────────────────────────────────────────────────────────┐   │
+│ │ ✅ Caio Kohn created this card            4:44 PM             │   │
+│ └───────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**History includes:**
+- Card creation
+- Comments and questions
+- Status changes
+- Commercial data updates (FOB, MOQ, etc.)
+- Sample tracking added/updated
+- Ownership changes (MOR ↔ ARC)
+- Products added (for groups)
+
+#### Section 3: Actions Panel (Bottom - Sticky)
+
+This is a collapsible/accordion panel that stays at the bottom:
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│ ⚡ ACTIONS                                                          │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│ ┌─ 💬 Add Comment / ❓ Ask Question ──────────────────────────────┐ │
+│ │ [Comment] [Question]                                            │ │
+│ │ ┌─────────────────────────────────────────────────────────────┐ │ │
+│ │ │ Write your message here...                                  │ │ │
+│ │ └─────────────────────────────────────────────────────────────┘ │ │
+│ │                                               [Send]            │ │
+│ └─────────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│ ┌─ 💰 Commercial Data ────────────────────────────────────────────┐ │
+│ │ FOB Price (USD): $[____]    MOQ: [________]                     │ │
+│ │ Qty/Container: [________]   Container: [20ft ▼]                 │ │
+│ └─────────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│ ┌─ 📦 Add Sample ─────────────────────────────────────────────────┐ │
+│ │ [+ Add Sample Tracking]  (click to expand form)                 │ │
+│ └─────────────────────────────────────────────────────────────────┘ │
+│                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -140,107 +147,161 @@ When ARC fills FOB price/supplier OR posts a question:
 
 | File | Action | Description |
 |------|--------|-------------|
-| Database migration | Create | Add `current_owner` column |
-| `src/pages/Development.tsx` | Modify | Replace Kanban with two-section layout |
-| `src/components/development/TeamSection.tsx` | Create | Reusable section component (MOR/ARC) |
-| `src/components/development/UnifiedActivityTimeline.tsx` | Modify | Add Comment/Question toggle |
-| `src/components/development/MoveCardModal.tsx` | Create | Confirmation modal for moving cards |
-| `src/components/development/CommercialDataSection.tsx` | Modify | Trigger move prompt on save |
-| `src/components/development/CreateCardModal.tsx` | Modify | Auto-set `current_owner` based on creator role |
-| `src/components/development/DevelopmentCard.tsx` | Modify | Show "NEW" badge, owner indicator |
+| `src/components/development/ItemDetailDrawer.tsx` | **Major Refactor** | Replace tabs with single-view layout |
+| `src/components/development/CardInfoSection.tsx` | **Create** | Top section: picture, title, badges, desired outcome |
+| `src/components/development/ActivityTimeline.tsx` | **Modify** | Show full history with all event types, including samples |
+| `src/components/development/ActionsPanel.tsx` | **Create** | Bottom sticky panel: comments, commercial data, samples |
+| `src/components/development/GroupedItemsDrawer.tsx` | **Create** | Separate drawer/modal for managing grouped products |
 
 ---
 
-### Technical Details
+### Technical Implementation
 
-#### Creation Logic
+#### 1. New Drawer Structure
+
 ```typescript
-// In CreateCardModal.tsx
-const creatorRole = isBuyer ? 'buyer' : 'trader';
-const initialOwner = creatorRole === 'buyer' ? 'arc' : 'mor';
-
-// When Brazil (buyer) creates → goes to ARC
-// When China (trader) creates → goes to MOR
+// ItemDetailDrawer.tsx - New structure
+<Sheet>
+  <SheetContent className="flex flex-col h-full">
+    {/* Top Section - Fixed */}
+    <div className="flex-shrink-0 border-b pb-4">
+      <CardInfoSection item={item} canEdit={canManage} />
+    </div>
+    
+    {/* Middle Section - Scrollable */}
+    <ScrollArea className="flex-1">
+      <ActivityTimeline cardId={item.id} showAllEvents={true} />
+    </ScrollArea>
+    
+    {/* Bottom Section - Sticky */}
+    <div className="flex-shrink-0 border-t pt-4 bg-background">
+      <ActionsPanel 
+        cardId={item.id}
+        cardType={item.card_type}
+        canEdit={canManage}
+        commercialData={{...}}
+        currentOwner={item.current_owner}
+      />
+    </div>
+  </SheetContent>
+</Sheet>
 ```
 
-#### Question Activity Type
-```typescript
-// New activity type for questions
-await supabase.from('development_card_activity').insert({
-  card_id: cardId,
-  user_id: user.id,
-  activity_type: 'question', // Distinguished from 'comment'
-  content: questionText,
-});
+#### 2. Enhanced Activity Timeline
 
-// Questions always trigger the move prompt
+Update the timeline to show ALL events with rich formatting:
+
+```typescript
+// Activity types to display in history
+type ActivityEventType = 
+  | 'created'           // Card creation
+  | 'comment'           // User comment
+  | 'question'          // User question
+  | 'status_change'     // Status update
+  | 'ownership_change'  // MOR ↔ ARC movement
+  | 'sample_added'      // Sample tracking added
+  | 'sample_updated'    // Sample status changed
+  | 'commercial_update' // FOB/MOQ/Container updated
+  | 'product_added'     // Product added to group
+  | 'image_updated';    // Picture changed
 ```
 
-#### Move Card Function
-```typescript
-const moveCardToTeam = async (cardId: string, targetOwner: 'mor' | 'arc') => {
-  await supabase.from('development_items')
-    .update({ 
-      current_owner: targetOwner,
-      is_new_for_other_team: true, // Reset notification flag
-    })
-    .eq('id', cardId);
+#### 3. Actions Panel with Accordions
 
-  // Log the movement
-  await supabase.from('development_card_activity').insert({
-    card_id: cardId,
-    user_id: user.id,
-    activity_type: 'ownership_change',
-    content: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}`,
-    metadata: { new_owner: targetOwner },
-  });
-};
-```
-
-#### Commercial Data Save with Prompt
 ```typescript
-// In CommercialDataSection.tsx - after saving FOB price or supplier
-const handleSaveWithPrompt = (fieldName: string) => {
-  // Check if this is a significant field that might require MOR input
-  const significantFields = ['fob_price_usd', 'supplier_id'];
+// ActionsPanel.tsx
+<Accordion type="multiple" defaultValue={['messaging']}>
+  <AccordionItem value="messaging">
+    <AccordionTrigger>
+      💬 Add Comment / Ask Question
+    </AccordionTrigger>
+    <AccordionContent>
+      {/* Comment/Question form */}
+    </AccordionContent>
+  </AccordionItem>
   
-  if (significantFields.includes(fieldName) && isTrader && currentOwner === 'arc') {
-    setShowMovePrompt(true);
-  }
-};
+  <AccordionItem value="commercial">
+    <AccordionTrigger>
+      💰 Commercial Data
+    </AccordionTrigger>
+    <AccordionContent>
+      {/* FOB, MOQ, Container fields */}
+    </AccordionContent>
+  </AccordionItem>
+  
+  <AccordionItem value="samples">
+    <AccordionTrigger>
+      📦 Sample Tracking ({samplesCount})
+    </AccordionTrigger>
+    <AccordionContent>
+      {/* Add sample form + list of existing samples */}
+    </AccordionContent>
+  </AccordionItem>
+</Accordion>
+```
+
+#### 4. Grouped Items - Separate Modal
+
+For item groups, show a "View/Edit Items" button that opens a separate modal:
+
+```typescript
+// GroupedItemsDrawer.tsx
+<Dialog>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Products in Group</DialogTitle>
+    </DialogHeader>
+    <GroupedItemsEditor cardId={cardId} canEdit={canEdit} />
+  </DialogContent>
+</Dialog>
 ```
 
 ---
 
-### Status Within Sections
+### Activity Logging Improvements
 
-Cards still have status (Pending, In Progress, Waiting, Solved), but they're grouped by owner first:
+To make the history comprehensive, we need to log more events:
 
-```text
-MOR (Brazil)                     ARC (China)
-├── Pending (2)                  ├── Pending (5)
-│   └── Card A                   │   ├── Card X
-│   └── Card B                   │   ├── Card Y
-├── In Progress (1)              │   └── ...
-│   └── Card C                   ├── In Progress (3)
-└── Waiting (0)                  │   └── Card Z
-                                 └── Waiting (2)
-```
+| Event | When to Log | Content Example |
+|-------|-------------|-----------------|
+| `commercial_update` | FOB/MOQ/Container changes | "FOB Price set to $0.15 USD" |
+| `sample_updated` | Sample status changes | "Sample marked as Delivered" |
+| `image_updated` | Picture uploaded/changed | "Product image updated" |
 
-Or simplified: just show all cards in each section with status badges.
+**Implementation**: Add activity logging to CommercialDataSection and sample mutations.
+
+---
+
+### User Flow Example
+
+**China trader opens PE Strap card:**
+
+1. **Sees immediately**:
+   - Picture (if uploaded)
+   - "PE Strap" title with Raw Material / Single Item badges
+   - Desired Outcome: "Price and MOQ for PE strap of our chairs"
+   - Status: Pending
+
+2. **Scrolls down to see history**:
+   - "Created by Caio Kohn - Jan 27, 2026"
+
+3. **At bottom, takes actions**:
+   - Types comment: "Ok, we'll start looking for factories"
+   - Later fills in FOB: $0.15
+   - Adds sample tracking when ready
+
+4. **Each action appears in history automatically**
 
 ---
 
 ### Summary
 
-| Feature | Implementation |
-|---------|----------------|
-| Two sections | MOR (Brazil) and ARC (China) columns |
-| Card ownership | `current_owner` field: 'mor' or 'arc' |
-| Auto-assignment | Buyer creates → ARC; Trader creates → MOR |
-| Comments | Don't move cards (just informational) |
-| Questions | New activity type, triggers move prompt |
-| Commercial data | FOB/Supplier save triggers move prompt |
-| Movement | Explicit action with confirmation modal |
-| Notifications | "NEW" badge when card moves to your section |
+| Change | Impact |
+|--------|--------|
+| Remove tabs | Single unified view |
+| Card info at top | Immediate context |
+| History in middle | Full audit trail, scrollable |
+| Actions at bottom | Clear, objective actions |
+| Sticky action panel | Always accessible |
+| Grouped items modal | Cleaner separation |
 
