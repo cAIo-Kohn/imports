@@ -82,10 +82,10 @@ export function KanbanBoard({
   };
 
   return (
-    <ScrollArea className="h-full">
+    <ScrollArea className="h-full w-full min-w-0">
       <div
         ref={boardRef}
-        className="flex gap-2 md:gap-3 lg:gap-4 p-4 md:p-6 min-h-full"
+        className="flex w-max gap-2 md:gap-3 lg:gap-4 p-4 md:p-6 min-h-full"
       >
         {statusOrder.map((status) => (
           <KanbanColumn

@@ -174,9 +174,9 @@ export default function Development() {
   const selectedItem = items.find(item => item.id === selectedItemId);
 
   return (
-    <div className="flex flex-col h-full -m-6 overflow-hidden">
+    <div className="flex flex-col h-full w-full min-w-0 overflow-hidden">
       {/* Header */}
-      <div className="flex-shrink-0 p-4 md:p-6 border-b bg-background">
+      <div className="flex-shrink-0 p-4 md:p-6 border-b bg-background w-full">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold">New Items & Samples</h1>
@@ -233,7 +233,7 @@ export default function Development() {
       </div>
 
       {/* Kanban Board */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-w-0 overflow-hidden">
         <KanbanBoard
           itemsByStatus={itemsByStatus}
           statusOrder={STATUS_ORDER}
