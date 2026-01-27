@@ -820,6 +820,7 @@ export type Database = {
           city: string | null
           cnpj: string | null
           created_at: string
+          estabelecimento_code: number | null
           fax: string | null
           id: string
           is_active: boolean
@@ -837,6 +838,7 @@ export type Database = {
           city?: string | null
           cnpj?: string | null
           created_at?: string
+          estabelecimento_code?: number | null
           fax?: string | null
           id?: string
           is_active?: boolean
@@ -854,6 +856,7 @@ export type Database = {
           city?: string | null
           cnpj?: string | null
           created_at?: string
+          estabelecimento_code?: number | null
           fax?: string | null
           id?: string
           is_active?: boolean
