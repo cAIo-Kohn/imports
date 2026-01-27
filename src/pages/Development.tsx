@@ -174,7 +174,7 @@ export default function Development() {
   const selectedItem = items.find(item => item.id === selectedItemId);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full -m-6 overflow-hidden">
       {/* Header */}
       <div className="flex-shrink-0 p-4 md:p-6 border-b bg-background">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
