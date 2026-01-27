@@ -1,307 +1,203 @@
 
+## Plan: Expand Drawer Layout and Add Attention-Drawing Features
 
-## Plan: Restructure Item Detail Drawer for Objective, Single-View Layout
+### Problems Identified
 
-### Summary
-
-Transform the current tab-based drawer into a unified, action-oriented single-view layout with three clear sections:
-
-| Section | Content | Purpose |
-|---------|---------|---------|
-| **Top** | Picture, Title, Status, Desired Outcome, Badges | Card context at a glance |
-| **Middle** | Activity Timeline (chronological history) | Full audit trail of all events |
-| **Bottom** | Action Panel (sticky) | Pending actions: comment/question, commercial data, samples |
+1. **Drawer too narrow**: Current `sm:max-w-xl` (576px) is cramped for all the content
+2. **History section too small**: Compressed between fixed header/footer sections
+3. **No attention mechanism**: When a question or FOB price triggers a card move, the receiving team doesn't immediately see what requires their attention
 
 ---
 
-### Current vs. New Layout
+### Solution Overview
 
+| Change | Description |
+|--------|-------------|
+| **Wider drawer** | Increase to `sm:max-w-2xl` (672px) or `sm:max-w-3xl` (768px) |
+| **Better space distribution** | Reduce card info height, give history more vertical space |
+| **Attention banner** | Add a highlighted "What Needs Your Attention" section at the top of history when card was moved to your team |
+| **Latest trigger highlight** | Find the most recent question, FOB update, or ownership_change and display it prominently |
+
+---
+
+### Layout Changes
+
+#### Current Layout
 ```text
-CURRENT (Tab-based)                    NEW (Single-view)
-┌─────────────────────┐               ┌─────────────────────┐
-│ Title + Badges      │               │ 🔝 CARD INFO        │
-│ Status Dropdown     │               │ ├─ Picture (if any) │
-├─────────────────────┤               │ ├─ Title + Badges   │
-│ [Details][Samples]  │               │ ├─ Desired Outcome  │
-│ [Activity][Items*]  │               │ └─ Status/Priority  │
-├─────────────────────┤               ├─────────────────────┤
-│                     │               │ 📜 HISTORY          │
-│   Tab Content       │               │ ├─ Created: Jan 27  │
-│   (varies)          │               │ ├─ Commented: ...   │
-│                     │               │ ├─ FOB price added  │
-│                     │               │ └─ Sample shipped   │
-│                     │               ├─────────────────────┤
-│                     │               │ ⚡ ACTIONS (sticky) │
-│                     │               │ ├─ Comment/Question │
-│                     │               │ ├─ Commercial Data  │
-│                     │               │ └─ + Add Sample     │
-└─────────────────────┘               └─────────────────────┘
+┌─────────────────────────────────────────┐  sm:max-w-xl (576px)
+│ Header                                  │  ~60px
+├─────────────────────────────────────────┤
+│ Card Info (image, badges, description)  │  ~200px (fixed)
+├─────────────────────────────────────────┤
+│ History (scrollable)                    │  ~150px (squeezed)
+├─────────────────────────────────────────┤
+│ Actions Panel (accordion)               │  ~200px+ (fixed)
+└─────────────────────────────────────────┘
+```
+
+#### New Layout
+```text
+┌─────────────────────────────────────────────────┐  sm:max-w-2xl (672px)
+│ Header                                          │  ~50px
+├─────────────────────────────────────────────────┤
+│ Card Info (compact: image + title + status)     │  ~120px
+├─────────────────────────────────────────────────┤
+│ ⚡ ATTENTION REQUIRED (if card moved to you)    │  ~80px
+│ ┌─────────────────────────────────────────────┐ │
+│ │ Trader Wang asked: "What volume per year?" │ │
+│ └─────────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────┤
+│ History (scrollable, much larger)               │  ~300px+
+├─────────────────────────────────────────────────┤
+│ Actions Panel (collapsed by default)            │  ~60px collapsed
+└─────────────────────────────────────────────────┘
 ```
 
 ---
 
-### Detailed Section Breakdown
+### Files to Modify
 
-#### Section 1: Card Information (Top - Static)
-
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│ [x] Close                                                     [🗑️]  │
-├─────────────────────────────────────────────────────────────────────┤
-│ ┌─────────────┐                                                     │
-│ │             │  PE Strap                                           │
-│ │   [Image]   │  Raw Material • Single Item • medium priority       │
-│ │             │                                                     │
-│ └─────────────┘  Status: [Pending ▼]  |  Due: 15/02/2026            │
-├─────────────────────────────────────────────────────────────────────┤
-│ 📋 DESIRED OUTCOME                                                  │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ Price and MOQ for PE strap of our chairs.                       │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-│                                                                     │
-│ 🏭 Supplier: Jiaxing Packaging Co. (or "Not assigned")              │
-│                                                                     │
-│ 👥 Products in Group: 3 items  [View/Edit →]  (only for groups)     │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-#### Section 2: History Timeline (Middle - Scrollable)
-
-This section shows ALL events in reverse chronological order:
-
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│ 📜 HISTORY                                                          │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│ [Today]                                                             │
-│ ┌───────────────────────────────────────────────────────────────┐   │
-│ │ 📦 Trader Wang added sample tracking      10:30 AM            │   │
-│ │    DHL - 1234567890 • ETA: 05/02/2026                         │   │
-│ └───────────────────────────────────────────────────────────────┘   │
-│                                                                     │
-│ [Yesterday]                                                         │
-│ ┌───────────────────────────────────────────────────────────────┐   │
-│ │ 💬 Trader Wang commented                   3:45 PM            │   │
-│ │    "Found 3 factories. Will send quotes tomorrow."            │   │
-│ └───────────────────────────────────────────────────────────────┘   │
-│                                                                     │
-│ ┌───────────────────────────────────────────────────────────────┐   │
-│ │ 💰 Trader Wang updated FOB Price          2:30 PM             │   │
-│ │    Set to $0.15 USD                                           │   │
-│ └───────────────────────────────────────────────────────────────┘   │
-│                                                                     │
-│ ┌───────────────────────────────────────────────────────────────┐   │
-│ │ ⬅️ Card moved to MOR (Brazil)             2:31 PM             │   │
-│ └───────────────────────────────────────────────────────────────┘   │
-│                                                                     │
-│ [Jan 27, 2026]                                                      │
-│ ┌───────────────────────────────────────────────────────────────┐   │
-│ │ ✅ Caio Kohn created this card            4:44 PM             │   │
-│ └───────────────────────────────────────────────────────────────┘   │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-**History includes:**
-- Card creation
-- Comments and questions
-- Status changes
-- Commercial data updates (FOB, MOQ, etc.)
-- Sample tracking added/updated
-- Ownership changes (MOR ↔ ARC)
-- Products added (for groups)
-
-#### Section 3: Actions Panel (Bottom - Sticky)
-
-This is a collapsible/accordion panel that stays at the bottom:
-
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│ ⚡ ACTIONS                                                          │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│ ┌─ 💬 Add Comment / ❓ Ask Question ──────────────────────────────┐ │
-│ │ [Comment] [Question]                                            │ │
-│ │ ┌─────────────────────────────────────────────────────────────┐ │ │
-│ │ │ Write your message here...                                  │ │ │
-│ │ └─────────────────────────────────────────────────────────────┘ │ │
-│ │                                               [Send]            │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-│                                                                     │
-│ ┌─ 💰 Commercial Data ────────────────────────────────────────────┐ │
-│ │ FOB Price (USD): $[____]    MOQ: [________]                     │ │
-│ │ Qty/Container: [________]   Container: [20ft ▼]                 │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-│                                                                     │
-│ ┌─ 📦 Add Sample ─────────────────────────────────────────────────┐ │
-│ │ [+ Add Sample Tracking]  (click to expand form)                 │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-```
+| File | Changes |
+|------|---------|
+| `ItemDetailDrawer.tsx` | Increase width to `sm:max-w-2xl`, add attention banner logic |
+| `CardInfoSection.tsx` | Compact layout, reduce padding |
+| `HistoryTimeline.tsx` | Add "attention required" highlighted item at top |
+| `ActionsPanel.tsx` | Default to collapsed (not expanded) to give history more space |
 
 ---
 
-### Files to Create/Modify
+### Attention Banner Implementation
 
-| File | Action | Description |
-|------|--------|-------------|
-| `src/components/development/ItemDetailDrawer.tsx` | **Major Refactor** | Replace tabs with single-view layout |
-| `src/components/development/CardInfoSection.tsx` | **Create** | Top section: picture, title, badges, desired outcome |
-| `src/components/development/ActivityTimeline.tsx` | **Modify** | Show full history with all event types, including samples |
-| `src/components/development/ActionsPanel.tsx` | **Create** | Bottom sticky panel: comments, commercial data, samples |
-| `src/components/development/GroupedItemsDrawer.tsx` | **Create** | Separate drawer/modal for managing grouped products |
-
----
-
-### Technical Implementation
-
-#### 1. New Drawer Structure
+The attention banner will appear when:
+1. Card was moved to the current user's team (`is_new_for_other_team = true`)
+2. The most recent activity is a question, commercial_update, or ownership_change
 
 ```typescript
-// ItemDetailDrawer.tsx - New structure
-<Sheet>
-  <SheetContent className="flex flex-col h-full">
-    {/* Top Section - Fixed */}
-    <div className="flex-shrink-0 border-b pb-4">
-      <CardInfoSection item={item} canEdit={canManage} />
+// In HistoryTimeline.tsx or ItemDetailDrawer.tsx
+interface HistoryTimelineProps {
+  cardId: string;
+  cardCreatedAt: string;
+  creatorName?: string;
+  showAttentionBanner?: boolean; // New prop
+}
+
+// Find the triggering action (most recent question/commercial update)
+const triggerActivity = activities.find(a => 
+  ['question', 'commercial_update'].includes(a.activity_type)
+);
+
+// Render attention banner if card is new for this team
+{showAttentionBanner && triggerActivity && (
+  <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-4 mb-4 animate-pulse-subtle">
+    <div className="flex items-center gap-2 text-amber-800 font-medium mb-2">
+      <AlertCircle className="h-5 w-5" />
+      Attention Required
     </div>
-    
-    {/* Middle Section - Scrollable */}
-    <ScrollArea className="flex-1">
-      <ActivityTimeline cardId={item.id} showAllEvents={true} />
-    </ScrollArea>
-    
-    {/* Bottom Section - Sticky */}
-    <div className="flex-shrink-0 border-t pt-4 bg-background">
-      <ActionsPanel 
-        cardId={item.id}
-        cardType={item.card_type}
-        canEdit={canManage}
-        commercialData={{...}}
-        currentOwner={item.current_owner}
-      />
+    <div className="bg-white rounded p-3 border border-amber-200">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Avatar className="h-6 w-6">...</Avatar>
+        {triggerActivity.profile?.full_name} 
+        {triggerActivity.activity_type === 'question' ? 'asked:' : 'updated:'}
+      </div>
+      <p className="mt-1 font-medium">
+        {triggerActivity.content}
+      </p>
     </div>
-  </SheetContent>
-</Sheet>
-```
-
-#### 2. Enhanced Activity Timeline
-
-Update the timeline to show ALL events with rich formatting:
-
-```typescript
-// Activity types to display in history
-type ActivityEventType = 
-  | 'created'           // Card creation
-  | 'comment'           // User comment
-  | 'question'          // User question
-  | 'status_change'     // Status update
-  | 'ownership_change'  // MOR ↔ ARC movement
-  | 'sample_added'      // Sample tracking added
-  | 'sample_updated'    // Sample status changed
-  | 'commercial_update' // FOB/MOQ/Container updated
-  | 'product_added'     // Product added to group
-  | 'image_updated';    // Picture changed
-```
-
-#### 3. Actions Panel with Accordions
-
-```typescript
-// ActionsPanel.tsx
-<Accordion type="multiple" defaultValue={['messaging']}>
-  <AccordionItem value="messaging">
-    <AccordionTrigger>
-      💬 Add Comment / Ask Question
-    </AccordionTrigger>
-    <AccordionContent>
-      {/* Comment/Question form */}
-    </AccordionContent>
-  </AccordionItem>
-  
-  <AccordionItem value="commercial">
-    <AccordionTrigger>
-      💰 Commercial Data
-    </AccordionTrigger>
-    <AccordionContent>
-      {/* FOB, MOQ, Container fields */}
-    </AccordionContent>
-  </AccordionItem>
-  
-  <AccordionItem value="samples">
-    <AccordionTrigger>
-      📦 Sample Tracking ({samplesCount})
-    </AccordionTrigger>
-    <AccordionContent>
-      {/* Add sample form + list of existing samples */}
-    </AccordionContent>
-  </AccordionItem>
-</Accordion>
-```
-
-#### 4. Grouped Items - Separate Modal
-
-For item groups, show a "View/Edit Items" button that opens a separate modal:
-
-```typescript
-// GroupedItemsDrawer.tsx
-<Dialog>
-  <DialogContent>
-    <DialogHeader>
-      <DialogTitle>Products in Group</DialogTitle>
-    </DialogHeader>
-    <GroupedItemsEditor cardId={cardId} canEdit={canEdit} />
-  </DialogContent>
-</Dialog>
+  </div>
+)}
 ```
 
 ---
 
-### Activity Logging Improvements
+### Visual Differentiation for Trigger Actions
 
-To make the history comprehensive, we need to log more events:
-
-| Event | When to Log | Content Example |
-|-------|-------------|-----------------|
-| `commercial_update` | FOB/MOQ/Container changes | "FOB Price set to $0.15 USD" |
-| `sample_updated` | Sample status changes | "Sample marked as Delivered" |
-| `image_updated` | Picture uploaded/changed | "Product image updated" |
-
-**Implementation**: Add activity logging to CommercialDataSection and sample mutations.
+| Activity Type | Banner Style | Icon |
+|---------------|--------------|------|
+| Question | Purple/violet border, "?" icon | HelpCircle |
+| FOB Price update | Green/emerald border, "$" icon | DollarSign |
+| Ownership change | Blue border, arrow icon | ArrowRight |
 
 ---
 
-### User Flow Example
+### Detailed Changes
 
-**China trader opens PE Strap card:**
+#### 1. ItemDetailDrawer.tsx
 
-1. **Sees immediately**:
-   - Picture (if uploaded)
-   - "PE Strap" title with Raw Material / Single Item badges
-   - Desired Outcome: "Price and MOQ for PE strap of our chairs"
-   - Status: Pending
+```typescript
+// Increase width
+<SheetContent className="w-full sm:max-w-2xl flex flex-col h-full p-0">
 
-2. **Scrolls down to see history**:
-   - "Created by Caio Kohn - Jan 27, 2026"
+// Pass attention flag to HistoryTimeline
+<HistoryTimeline
+  cardId={item.id}
+  cardCreatedAt={item.created_at}
+  creatorName={creatorProfile?.full_name || creatorProfile?.email}
+  showAttentionBanner={itemWithNewFields.is_new_for_other_team && isNewForMe}
+/>
+```
 
-3. **At bottom, takes actions**:
-   - Types comment: "Ok, we'll start looking for factories"
-   - Later fills in FOB: $0.15
-   - Adds sample tracking when ready
+#### 2. CardInfoSection.tsx
 
-4. **Each action appears in history automatically**
+- Make image smaller (w-20 h-20 instead of w-24 h-24)
+- Reduce padding in "Desired Outcome" box
+- More compact badge layout
+
+#### 3. HistoryTimeline.tsx
+
+Add attention banner component at top:
+
+```typescript
+// New component for attention banner
+function AttentionBanner({ activity }: { activity: Activity }) {
+  const isQuestion = activity.activity_type === 'question';
+  const isCommercial = activity.activity_type === 'commercial_update';
+  
+  return (
+    <div className={cn(
+      "rounded-lg p-4 mb-4 border-2",
+      isQuestion && "bg-purple-50 border-purple-300",
+      isCommercial && "bg-emerald-50 border-emerald-300",
+    )}>
+      <div className="flex items-center gap-2 font-medium mb-2">
+        {isQuestion ? <HelpCircle className="h-5 w-5 text-purple-600" /> : null}
+        {isCommercial ? <DollarSign className="h-5 w-5 text-emerald-600" /> : null}
+        <span className={cn(
+          isQuestion && "text-purple-800",
+          isCommercial && "text-emerald-800",
+        )}>
+          {isQuestion ? "Question for you" : "Commercial data updated"}
+        </span>
+      </div>
+      <div className="bg-white rounded-lg p-3 border">
+        <p className="text-sm font-medium">{activity.content}</p>
+        {isCommercial && activity.metadata && (
+          <p className="text-xs text-muted-foreground mt-1">
+            {activity.metadata.field}: ${activity.metadata.value}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+#### 4. ActionsPanel.tsx
+
+Change default accordion state to show collapsed:
+
+```typescript
+// Before: defaultValue={['messaging']}
+<Accordion type="multiple" defaultValue={[]} className="w-full">
+```
 
 ---
 
 ### Summary
 
-| Change | Impact |
-|--------|--------|
-| Remove tabs | Single unified view |
-| Card info at top | Immediate context |
-| History in middle | Full audit trail, scrollable |
-| Actions at bottom | Clear, objective actions |
-| Sticky action panel | Always accessible |
-| Grouped items modal | Cleaner separation |
-
+| Improvement | Implementation |
+|-------------|----------------|
+| Wider drawer | `sm:max-w-2xl` (672px) |
+| Compact card info | Smaller image, tighter spacing |
+| Attention banner | Prominent highlighted section for trigger actions |
+| More history space | Actions collapsed by default |
+| Visual differentiation | Purple for questions, green for commercial updates |
