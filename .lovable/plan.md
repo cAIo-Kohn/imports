@@ -1,18 +1,22 @@
 
 
-## Plan: Responsive Kanban Layout for Development Page
+## Plan: Fix Development Page Layout - Keep Header Fixed
 
 ### Problem
 
-The current Kanban board forces all 9 columns to display with fixed 300px widths, creating ~2844px of horizontal scroll regardless of screen size. The user has to scroll extensively to see all cards and the "New Item" button.
+The entire Development page content (including the header with "New Item" button) is scrolling horizontally because:
+
+1. The `DashboardLayout` wrapper has `p-6 overflow-auto` 
+2. The Kanban board's wide content (9 columns) triggers horizontal scroll on the parent container
+3. This causes the header to scroll off-screen to the left
 
 ### Solution
 
-Make the Kanban board responsive by:
-1. **Reducing column widths** on smaller screens
-2. **Making columns fluid** to use available space
-3. **Ensuring the header stays fixed** so "New Item" is always visible
-4. **Adding responsive column sizing** based on viewport
+Override the parent layout's behavior for the Development page specifically by:
+
+1. **Remove padding from the page wrapper** - The Development page will manage its own padding
+2. **Ensure the header stays fixed** - Apply `overflow-hidden` at the page level and only allow scroll inside the Kanban area
+3. **Make the page take full available space** - Use negative margin or full-bleed approach
 
 ---
 
@@ -20,101 +24,64 @@ Make the Kanban board responsive by:
 
 | File | Changes |
 |------|---------|
-| `src/components/development/KanbanBoard.tsx` | Use responsive column widths, remove fixed minWidth |
-| `src/components/development/KanbanColumn.tsx` | Support dynamic width, compact mode on smaller screens |
-| `src/components/development/DevelopmentCard.tsx` | Adjust card spacing for compact view |
+| `src/pages/Development.tsx` | Add negative margin to counteract layout padding, ensure header is fixed |
 
 ---
 
 ### Implementation Details
 
-#### 1. KanbanBoard.tsx Changes
-
-**Current (forces fixed width):**
-```tsx
-<div
-  style={{ minWidth: `${statusOrder.length * 316}px` }}
-  className="flex gap-4 p-6 min-h-full"
->
+**Current Issue:**
+```
+DashboardLayout (p-6 overflow-auto)
+  └── Development.tsx (flex flex-col h-full)
+        ├── Header (scrolls away!)
+        └── KanbanBoard (ScrollArea - causes parent to expand)
 ```
 
-**New (responsive behavior):**
+**Fix Approach:**
+
+Use negative margin to break out of the parent padding and make the page full-width:
+
 ```tsx
-// Remove hardcoded minWidth
-// Use responsive gap and padding
-<div
-  ref={boardRef}
-  className="flex gap-2 md:gap-3 lg:gap-4 p-4 md:p-6 min-h-full"
->
+// Development.tsx - outer wrapper
+<div className="flex flex-col h-full -m-6 overflow-hidden">
+  {/* Header - stays fixed, has its own padding */}
+  <div className="flex-shrink-0 p-4 md:p-6 border-b bg-background">
+    ...
+  </div>
+  
+  {/* Kanban - scrolls independently */}
+  <div className="flex-1 overflow-hidden">
+    <KanbanBoard ... />
+  </div>
+</div>
 ```
 
-#### 2. KanbanColumn.tsx Changes
+**Key Changes:**
+1. Add `-m-6` to counteract parent's `p-6` padding (full-bleed layout)
+2. Add `overflow-hidden` to prevent page-level scroll
+3. Header keeps its own `p-4 md:p-6` padding
+4. Kanban area stays in `overflow-hidden` container - scroll is handled by ScrollArea inside
 
-**Current:**
-```tsx
-className="flex-shrink-0 w-[300px] rounded-lg..."
-```
+---
 
-**New (responsive widths):**
-```tsx
-// Smaller columns on smaller screens, expandable on larger
-className="flex-shrink-0 w-[220px] md:w-[260px] lg:w-[280px] xl:w-[300px] rounded-lg..."
-```
+### Visual Result
 
-**Width Breakdown:**
-| Screen Size | Column Width | Total for 9 cols |
-|-------------|--------------|------------------|
-| Base (<768px) | 220px | ~2020px |
-| md (768px+) | 260px | ~2380px |
-| lg (1024px+) | 280px | ~2560px |
-| xl (1280px+) | 300px | ~2740px |
-
-#### 3. Compact Card Spacing
-
-Reduce padding on smaller screens:
-
-```tsx
-// DevelopmentCard.tsx
-className="p-2 md:p-3"
-
-// Smaller text on mobile
-<h4 className="font-medium text-xs md:text-sm mb-1 md:mb-2 line-clamp-2">
-```
-
-#### 4. Compact Header on Smaller Screens
-
-Reduce vertical space in the header:
-
-```tsx
-// Development.tsx header
-<div className="flex-shrink-0 p-4 md:p-6 border-b bg-background">
+```text
++------------------------------------------+
+| [Sidebar] | Header (New Item button)     | <- Always visible
+|           |------------------------------|
+|           | [Backlog] [In Progress] ...  | <- Horizontal scroll only here
+|           |                              |
++------------------------------------------+
 ```
 
 ---
 
-### Visual Comparison
+### Summary
 
-**Before:**
-- 9 columns x 300px = 2700px minimum width
-- Large gaps (16px) between columns
-- Header uses full padding
-
-**After:**
-- Columns scale from 220px to 300px based on screen
-- Gaps reduce from 8px to 16px progressively
-- Tighter layout fits more content on screen
-- Maintains horizontal scroll but with less distance
-
----
-
-### Summary of Changes
-
-| File | Lines Changed | Description |
-|------|---------------|-------------|
-| `KanbanBoard.tsx` | ~3 lines | Remove minWidth, responsive gaps/padding |
-| `KanbanColumn.tsx` | ~2 lines | Responsive column widths |
-| `DevelopmentCard.tsx` | ~4 lines | Compact padding and text on mobile |
-| `Development.tsx` | ~2 lines | Reduce header padding on mobile |
-
-This approach maintains the horizontal Kanban layout (which is expected for this type of board) while making it more efficient for different screen sizes by reducing wasted space.
+A single file change:
+- Add `-m-6` to break out of parent padding
+- Add `overflow-hidden` to isolate scroll behavior
+- Header stays fixed at top, only Kanban board scrolls horizontally
 
