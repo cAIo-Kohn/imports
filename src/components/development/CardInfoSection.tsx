@@ -99,8 +99,8 @@ export function CardInfoSection({
   return (
     <div className="space-y-4">
       {/* Image and Title Row */}
-      <div className="flex gap-4">
-        {/* Image - only for non-task cards */}
+      <div className="flex gap-3">
+        {/* Image - only for non-task cards, compact size */}
         {cardType !== 'task' && (
           <div className="flex-shrink-0">
             {itemWithNewFields.image_url ? (
@@ -108,7 +108,7 @@ export function CardInfoSection({
                 <img
                   src={itemWithNewFields.image_url}
                   alt={item.title}
-                  className="w-24 h-24 rounded-lg border object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                  className="w-16 h-16 rounded-lg border object-cover cursor-pointer hover:opacity-90 transition-opacity"
                   onClick={() => window.open(itemWithNewFields.image_url, '_blank')}
                 />
                 {canEdit && (
@@ -122,7 +122,7 @@ export function CardInfoSection({
                 )}
               </div>
             ) : canEdit ? (
-              <div className="w-24 h-24 rounded-lg border border-dashed flex items-center justify-center bg-muted/30">
+              <div className="w-16 h-16 rounded-lg border border-dashed flex items-center justify-center bg-muted/30">
                 <ImageUpload
                   value={null}
                   onChange={onUpdateImage}
@@ -130,7 +130,7 @@ export function CardInfoSection({
                 />
               </div>
             ) : (
-              <div className="w-24 h-24 rounded-lg border bg-muted/30 flex items-center justify-center">
+              <div className="w-16 h-16 rounded-lg border bg-muted/30 flex items-center justify-center">
                 <span className="text-xs text-muted-foreground">No image</span>
               </div>
             )}
@@ -195,13 +195,14 @@ export function CardInfoSection({
         </div>
       </div>
 
-      {/* Desired Outcome */}
-      <div className="bg-muted/30 rounded-lg p-3 border">
-        <Label className="text-xs text-muted-foreground uppercase tracking-wide">Desired Outcome</Label>
-        <p className="text-sm mt-1">
-          {item.description || <span className="text-muted-foreground italic">No description provided</span>}
-        </p>
-      </div>
+      {/* Desired Outcome - compact */}
+      {item.description && (
+        <div className="bg-muted/30 rounded-md p-2 border">
+          <p className="text-sm line-clamp-2">
+            {item.description}
+          </p>
+        </div>
+      )}
 
       {/* Supplier */}
       {item.supplier && (

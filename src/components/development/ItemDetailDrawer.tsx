@@ -225,7 +225,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-xl flex flex-col h-full p-0">
+      <SheetContent className="w-full sm:max-w-2xl flex flex-col h-full p-0">
         {/* Fixed Header */}
         <SheetHeader className="flex-shrink-0 p-6 pb-4 border-b">
           <div className="flex items-start justify-between">
@@ -284,6 +284,13 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               cardId={item.id}
               cardCreatedAt={item.created_at}
               creatorName={creatorProfile?.full_name || creatorProfile?.email || undefined}
+              showAttentionBanner={
+                itemWithNewFields.is_new_for_other_team && (
+                  (isBuyer && itemWithNewFields.created_by_role === 'trader') ||
+                  (isTrader && itemWithNewFields.created_by_role === 'buyer') ||
+                  itemWithNewFields.current_owner === (isBuyer ? 'mor' : 'arc')
+                )
+              }
             />
           </div>
         </ScrollArea>
