@@ -1,0 +1,239 @@
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { format, isToday, isYesterday, parseISO } from 'date-fns';
+import { 
+  MessageCircle, 
+  HelpCircle, 
+  RefreshCw, 
+  ArrowRight, 
+  Package, 
+  DollarSign,
+  Image,
+  Plus,
+  CheckCircle2
+} from 'lucide-react';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { cn } from '@/lib/utils';
+
+interface Activity {
+  id: string;
+  card_id: string;
+  user_id: string;
+  activity_type: string;
+  content: string | null;
+  metadata: Record<string, any> | null;
+  created_at: string;
+  profile?: {
+    full_name: string | null;
+    email: string | null;
+  } | null;
+}
+
+interface HistoryTimelineProps {
+  cardId: string;
+  cardCreatedAt: string;
+  creatorName?: string;
+}
+
+const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
+  comment: <MessageCircle className="h-3.5 w-3.5" />,
+  question: <HelpCircle className="h-3.5 w-3.5" />,
+  status_change: <RefreshCw className="h-3.5 w-3.5" />,
+  ownership_change: <ArrowRight className="h-3.5 w-3.5" />,
+  sample_added: <Package className="h-3.5 w-3.5" />,
+  sample_updated: <Package className="h-3.5 w-3.5" />,
+  commercial_update: <DollarSign className="h-3.5 w-3.5" />,
+  product_added: <Plus className="h-3.5 w-3.5" />,
+  image_updated: <Image className="h-3.5 w-3.5" />,
+  created: <CheckCircle2 className="h-3.5 w-3.5" />,
+};
+
+const ACTIVITY_STYLES: Record<string, string> = {
+  comment: 'bg-blue-100 text-blue-700 border-blue-200',
+  question: 'bg-purple-100 text-purple-700 border-purple-200',
+  status_change: 'bg-amber-100 text-amber-700 border-amber-200',
+  ownership_change: 'bg-green-100 text-green-700 border-green-200',
+  sample_added: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+  sample_updated: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+  commercial_update: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  product_added: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  image_updated: 'bg-pink-100 text-pink-700 border-pink-200',
+  created: 'bg-slate-100 text-slate-700 border-slate-200',
+};
+
+const ACTIVITY_LABELS: Record<string, string> = {
+  comment: 'commented',
+  question: 'asked a question',
+  status_change: 'changed status',
+  ownership_change: 'moved card',
+  sample_added: 'added sample tracking',
+  sample_updated: 'updated sample',
+  commercial_update: 'updated commercial data',
+  product_added: 'added product',
+  image_updated: 'updated image',
+  created: 'created this card',
+};
+
+function formatDateHeader(dateStr: string): string {
+  const date = parseISO(dateStr);
+  if (isToday(date)) return 'Today';
+  if (isYesterday(date)) return 'Yesterday';
+  return format(date, 'MMM d, yyyy');
+}
+
+function groupByDate(activities: Activity[]): Record<string, Activity[]> {
+  return activities.reduce((acc, activity) => {
+    const dateKey = format(parseISO(activity.created_at), 'yyyy-MM-dd');
+    if (!acc[dateKey]) {
+      acc[dateKey] = [];
+    }
+    acc[dateKey].push(activity);
+    return acc;
+  }, {} as Record<string, Activity[]>);
+}
+
+export function HistoryTimeline({ cardId, cardCreatedAt, creatorName }: HistoryTimelineProps) {
+  const { data: activities = [], isLoading } = useQuery({
+    queryKey: ['development-card-activity', cardId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('development_card_activity')
+        .select('*')
+        .eq('card_id', cardId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+
+      // Fetch profiles for activities
+      const userIds = [...new Set(data.map(a => a.user_id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .in('user_id', userIds);
+
+      const profileMap = (profiles || []).reduce((acc, p) => {
+        acc[p.user_id] = p;
+        return acc;
+      }, {} as Record<string, { full_name: string | null; email: string | null }>);
+
+      return data.map(activity => ({
+        ...activity,
+        profile: profileMap[activity.user_id] || null,
+      })) as Activity[];
+    },
+  });
+
+  // Add card creation as the first activity
+  const allActivities: Activity[] = [
+    ...activities,
+    {
+      id: 'card-creation',
+      card_id: cardId,
+      user_id: '',
+      activity_type: 'created',
+      content: null,
+      metadata: null,
+      created_at: cardCreatedAt,
+      profile: creatorName ? { full_name: creatorName, email: null } : null,
+    },
+  ];
+
+  const groupedActivities = groupByDate(allActivities);
+  const sortedDates = Object.keys(groupedActivities).sort((a, b) => b.localeCompare(a));
+
+  const getInitials = (profile: Activity['profile']) => {
+    if (profile?.full_name) {
+      return profile.full_name
+        .split(' ')
+        .map(n => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
+    }
+    if (profile?.email) {
+      return profile.email[0].toUpperCase();
+    }
+    return '?';
+  };
+
+  if (isLoading) {
+    return (
+      <div className="py-8 text-center text-muted-foreground text-sm">
+        Loading history...
+      </div>
+    );
+  }
+
+  if (allActivities.length === 1) {
+    return (
+      <div className="py-8 text-center text-muted-foreground text-sm">
+        <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+        Card created on {format(parseISO(cardCreatedAt), 'dd/MM/yyyy')}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 py-4">
+      {sortedDates.map((dateKey) => (
+        <div key={dateKey}>
+          <div className="sticky top-0 bg-background py-1 mb-3">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              {formatDateHeader(dateKey + 'T00:00:00')}
+            </span>
+          </div>
+          
+          <div className="space-y-3">
+            {groupedActivities[dateKey].map((activity) => (
+              <div 
+                key={activity.id} 
+                className={cn(
+                  "flex gap-3 p-3 rounded-lg border",
+                  ACTIVITY_STYLES[activity.activity_type] || ACTIVITY_STYLES.comment
+                )}
+              >
+                <Avatar className="h-7 w-7 flex-shrink-0">
+                  <AvatarFallback className="text-xs bg-background">
+                    {getInitials(activity.profile)}
+                  </AvatarFallback>
+                </Avatar>
+                
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-sm">
+                      {activity.profile?.full_name || activity.profile?.email || 'Unknown'}
+                    </span>
+                    <span className="flex items-center gap-1 text-xs">
+                      {ACTIVITY_ICONS[activity.activity_type] || ACTIVITY_ICONS.comment}
+                      {ACTIVITY_LABELS[activity.activity_type] || activity.activity_type}
+                    </span>
+                    <span className="text-xs opacity-70">
+                      {format(parseISO(activity.created_at), 'HH:mm')}
+                    </span>
+                  </div>
+                  
+                  {activity.content && (
+                    <p className="text-sm mt-1 whitespace-pre-wrap">
+                      {activity.activity_type === 'question' ? (
+                        <span className="italic">"{activity.content}"</span>
+                      ) : (
+                        activity.content
+                      )}
+                    </p>
+                  )}
+                  
+                  {/* Metadata display for certain types */}
+                  {activity.activity_type === 'commercial_update' && activity.metadata && (
+                    <p className="text-xs mt-1 opacity-80">
+                      {activity.metadata.field?.replace('_', ' ')}: {activity.metadata.value}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
