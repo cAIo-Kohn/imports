@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useUserRole } from '@/hooks/useUserRole';
+import { useAuth } from '@/contexts/AuthContext';
 import { DollarSign, Package, Container } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
+import { MoveCardModal } from './MoveCardModal';
 
 interface CommercialDataSectionProps {
   cardId: string;
@@ -13,7 +16,9 @@ interface CommercialDataSectionProps {
   moq: number | null;
   qtyPerContainer: number | null;
   containerType: string | null;
+  currentOwner: 'mor' | 'arc';
   canEdit: boolean;
+  onOwnerChange?: (newOwner: 'mor' | 'arc') => void;
 }
 
 const CONTAINER_TYPES = [
@@ -28,13 +33,19 @@ export function CommercialDataSection({
   moq,
   qtyPerContainer,
   containerType,
+  currentOwner,
   canEdit,
+  onOwnerChange,
 }: CommercialDataSectionProps) {
+  const { isTrader } = useUserRole();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [localFobPrice, setLocalFobPrice] = useState(fobPriceUsd?.toString() || '');
   const [localMoq, setLocalMoq] = useState(moq?.toString() || '');
   const [localQtyPerContainer, setLocalQtyPerContainer] = useState(qtyPerContainer?.toString() || '');
   const [localContainerType, setLocalContainerType] = useState(containerType || '');
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [pendingField, setPendingField] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalFobPrice(fobPriceUsd?.toString() || '');
@@ -62,14 +73,64 @@ export function CommercialDataSection({
     },
   });
 
+  const moveCardMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) return;
+      
+      const { error } = await (supabase.from('development_items') as any)
+        .update({ 
+          current_owner: 'mor',
+          is_new_for_other_team: true,
+        })
+        .eq('id', cardId);
+      if (error) throw error;
+
+      // Log the movement
+      await supabase.from('development_card_activity').insert({
+        card_id: cardId,
+        user_id: user.id,
+        activity_type: 'ownership_change',
+        content: 'Card moved to MOR (Brazil)',
+        metadata: { new_owner: 'mor', trigger: 'commercial_data' },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      onOwnerChange?.('mor');
+      toast({ title: 'Card moved to MOR (Brazil)' });
+    },
+  });
+
+  // Significant fields that might require buyer input
+  const isSignificantField = (fieldName: string) => {
+    return ['fob_price_usd'].includes(fieldName);
+  };
+
   const handleBlur = (fieldName: string, value: string, isNumeric: boolean = false) => {
     const parsedValue = isNumeric ? (value ? parseFloat(value) : null) : (value || null);
     updateMutation.mutate({ name: fieldName, value: parsedValue });
+
+    // If trader is filling significant field and card is with ARC, prompt to move
+    if (isTrader && currentOwner === 'arc' && isSignificantField(fieldName) && parsedValue) {
+      setPendingField(fieldName);
+      setShowMoveModal(true);
+    }
   };
 
   const handleContainerTypeChange = (value: string) => {
     setLocalContainerType(value);
     updateMutation.mutate({ name: 'container_type', value: value || null });
+  };
+
+  const handleMoveConfirm = () => {
+    moveCardMutation.mutate();
+    setPendingField(null);
+    setShowMoveModal(false);
+  };
+
+  const handleMoveCancel = () => {
+    setPendingField(null);
+    setShowMoveModal(false);
   };
 
   return (
@@ -153,6 +214,16 @@ export function CommercialDataSection({
           </Select>
         </div>
       </div>
+
+      {/* Move Card Modal */}
+      <MoveCardModal
+        open={showMoveModal}
+        onOpenChange={setShowMoveModal}
+        targetOwner="mor"
+        onConfirm={handleMoveConfirm}
+        onCancel={handleMoveCancel}
+        triggerAction="added commercial data"
+      />
     </div>
   );
 }

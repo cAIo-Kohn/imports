@@ -2,13 +2,15 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import { format } from 'date-fns';
-import { Send, MessageCircle, ArrowRight, Package, Plus, CheckCircle } from 'lucide-react';
+import { Send, MessageCircle, ArrowRight, Package, Plus, CheckCircle, HelpCircle, ArrowLeftRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { MoveCardModal } from './MoveCardModal';
 
 interface Activity {
   id: string;
@@ -27,28 +29,44 @@ interface Activity {
 interface UnifiedActivityTimelineProps {
   cardId: string;
   canComment: boolean;
+  currentOwner: 'mor' | 'arc';
+  onOwnerChange?: (newOwner: 'mor' | 'arc') => void;
 }
 
 const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
   comment: <MessageCircle className="h-3 w-3" />,
+  question: <HelpCircle className="h-3 w-3" />,
   status_change: <ArrowRight className="h-3 w-3" />,
   sample_added: <Package className="h-3 w-3" />,
   product_added: <Plus className="h-3 w-3" />,
   created: <CheckCircle className="h-3 w-3" />,
+  ownership_change: <ArrowLeftRight className="h-3 w-3" />,
 };
 
 const ACTIVITY_COLORS: Record<string, string> = {
   comment: 'bg-blue-100 text-blue-600',
+  question: 'bg-purple-100 text-purple-600',
   status_change: 'bg-amber-100 text-amber-600',
   sample_added: 'bg-purple-100 text-purple-600',
   product_added: 'bg-teal-100 text-teal-600',
   created: 'bg-green-100 text-green-600',
+  ownership_change: 'bg-indigo-100 text-indigo-600',
 };
 
-export function UnifiedActivityTimeline({ cardId, canComment }: UnifiedActivityTimelineProps) {
+export function UnifiedActivityTimeline({ cardId, canComment, currentOwner, onOwnerChange }: UnifiedActivityTimelineProps) {
   const { user } = useAuth();
+  const { isTrader, isBuyer } = useUserRole();
   const queryClient = useQueryClient();
-  const [newComment, setNewComment] = useState('');
+  const [newMessage, setNewMessage] = useState('');
+  const [messageType, setMessageType] = useState<'comment' | 'question'>('comment');
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{ type: 'comment' | 'question'; content: string } | null>(null);
+
+  // Determine target owner for questions
+  const getTargetOwner = (): 'mor' | 'arc' => {
+    // If trader asks question, move to MOR; if buyer, move to ARC
+    return isTrader ? 'mor' : 'arc';
+  };
 
   // Fetch activities
   const { data: activities = [], isLoading } = useQuery({
@@ -82,31 +100,112 @@ export function UnifiedActivityTimeline({ cardId, canComment }: UnifiedActivityT
     },
   });
 
-  const addCommentMutation = useMutation({
-    mutationFn: async () => {
-      if (!user?.id || !newComment.trim()) return;
+  const addActivityMutation = useMutation({
+    mutationFn: async ({ type, content }: { type: 'comment' | 'question'; content: string }) => {
+      if (!user?.id || !content.trim()) return;
+      
       const { error } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
-        activity_type: 'comment',
-        content: newComment.trim(),
+        activity_type: type,
+        content: content.trim(),
       });
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
-      setNewComment('');
-      toast({ title: 'Comment added' });
+      setNewMessage('');
+      toast({ title: variables.type === 'question' ? 'Question posted' : 'Comment added' });
     },
     onError: () => {
-      toast({ title: 'Error', description: 'Failed to add comment', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to add activity', variant: 'destructive' });
+    },
+  });
+
+  const moveCardMutation = useMutation({
+    mutationFn: async (targetOwner: 'mor' | 'arc') => {
+      if (!user?.id) return;
+      
+      // Update card owner
+      const { error } = await (supabase.from('development_items') as any)
+        .update({ 
+          current_owner: targetOwner,
+          is_new_for_other_team: true,
+        })
+        .eq('id', cardId);
+      if (error) throw error;
+
+      // Log the movement
+      await supabase.from('development_card_activity').insert({
+        card_id: cardId,
+        user_id: user.id,
+        activity_type: 'ownership_change',
+        content: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}`,
+        metadata: { new_owner: targetOwner },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+      onOwnerChange?.(getTargetOwner());
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newComment.trim()) {
-      addCommentMutation.mutate();
+    if (!newMessage.trim()) return;
+
+    if (messageType === 'question') {
+      // Questions trigger the move prompt
+      setPendingAction({ type: 'question', content: newMessage });
+      setShowMoveModal(true);
+    } else {
+      // Comments don't move cards
+      addActivityMutation.mutate({ type: 'comment', content: newMessage });
+    }
+  };
+
+  const handleMoveConfirm = async () => {
+    if (!pendingAction) return;
+    
+    // First add the activity
+    await addActivityMutation.mutateAsync({ type: pendingAction.type, content: pendingAction.content });
+    
+    // Then move the card
+    await moveCardMutation.mutateAsync(getTargetOwner());
+    
+    setPendingAction(null);
+    setShowMoveModal(false);
+  };
+
+  const handleMoveCancel = async () => {
+    if (!pendingAction) return;
+    
+    // Just add the activity without moving
+    await addActivityMutation.mutateAsync({ type: pendingAction.type, content: pendingAction.content });
+    
+    setPendingAction(null);
+    setShowMoveModal(false);
+  };
+
+  const getActivityLabel = (activity: Activity) => {
+    switch (activity.activity_type) {
+      case 'comment':
+        return 'commented';
+      case 'question':
+        return 'asked a question';
+      case 'status_change':
+        return `changed status to ${activity.metadata?.new_status || 'unknown'}`;
+      case 'sample_added':
+        return 'added a sample';
+      case 'product_added':
+        return 'added a product';
+      case 'ownership_change':
+        return activity.content || 'moved the card';
+      case 'created':
+        return activity.content || 'created this card';
+      default:
+        return activity.activity_type.replace(/_/g, ' ');
     }
   };
 
@@ -125,42 +224,58 @@ export function UnifiedActivityTimeline({ cardId, canComment }: UnifiedActivityT
     return '?';
   };
 
-  const getActivityLabel = (activity: Activity) => {
-    switch (activity.activity_type) {
-      case 'comment':
-        return 'commented';
-      case 'status_change':
-        return `changed status to ${activity.metadata?.new_status || 'unknown'}`;
-      case 'sample_added':
-        return 'added a sample';
-      case 'product_added':
-        return 'added a product';
-      case 'created':
-        return activity.content || 'created this card';
-      default:
-        return activity.activity_type.replace(/_/g, ' ');
-    }
-  };
-
   return (
     <div className="space-y-4">
-      {/* Comment Input */}
+      {/* Comment/Question Input */}
       {canComment && (
-        <form onSubmit={handleSubmit} className="space-y-2">
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {/* Toggle between Comment and Question */}
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={messageType === 'comment' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setMessageType('comment')}
+              className="flex items-center gap-1"
+            >
+              <MessageCircle className="h-3 w-3" />
+              Comment
+            </Button>
+            <Button
+              type="button"
+              variant={messageType === 'question' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setMessageType('question')}
+              className="flex items-center gap-1"
+            >
+              <HelpCircle className="h-3 w-3" />
+              Question
+            </Button>
+          </div>
+          
           <Textarea
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Add a comment or update..."
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder={messageType === 'question' 
+              ? "Ask a question that requires the other team's input..."
+              : "Add a comment or update..."
+            }
             rows={2}
           />
-          <div className="flex justify-end">
+          <div className="flex justify-between items-center">
+            {messageType === 'question' && (
+              <p className="text-xs text-muted-foreground">
+                Questions will prompt to move the card
+              </p>
+            )}
             <Button
               type="submit"
               size="sm"
-              disabled={!newComment.trim() || addCommentMutation.isPending}
+              disabled={!newMessage.trim() || addActivityMutation.isPending}
+              className="ml-auto"
             >
               <Send className="h-3 w-3 mr-1" />
-              {addCommentMutation.isPending ? 'Sending...' : 'Send'}
+              {addActivityMutation.isPending ? 'Sending...' : messageType === 'question' ? 'Ask' : 'Send'}
             </Button>
           </div>
         </form>
@@ -201,8 +316,11 @@ export function UnifiedActivityTimeline({ cardId, canComment }: UnifiedActivityT
                     {format(new Date(activity.created_at), 'dd/MM/yyyy HH:mm')}
                   </span>
                 </div>
-                {activity.activity_type === 'comment' && activity.content && (
-                  <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap bg-muted/50 rounded-md p-2">
+                {(activity.activity_type === 'comment' || activity.activity_type === 'question') && activity.content && (
+                  <p className={cn(
+                    "text-sm text-muted-foreground mt-1 whitespace-pre-wrap rounded-md p-2",
+                    activity.activity_type === 'question' ? 'bg-purple-50 border border-purple-200' : 'bg-muted/50'
+                  )}>
                     {activity.content}
                   </p>
                 )}
@@ -221,6 +339,16 @@ export function UnifiedActivityTimeline({ cardId, canComment }: UnifiedActivityT
           ))
         )}
       </div>
+
+      {/* Move Card Modal */}
+      <MoveCardModal
+        open={showMoveModal}
+        onOpenChange={setShowMoveModal}
+        targetOwner={getTargetOwner()}
+        onConfirm={handleMoveConfirm}
+        onCancel={handleMoveCancel}
+        triggerAction="asked a question"
+      />
     </div>
   );
 }
