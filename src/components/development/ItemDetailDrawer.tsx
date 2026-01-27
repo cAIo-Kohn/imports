@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -11,7 +11,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,6 +29,8 @@ import { SampleTrackingCard } from './SampleTrackingCard';
 import { AddSampleForm } from './AddSampleForm';
 import { UnifiedActivityTimeline } from './UnifiedActivityTimeline';
 import { GroupedItemsEditor } from './GroupedItemsEditor';
+import { ImageUpload } from './ImageUpload';
+import { CommercialDataSection } from './CommercialDataSection';
 import { cn } from '@/lib/utils';
 
 interface ItemDetailDrawerProps {
@@ -96,12 +97,34 @@ const mapNewToOldStatus = (newStatus: DevelopmentCardStatus): string => {
 };
 
 export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerProps) {
-  const { canManageOrders, isTrader } = useUserRole();
+  const { canManageOrders, isTrader, isBuyer } = useUserRole();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('details');
 
   const canManage = canManageOrders || isTrader;
+
+  // Mark as seen when opened by the other team
+  useEffect(() => {
+    const markAsSeen = async () => {
+      if (!item?.id || !open) return;
+      
+      // Check if this card is new for the current user
+      const isNewForMe = (item as any).is_new_for_other_team && (
+        (isBuyer && (item as any).created_by_role === 'trader') ||
+        (isTrader && (item as any).created_by_role === 'buyer')
+      );
+
+      if (isNewForMe) {
+        await (supabase.from('development_items') as any)
+          .update({ is_new_for_other_team: false })
+          .eq('id', item.id);
+        queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      }
+    };
+
+    markAsSeen();
+  }, [item?.id, open, isBuyer, isTrader, queryClient]);
 
   // Fetch samples for this item
   const { data: samples = [] } = useQuery({
@@ -145,9 +168,10 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
       if (updates.description !== undefined) dbUpdates.description = updates.description;
       if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
       if (updates.due_date !== undefined) dbUpdates.due_date = updates.due_date;
+      if ((updates as any).image_url !== undefined) dbUpdates.image_url = (updates as any).image_url;
 
-      const { error } = await supabase
-        .from('development_items')
+      const { error } = await (supabase
+        .from('development_items') as any)
         .update(dbUpdates)
         .eq('id', item.id);
       if (error) throw error;
@@ -163,6 +187,9 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   });
 
   if (!item) return null;
+
+  // Cast to access new fields
+  const itemWithNewFields = item as any;
 
   const currentStatus = mapOldToNewStatus(item.status);
   const cardType = item.card_type || 'item';
@@ -237,13 +264,46 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
 
           {/* Details Tab */}
           <TabsContent value="details" className="space-y-4 mt-4">
+            {/* Picture */}
+            {cardType !== 'task' && (
+              <div className="space-y-2">
+                <Label>Picture</Label>
+                {itemWithNewFields.image_url ? (
+                  <div className="space-y-2">
+                    <img
+                      src={itemWithNewFields.image_url}
+                      alt={item.title}
+                      className="max-h-40 rounded-lg border object-cover cursor-pointer"
+                      onClick={() => window.open(itemWithNewFields.image_url, '_blank')}
+                    />
+                    {canManage && (
+                      <ImageUpload
+                        value={itemWithNewFields.image_url}
+                        onChange={(url) => updateMutation.mutate({ image_url: url } as any)}
+                        folder="cards"
+                      />
+                    )}
+                  </div>
+                ) : canManage ? (
+                  <ImageUpload
+                    value={null}
+                    onChange={(url) => updateMutation.mutate({ image_url: url } as any)}
+                    folder="cards"
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">No picture</p>
+                )}
+              </div>
+            )}
+
+            {/* Desired Outcome */}
             <div className="space-y-2">
-              <Label>Description</Label>
+              <Label>Desired Outcome</Label>
               {canManage ? (
                 <Textarea
                   value={item.description || ''}
                   onChange={(e) => updateMutation.mutate({ description: e.target.value })}
-                  placeholder="Add description..."
+                  placeholder="What is the expected outcome?"
                   rows={4}
                 />
               ) : (
@@ -296,6 +356,18 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               <Label>Supplier</Label>
               <p className="text-sm">{item.supplier?.company_name || '-'}</p>
             </div>
+
+            {/* Commercial Data Section - Only for items, not tasks */}
+            {cardType !== 'task' && (
+              <CommercialDataSection
+                cardId={item.id}
+                fobPriceUsd={itemWithNewFields.fob_price_usd}
+                moq={itemWithNewFields.moq}
+                qtyPerContainer={itemWithNewFields.qty_per_container}
+                containerType={itemWithNewFields.container_type}
+                canEdit={canManage}
+              />
+            )}
 
             <div className="space-y-2 pt-4 border-t">
               <Label className="text-muted-foreground">Metadata</Label>

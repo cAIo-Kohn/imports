@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Plus, X, Package } from 'lucide-react';
+import { Plus, X, Package, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
+import { ImageUpload } from './ImageUpload';
 
 interface GroupedItemsEditorProps {
   cardId: string;
@@ -19,6 +20,7 @@ interface CardProduct {
   product_code: string;
   product_name: string | null;
   notes: string | null;
+  image_url: string | null;
   created_at: string;
   created_by: string;
 }
@@ -28,6 +30,7 @@ export function GroupedItemsEditor({ cardId, canEdit }: GroupedItemsEditorProps)
   const queryClient = useQueryClient();
   const [newProductCode, setNewProductCode] = useState('');
   const [newProductName, setNewProductName] = useState('');
+  const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
 
   // Fetch products for this card
   const { data: products = [], isLoading } = useQuery({
@@ -95,6 +98,23 @@ export function GroupedItemsEditor({ cardId, canEdit }: GroupedItemsEditorProps)
     },
   });
 
+  const updateProductImageMutation = useMutation({
+    mutationFn: async ({ productId, imageUrl }: { productId: string; imageUrl: string | null }) => {
+      const { error } = await (supabase
+        .from('development_card_products') as any)
+        .update({ image_url: imageUrl })
+        .eq('id', productId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-card-products', cardId] });
+      toast({ title: 'Image updated' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to update image', variant: 'destructive' });
+    },
+  });
+
   const handleAddProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProductCode.trim()) {
@@ -150,26 +170,62 @@ export function GroupedItemsEditor({ cardId, canEdit }: GroupedItemsEditorProps)
           {products.map((product) => (
             <div
               key={product.id}
-              className="flex items-center justify-between p-3 rounded-lg border bg-muted/30"
+              className="rounded-lg border bg-muted/30 overflow-hidden"
             >
-              <div className="flex items-center gap-3">
-                <Badge variant="secondary" className="font-mono">
-                  {product.product_code}
-                </Badge>
-                {product.product_name && (
-                  <span className="text-sm">{product.product_name}</span>
+              <div
+                className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50"
+                onClick={() => setExpandedProductId(expandedProductId === product.id ? null : product.id)}
+              >
+                <div className="flex items-center gap-3">
+                  {/* Image indicator */}
+                  <div className="flex-shrink-0">
+                    {product.image_url ? (
+                      <img
+                        src={product.image_url}
+                        alt={product.product_code}
+                        className="h-8 w-8 rounded object-cover border"
+                      />
+                    ) : (
+                      <div className="h-8 w-8 rounded border border-dashed flex items-center justify-center bg-muted">
+                        <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                  <Badge variant="secondary" className="font-mono">
+                    {product.product_code}
+                  </Badge>
+                  {product.product_name && (
+                    <span className="text-sm">{product.product_name}</span>
+                  )}
+                </div>
+                {canEdit && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeProductMutation.mutate(product.id);
+                    }}
+                    disabled={removeProductMutation.isPending}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
                 )}
               </div>
-              {canEdit && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                  onClick={() => removeProductMutation.mutate(product.id)}
-                  disabled={removeProductMutation.isPending}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+              
+              {/* Expanded section for image upload */}
+              {expandedProductId === product.id && canEdit && (
+                <div className="px-3 pb-3 border-t bg-background">
+                  <div className="pt-3">
+                    <p className="text-xs text-muted-foreground mb-2">Product Image</p>
+                    <ImageUpload
+                      value={product.image_url}
+                      onChange={(url) => updateProductImageMutation.mutate({ productId: product.id, imageUrl: url })}
+                      folder={`products/${cardId}`}
+                    />
+                  </div>
+                </div>
               )}
             </div>
           ))}

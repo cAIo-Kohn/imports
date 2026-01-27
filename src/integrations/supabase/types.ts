@@ -79,6 +79,7 @@ export type Database = {
           created_at: string
           created_by: string
           id: string
+          image_url: string | null
           notes: string | null
           product_code: string
           product_name: string | null
@@ -88,6 +89,7 @@ export type Database = {
           created_at?: string
           created_by: string
           id?: string
+          image_url?: string | null
           notes?: string | null
           product_code: string
           product_name?: string | null
@@ -97,6 +99,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           id?: string
+          image_url?: string | null
           notes?: string | null
           product_code?: string
           product_name?: string | null
@@ -197,13 +200,19 @@ export type Database = {
         Row: {
           assigned_to: string | null
           card_type: Database["public"]["Enums"]["development_card_type"] | null
+          container_type: string | null
           created_at: string
           created_by: string
+          created_by_role: string | null
           description: string | null
           due_date: string | null
+          fob_price_usd: number | null
           id: string
+          image_url: string | null
+          is_new_for_other_team: boolean | null
           is_solved: boolean | null
           item_type: Database["public"]["Enums"]["development_item_type"] | null
+          moq: number | null
           position: number | null
           priority:
             | Database["public"]["Enums"]["development_item_priority"]
@@ -212,6 +221,7 @@ export type Database = {
             | Database["public"]["Enums"]["development_product_category"]
             | null
           product_code: string | null
+          qty_per_container: number | null
           status: Database["public"]["Enums"]["development_item_status"]
           supplier_id: string | null
           title: string
@@ -222,15 +232,21 @@ export type Database = {
           card_type?:
             | Database["public"]["Enums"]["development_card_type"]
             | null
+          container_type?: string | null
           created_at?: string
           created_by: string
+          created_by_role?: string | null
           description?: string | null
           due_date?: string | null
+          fob_price_usd?: number | null
           id?: string
+          image_url?: string | null
+          is_new_for_other_team?: boolean | null
           is_solved?: boolean | null
           item_type?:
             | Database["public"]["Enums"]["development_item_type"]
             | null
+          moq?: number | null
           position?: number | null
           priority?:
             | Database["public"]["Enums"]["development_item_priority"]
@@ -239,6 +255,7 @@ export type Database = {
             | Database["public"]["Enums"]["development_product_category"]
             | null
           product_code?: string | null
+          qty_per_container?: number | null
           status?: Database["public"]["Enums"]["development_item_status"]
           supplier_id?: string | null
           title: string
@@ -249,15 +266,21 @@ export type Database = {
           card_type?:
             | Database["public"]["Enums"]["development_card_type"]
             | null
+          container_type?: string | null
           created_at?: string
           created_by?: string
+          created_by_role?: string | null
           description?: string | null
           due_date?: string | null
+          fob_price_usd?: number | null
           id?: string
+          image_url?: string | null
+          is_new_for_other_team?: boolean | null
           is_solved?: boolean | null
           item_type?:
             | Database["public"]["Enums"]["development_item_type"]
             | null
+          moq?: number | null
           position?: number | null
           priority?:
             | Database["public"]["Enums"]["development_item_priority"]
@@ -266,6 +289,7 @@ export type Database = {
             | Database["public"]["Enums"]["development_product_category"]
             | null
           product_code?: string | null
+          qty_per_container?: number | null
           status?: Database["public"]["Enums"]["development_item_status"]
           supplier_id?: string | null
           title?: string

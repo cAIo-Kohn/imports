@@ -1,8 +1,9 @@
 import { format } from 'date-fns';
-import { Calendar, Package, Layers, ListTodo, Box, Leaf } from 'lucide-react';
+import { Calendar, Package, Layers, ListTodo, Box, Leaf, Sparkles } from 'lucide-react';
 import { DevelopmentItem, DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useUserRole } from '@/hooks/useUserRole';
 
 interface DevelopmentCardProps {
   item: DevelopmentItem;
@@ -48,14 +49,30 @@ export function DevelopmentCard({
   onDragStart,
   canDrag,
 }: DevelopmentCardProps) {
+  const { isBuyer, isTrader } = useUserRole();
   const cardType = item.card_type || 'item';
+  
+  // Check if this card is "new" for the current user (cross-team notification)
+  const itemWithNewFields = item as any;
+  const isNewForMe = itemWithNewFields.is_new_for_other_team && (
+    (isBuyer && itemWithNewFields.created_by_role === 'trader') ||
+    (isTrader && itemWithNewFields.created_by_role === 'buyer')
+  );
+
+  // Determine the highlight color based on who created it
+  const highlightClass = isNewForMe
+    ? itemWithNewFields.created_by_role === 'buyer'
+      ? 'ring-2 ring-blue-400 ring-offset-1'
+      : 'ring-2 ring-emerald-400 ring-offset-1'
+    : '';
   
   return (
     <div
       className={cn(
         'bg-background rounded-md border shadow-sm p-2 md:p-3 cursor-pointer transition-all',
         'hover:shadow-md hover:border-primary/50',
-        canDrag && 'cursor-grab active:cursor-grabbing'
+        canDrag && 'cursor-grab active:cursor-grabbing',
+        highlightClass
       )}
       onClick={onClick}
       draggable={canDrag}
@@ -63,6 +80,14 @@ export function DevelopmentCard({
     >
       {/* Card Type, Product Category & Priority */}
       <div className="flex items-center gap-1.5 mb-1 md:mb-2 flex-wrap">
+        {isNewForMe && (
+          <Badge
+            className="text-[10px] px-1.5 py-0 bg-gradient-to-r from-purple-500 to-pink-500 text-white animate-pulse flex items-center gap-1"
+          >
+            <Sparkles className="h-3 w-3" />
+            NEW
+          </Badge>
+        )}
         <Badge
           variant="outline"
           className="text-[10px] px-1.5 py-0 flex items-center gap-1"
