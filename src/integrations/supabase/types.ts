@@ -35,6 +35,164 @@ export type Database = {
         }
         Relationships: []
       }
+      development_item_comments: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          item_id: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          item_id: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          item_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "development_item_comments_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "development_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      development_item_samples: {
+        Row: {
+          actual_arrival: string | null
+          courier_name: string | null
+          created_at: string
+          estimated_arrival: string | null
+          id: string
+          item_id: string
+          notes: string | null
+          quantity: number | null
+          shipped_date: string | null
+          status: Database["public"]["Enums"]["sample_shipment_status"] | null
+          tracking_number: string | null
+        }
+        Insert: {
+          actual_arrival?: string | null
+          courier_name?: string | null
+          created_at?: string
+          estimated_arrival?: string | null
+          id?: string
+          item_id: string
+          notes?: string | null
+          quantity?: number | null
+          shipped_date?: string | null
+          status?: Database["public"]["Enums"]["sample_shipment_status"] | null
+          tracking_number?: string | null
+        }
+        Update: {
+          actual_arrival?: string | null
+          courier_name?: string | null
+          created_at?: string
+          estimated_arrival?: string | null
+          id?: string
+          item_id?: string
+          notes?: string | null
+          quantity?: number | null
+          shipped_date?: string | null
+          status?: Database["public"]["Enums"]["sample_shipment_status"] | null
+          tracking_number?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "development_item_samples_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "development_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      development_items: {
+        Row: {
+          assigned_to: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          due_date: string | null
+          id: string
+          item_type: Database["public"]["Enums"]["development_item_type"] | null
+          position: number | null
+          priority:
+            | Database["public"]["Enums"]["development_item_priority"]
+            | null
+          product_code: string | null
+          status: Database["public"]["Enums"]["development_item_status"]
+          supplier_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string
+          created_by: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          item_type?:
+            | Database["public"]["Enums"]["development_item_type"]
+            | null
+          position?: number | null
+          priority?:
+            | Database["public"]["Enums"]["development_item_priority"]
+            | null
+          product_code?: string | null
+          status?: Database["public"]["Enums"]["development_item_status"]
+          supplier_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          item_type?:
+            | Database["public"]["Enums"]["development_item_type"]
+            | null
+          position?: number | null
+          priority?:
+            | Database["public"]["Enums"]["development_item_priority"]
+            | null
+          product_code?: string | null
+          status?: Database["public"]["Enums"]["development_item_status"]
+          supplier_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "development_items_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_health_summary"
+            referencedColumns: ["supplier_id"]
+          },
+          {
+            foreignKeyName: "development_items_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_snapshots: {
         Row: {
           created_at: string
@@ -924,6 +1082,23 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "buyer" | "viewer" | "trader"
+      development_item_priority: "low" | "medium" | "high" | "urgent"
+      development_item_status:
+        | "backlog"
+        | "in_progress"
+        | "waiting_supplier"
+        | "sample_requested"
+        | "sample_in_transit"
+        | "sample_received"
+        | "under_review"
+        | "approved"
+        | "rejected"
+      development_item_type: "new_item" | "sample" | "development"
+      sample_shipment_status:
+        | "pending"
+        | "in_transit"
+        | "delivered"
+        | "returned"
       unit_of_measure:
         | "pcs"
         | "kg"
@@ -1063,6 +1238,25 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "buyer", "viewer", "trader"],
+      development_item_priority: ["low", "medium", "high", "urgent"],
+      development_item_status: [
+        "backlog",
+        "in_progress",
+        "waiting_supplier",
+        "sample_requested",
+        "sample_in_transit",
+        "sample_received",
+        "under_review",
+        "approved",
+        "rejected",
+      ],
+      development_item_type: ["new_item", "sample", "development"],
+      sample_shipment_status: [
+        "pending",
+        "in_transit",
+        "delivered",
+        "returned",
+      ],
       unit_of_measure: [
         "pcs",
         "kg",

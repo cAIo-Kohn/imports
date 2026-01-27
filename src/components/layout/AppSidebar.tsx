@@ -1,4 +1,4 @@
-import { Package, Factory, Building2, FolderTree, LayoutDashboard, LogOut, Settings, TrendingUp, ShoppingCart, UserCheck, Users } from 'lucide-react';
+import { Package, Factory, Building2, FolderTree, LayoutDashboard, LogOut, Settings, TrendingUp, ShoppingCart, UserCheck, Users, Lightbulb } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 
 const menuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
+  { title: 'New Items & Samples', url: '/development', icon: Lightbulb },
   { title: 'Products', url: '/products', icon: Package },
   { title: 'Suppliers', url: '/suppliers', icon: Factory },
   { title: 'Units', url: '/units', icon: Building2 },
