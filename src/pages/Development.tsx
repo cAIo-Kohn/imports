@@ -23,6 +23,7 @@ import { toast } from '@/hooks/use-toast';
 export type DevelopmentCardStatus = 'pending' | 'in_progress' | 'waiting' | 'solved';
 export type DevelopmentCardType = 'item' | 'item_group' | 'task';
 export type DevelopmentItemPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type DevelopmentProductCategory = 'final_product' | 'raw_material';
 
 // Legacy types kept for backward compatibility during transition
 export type DevelopmentItemStatus = 
@@ -46,6 +47,7 @@ export interface DevelopmentItem {
   priority: DevelopmentItemPriority;
   item_type: DevelopmentItemType;
   card_type: DevelopmentCardType;
+  product_category: DevelopmentProductCategory | null;
   is_solved: boolean;
   product_code: string | null;
   supplier_id: string | null;

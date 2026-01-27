@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
-import { Calendar, Package, Layers, ListTodo } from 'lucide-react';
-import { DevelopmentItem, DevelopmentItemPriority, DevelopmentCardType } from '@/pages/Development';
+import { Calendar, Package, Layers, ListTodo, Box, Leaf } from 'lucide-react';
+import { DevelopmentItem, DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
@@ -37,6 +37,11 @@ const CARD_TYPE_LABELS: Record<DevelopmentCardType, string> = {
   task: 'Task',
 };
 
+const PRODUCT_CATEGORY_CONFIG: Record<DevelopmentProductCategory, { label: string; icon: React.ReactNode; className: string }> = {
+  final_product: { label: 'Final', icon: <Box className="h-3 w-3" />, className: 'bg-blue-100 text-blue-700 border-blue-200' },
+  raw_material: { label: 'Raw', icon: <Leaf className="h-3 w-3" />, className: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+};
+
 export function DevelopmentCard({
   item,
   onClick,
@@ -56,8 +61,8 @@ export function DevelopmentCard({
       draggable={canDrag}
       onDragStart={(e) => onDragStart(e, item.id)}
     >
-      {/* Card Type & Priority */}
-      <div className="flex items-center gap-2 mb-1 md:mb-2 flex-wrap">
+      {/* Card Type, Product Category & Priority */}
+      <div className="flex items-center gap-1.5 mb-1 md:mb-2 flex-wrap">
         <Badge
           variant="outline"
           className="text-[10px] px-1.5 py-0 flex items-center gap-1"
@@ -65,6 +70,15 @@ export function DevelopmentCard({
           {CARD_TYPE_ICONS[cardType]}
           {CARD_TYPE_LABELS[cardType]}
         </Badge>
+        {item.product_category && cardType !== 'task' && (
+          <Badge
+            variant="outline"
+            className={cn('text-[10px] px-1.5 py-0 flex items-center gap-1', PRODUCT_CATEGORY_CONFIG[item.product_category].className)}
+          >
+            {PRODUCT_CATEGORY_CONFIG[item.product_category].icon}
+            {PRODUCT_CATEGORY_CONFIG[item.product_category].label}
+          </Badge>
+        )}
         <Badge
           className={cn('text-[10px] px-1.5 py-0', PRIORITY_STYLES[item.priority])}
         >

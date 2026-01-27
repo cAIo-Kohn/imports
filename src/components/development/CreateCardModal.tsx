@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { DevelopmentItemPriority, DevelopmentCardType } from '@/pages/Development';
+import { DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
 import { Package, ListTodo, Plus, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
@@ -45,6 +45,7 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
   
   // Item form state
   const [itemMode, setItemMode] = useState<'individual' | 'group'>('individual');
+  const [productCategory, setProductCategory] = useState<DevelopmentProductCategory | ''>('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<DevelopmentItemPriority>('medium');
@@ -80,19 +81,21 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
           : 'item';
 
       // Create the main card
-      const { data: card, error } = await supabase
-        .from('development_items')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: card, error } = await (supabase
+        .from('development_items') as any)
         .insert({
           title,
           description: description || null,
           priority,
-          item_type: 'new_item', // Keep for backward compatibility
+          item_type: 'new_item',
           card_type: cardType,
+          product_category: activeTab === 'item' ? productCategory || null : null,
           product_code: itemMode === 'individual' ? productCode || null : null,
           supplier_id: activeTab === 'item' ? (supplierId || null) : null,
           due_date: dueDate || null,
           created_by: user?.id,
-          status: 'backlog', // Maps to 'pending' in new flow
+          status: 'backlog',
           is_solved: false,
         })
         .select()
@@ -149,6 +152,7 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
   const resetForm = () => {
     setActiveTab('item');
     setItemMode('individual');
+    setProductCategory('');
     setTitle('');
     setDescription('');
     setPriority('medium');
@@ -197,7 +201,17 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
       return;
     }
 
-    if (itemMode === 'group' && groupProducts.length === 0) {
+    // Product category is mandatory for items (not tasks)
+    if (activeTab === 'item' && !productCategory) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please select whether this is a Final Product or Raw Material',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (activeTab === 'item' && itemMode === 'group' && groupProducts.length === 0) {
       toast({
         title: 'Validation Error',
         description: 'Add at least one product to the group',
@@ -231,6 +245,31 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
           <form onSubmit={handleSubmit} className="space-y-4 mt-4">
             {/* Item Tab */}
             <TabsContent value="item" className="space-y-4 mt-0">
+              {/* Product Category Selection - MANDATORY */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1">
+                  Product Category <span className="text-destructive">*</span>
+                </Label>
+                <RadioGroup
+                  value={productCategory}
+                  onValueChange={(v) => setProductCategory(v as DevelopmentProductCategory)}
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="final_product" id="final_product" />
+                    <Label htmlFor="final_product" className="cursor-pointer">
+                      Final Product
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="raw_material" id="raw_material" />
+                    <Label htmlFor="raw_material" className="cursor-pointer">
+                      Raw Material
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
               {/* Individual vs Group Selection */}
               <div className="space-y-2">
                 <Label>Item Type</Label>
