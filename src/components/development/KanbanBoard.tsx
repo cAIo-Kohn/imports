@@ -85,8 +85,7 @@ export function KanbanBoard({
     <ScrollArea className="h-full">
       <div
         ref={boardRef}
-        className="flex gap-4 p-6 min-h-full"
-        style={{ minWidth: `${statusOrder.length * 316}px` }}
+        className="flex gap-2 md:gap-3 lg:gap-4 p-4 md:p-6 min-h-full"
       >
         {statusOrder.map((status) => (
           <KanbanColumn
