@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Filter, Eye, EyeOff, Trash2 } from 'lucide-react';
+import { Plus, Search, Filter, Eye, EyeOff, Trash2, Users } from 'lucide-react';
 import { TeamSection } from '@/components/development/TeamSection';
 import { CreateCardModal } from '@/components/development/CreateCardModal';
 import { ItemDetailDrawer } from '@/components/development/ItemDetailDrawer';
@@ -104,6 +104,7 @@ export default function Development() {
   const [searchTerm, setSearchTerm] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [cardTypeFilter, setCardTypeFilter] = useState<string>('all');
+  const [creatorRoleFilter, setCreatorRoleFilter] = useState<string>('all');
   const [showSolved, setShowSolved] = useState(false);
   const [showDeleted, setShowDeleted] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -227,6 +228,8 @@ export default function Development() {
     
     const matchesPriority = priorityFilter === 'all' || item.priority === priorityFilter;
     const matchesCardType = cardTypeFilter === 'all' || item.card_type === cardTypeFilter;
+    const matchesCreatorRole = creatorRoleFilter === 'all' || 
+      (item as any).created_by_role === creatorRoleFilter;
     
     // Map old status to new for solved filtering
     const mappedStatus = mapOldStatusToNew(item.status);
@@ -236,7 +239,7 @@ export default function Development() {
     const isDeleted = !!item.deleted_at;
     const matchesDeletedFilter = showDeleted ? isDeleted : !isDeleted;
     
-    return matchesSearch && matchesPriority && matchesCardType && matchesSolvedFilter && matchesDeletedFilter;
+    return matchesSearch && matchesPriority && matchesCardType && matchesCreatorRole && matchesSolvedFilter && matchesDeletedFilter;
   });
 
   // Group items by owner (MOR/ARC)
@@ -353,6 +356,21 @@ export default function Development() {
               <SelectItem value="item">Single Item</SelectItem>
               <SelectItem value="item_group">Item Group</SelectItem>
               <SelectItem value="task">Task</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={creatorRoleFilter} onValueChange={setCreatorRoleFilter}>
+            <SelectTrigger className="w-[160px]">
+              <Users className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Department" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Departments</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
+              <SelectItem value="buyer">Buyer</SelectItem>
+              <SelectItem value="quality">Quality</SelectItem>
+              <SelectItem value="marketing">Marketing</SelectItem>
+              <SelectItem value="trader">Trader</SelectItem>
             </SelectContent>
           </Select>
 
