@@ -88,6 +88,11 @@ const ACTIVITY_LABELS: Record<string, string> = {
   created: 'created this card',
 };
 
+// Primary activity types get full cards; all others are compact
+const PRIMARY_ACTIVITY_TYPES = ['comment', 'question', 'answer'];
+
+const isCompactActivity = (type: string) => !PRIMARY_ACTIVITY_TYPES.includes(type);
+
 function formatDateHeader(dateStr: string): string {
   const date = parseISO(dateStr);
   if (isToday(date)) return 'Today';
@@ -104,6 +109,44 @@ function groupByDate(activities: Activity[]): Record<string, Activity[]> {
     acc[dateKey].push(activity);
     return acc;
   }, {} as Record<string, Activity[]>);
+}
+
+// Compact single-line row for system activities
+function CompactActivityRow({ activity }: { activity: Activity }) {
+  const firstName = activity.profile?.full_name?.split(' ')[0] || 'Someone';
+  const label = ACTIVITY_LABELS[activity.activity_type] || activity.activity_type.replace(/_/g, ' ');
+  
+  // Build inline content based on activity type
+  let inlineContent = '';
+  if (activity.activity_type === 'commercial_update' && activity.metadata) {
+    const field = activity.metadata.field?.replace(/_/g, ' ');
+    inlineContent = `${field}: ${activity.metadata.value}`;
+  } else if (activity.activity_type === 'ownership_change' && activity.content) {
+    // Extract target from content like "Card moved to ARC (China)"
+    const match = activity.content.match(/to (.*)/);
+    inlineContent = match ? match[1] : '';
+  } else if (activity.content) {
+    inlineContent = activity.content;
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground py-1 px-1">
+      <span className="flex-shrink-0 opacity-70">
+        {ACTIVITY_ICONS[activity.activity_type] || ACTIVITY_ICONS.created}
+      </span>
+      <span className="font-medium">{firstName}</span>
+      <span>{label}</span>
+      {inlineContent && (
+        <>
+          <span className="opacity-50">—</span>
+          <span className="truncate max-w-[200px]">{inlineContent}</span>
+        </>
+      )}
+      <span className="opacity-50 flex-shrink-0">
+        • {format(parseISO(activity.created_at), 'HH:mm')}
+      </span>
+    </div>
+  );
 }
 
 // Attention Banner Component for highlighting important actions
@@ -365,8 +408,13 @@ export function HistoryTimeline({
             </span>
           </div>
           
-          <div className="space-y-3">
+          <div className="space-y-2">
             {groupedActivities[dateKey].map((activity) => {
+              // Render compact row for system activities
+              if (isCompactActivity(activity.activity_type)) {
+                return <CompactActivityRow key={activity.id} activity={activity} />;
+              }
+              
               const isQuestion = activity.activity_type === 'question';
               const isAnswer = activity.activity_type === 'answer';
               const isResolved = isQuestion && activity.metadata?.resolved;
