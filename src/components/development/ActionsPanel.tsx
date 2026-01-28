@@ -23,7 +23,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { toast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
+import { cn, formatBrazilianNumber, parseBrazilianNumber } from '@/lib/utils';
 import { MoveCardModal } from './MoveCardModal';
 import { AddSampleForm } from './AddSampleForm';
 import { SampleTrackingCard } from './SampleTrackingCard';
@@ -73,11 +73,43 @@ export function ActionsPanel({
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveModalTrigger, setMoveModalTrigger] = useState<'question' | 'commercial'>('question');
 
-  // Commercial data state
-  const [localFobPrice, setLocalFobPrice] = useState(fobPriceUsd?.toString() || '');
-  const [localMoq, setLocalMoq] = useState(moq?.toString() || '');
-  const [localQtyPerContainer, setLocalQtyPerContainer] = useState(qtyPerContainer?.toString() || '');
+  // Commercial data state - initialize with formatted values
+  const [localFobPrice, setLocalFobPrice] = useState(
+    fobPriceUsd ? formatBrazilianNumber(fobPriceUsd, 2) : ''
+  );
+  const [localMoq, setLocalMoq] = useState(
+    moq ? formatBrazilianNumber(moq, 0) : ''
+  );
+  const [localQtyPerContainer, setLocalQtyPerContainer] = useState(
+    qtyPerContainer ? formatBrazilianNumber(qtyPerContainer, 0) : ''
+  );
   const [localContainerType, setLocalContainerType] = useState(containerType || '');
+
+  // Formatting handlers for Brazilian number format
+  const handleFobPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let input = e.target.value;
+    // Remove non-numeric except comma
+    input = input.replace(/[^\d,]/g, '');
+    // Only allow one comma
+    const parts = input.split(',');
+    if (parts.length > 2) input = parts[0] + ',' + parts.slice(1).join('');
+    // Limit decimal places to 2
+    if (parts[1]?.length > 2) input = parts[0] + ',' + parts[1].slice(0, 2);
+    
+    // Format with thousand separators
+    const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const formatted = parts.length > 1 ? `${integerPart},${parts[1]}` : integerPart;
+    
+    setLocalFobPrice(formatted);
+  };
+
+  const handleIntegerChange = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Remove all non-digits
+    const digits = e.target.value.replace(/\D/g, '');
+    // Format with thousand separators
+    const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    setter(formatted);
+  };
 
   // Fetch samples
   const { data: samples = [] } = useQuery({
@@ -156,9 +188,9 @@ export function ActionsPanel({
         throw new Error('All commercial data fields are required');
       }
 
-      const fobValue = parseFloat(localFobPrice);
-      const moqValue = parseInt(localMoq);
-      const qtyValue = parseInt(localQtyPerContainer);
+      const fobValue = parseBrazilianNumber(localFobPrice);
+      const moqValue = parseBrazilianNumber(localMoq);
+      const qtyValue = parseBrazilianNumber(localQtyPerContainer);
 
       // Batch update all commercial fields
       const { error } = await (supabase.from('development_items') as any)
@@ -364,12 +396,11 @@ export function ActionsPanel({
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                     <Input
                       id="fob-price"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0,00"
                       value={localFobPrice}
-                      onChange={(e) => setLocalFobPrice(e.target.value)}
+                      onChange={handleFobPriceChange}
                       className="pl-6 h-8 text-sm"
                     />
                   </div>
@@ -382,11 +413,11 @@ export function ActionsPanel({
                   </Label>
                   <Input
                     id="moq"
-                    type="number"
-                    min="0"
-                    placeholder="Min order qty"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
                     value={localMoq}
-                    onChange={(e) => setLocalMoq(e.target.value)}
+                    onChange={handleIntegerChange(setLocalMoq)}
                     className="h-8 text-sm"
                   />
                 </div>
@@ -398,11 +429,11 @@ export function ActionsPanel({
                   </Label>
                   <Input
                     id="qty-container"
-                    type="number"
-                    min="0"
-                    placeholder="Qty per container"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
                     value={localQtyPerContainer}
-                    onChange={(e) => setLocalQtyPerContainer(e.target.value)}
+                    onChange={handleIntegerChange(setLocalQtyPerContainer)}
                     className="h-8 text-sm"
                   />
                 </div>
