@@ -15,7 +15,11 @@ import {
   CheckCircle2,
   Reply,
   Check,
-  Lightbulb
+  Lightbulb,
+  Truck,
+  PackageCheck,
+  CheckCircle,
+  XCircle
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -23,6 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { InlineReplyBox } from './InlineReplyBox';
+import { InlineSampleShipForm } from './InlineSampleShipForm';
 
 interface Activity {
   id: string;
@@ -56,6 +61,11 @@ const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
   ownership_change: <ArrowRight className="h-3.5 w-3.5" />,
   sample_added: <Package className="h-3.5 w-3.5" />,
   sample_updated: <Package className="h-3.5 w-3.5" />,
+  sample_requested: <Package className="h-3.5 w-3.5" />,
+  sample_shipped: <Truck className="h-3.5 w-3.5" />,
+  sample_arrived: <PackageCheck className="h-3.5 w-3.5" />,
+  sample_approved: <CheckCircle className="h-3.5 w-3.5" />,
+  sample_rejected: <XCircle className="h-3.5 w-3.5" />,
   commercial_update: <DollarSign className="h-3.5 w-3.5" />,
   product_added: <Plus className="h-3.5 w-3.5" />,
   image_updated: <Image className="h-3.5 w-3.5" />,
@@ -70,6 +80,11 @@ const ACTIVITY_STYLES: Record<string, string> = {
   ownership_change: 'bg-green-100 text-green-700 border-green-200',
   sample_added: 'bg-cyan-100 text-cyan-700 border-cyan-200',
   sample_updated: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+  sample_requested: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+  sample_shipped: 'bg-blue-100 text-blue-700 border-blue-200',
+  sample_arrived: 'bg-green-100 text-green-700 border-green-200',
+  sample_approved: 'bg-green-100 text-green-700 border-green-200',
+  sample_rejected: 'bg-red-100 text-red-700 border-red-200',
   commercial_update: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   product_added: 'bg-indigo-100 text-indigo-700 border-indigo-200',
   image_updated: 'bg-pink-100 text-pink-700 border-pink-200',
@@ -84,6 +99,11 @@ const ACTIVITY_LABELS: Record<string, string> = {
   ownership_change: 'moved card',
   sample_added: 'added sample tracking',
   sample_updated: 'updated sample',
+  sample_requested: 'requested sample',
+  sample_shipped: 'shipped sample',
+  sample_arrived: 'sample arrived',
+  sample_approved: 'approved sample',
+  sample_rejected: 'rejected sample',
   commercial_update: 'updated commercial data',
   product_added: 'added product',
   image_updated: 'updated image',
@@ -235,22 +255,154 @@ function AttentionBanner({
   );
 }
 
+// Sample Requested Banner - for China to add tracking
+interface SampleRequestedBannerProps {
+  activity: Activity;
+  cardId: string;
+  currentOwner: 'mor' | 'arc';
+  onSuccess: () => void;
+}
+
+function SampleRequestedBanner({ 
+  activity, 
+  cardId, 
+  currentOwner, 
+  onSuccess 
+}: SampleRequestedBannerProps) {
+  const [showShipForm, setShowShipForm] = useState(false);
+  
+  const getInitials = (profile: Activity['profile']) => {
+    if (profile?.full_name) {
+      return profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    }
+    if (profile?.email) {
+      return profile.email[0].toUpperCase();
+    }
+    return '?';
+  };
+
+  return (
+    <div className="rounded-lg p-4 mb-4 border-2 animate-pulse bg-cyan-50 border-cyan-300 dark:bg-cyan-950/30 dark:border-cyan-700">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 font-medium">
+          <Package className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+          <span className="text-sm text-cyan-800 dark:text-cyan-200">
+            Sample Requested
+          </span>
+        </div>
+        {!showShipForm && (
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => setShowShipForm(true)}
+            className="bg-white hover:bg-cyan-100 border-cyan-300 text-cyan-700 dark:bg-cyan-950 dark:hover:bg-cyan-900 dark:border-cyan-600 dark:text-cyan-200"
+          >
+            <Truck className="h-3 w-3 mr-1" />
+            Add Tracking
+          </Button>
+        )}
+      </div>
+      <div className="bg-white dark:bg-background rounded-lg p-3 border">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+          <Avatar className="h-5 w-5">
+            <AvatarFallback className="text-[10px]">{getInitials(activity.profile)}</AvatarFallback>
+          </Avatar>
+          <span>{activity.profile?.full_name || activity.profile?.email || 'Unknown'}</span>
+          <span className="opacity-70">• {format(parseISO(activity.created_at), 'HH:mm')}</span>
+        </div>
+        <p className="text-sm font-medium">
+          {activity.content || 'Sample requested'}
+        </p>
+      </div>
+      
+      {showShipForm && (
+        <InlineSampleShipForm
+          cardId={cardId}
+          currentOwner={currentOwner}
+          onClose={() => setShowShipForm(false)}
+          onSuccess={() => {
+            setShowShipForm(false);
+            onSuccess();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 // Next Step Prompt Component
 interface NextStepPromptProps {
+  cardId: string;
   cardType: 'item' | 'item_group' | 'task';
   triggerType?: 'commercial' | 'ownership';
+  currentOwner: 'mor' | 'arc';
   onRequestSample: () => void;
   onAskQuestion: () => void;
   onAddComment: () => void;
+  onOwnerChange?: () => void;
 }
 
 function NextStepPrompt({ 
+  cardId,
   cardType,
   triggerType,
+  currentOwner,
   onRequestSample, 
   onAskQuestion, 
   onAddComment,
+  onOwnerChange,
 }: NextStepPromptProps) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [isRequesting, setIsRequesting] = useState(false);
+
+  const handleRequestSample = async () => {
+    if (!user?.id) return;
+    setIsRequesting(true);
+    
+    try {
+      // 1. Log sample_requested activity
+      const { error: activityError } = await supabase
+        .from('development_card_activity')
+        .insert({
+          card_id: cardId,
+          user_id: user.id,
+          activity_type: 'sample_requested',
+          content: 'Sample requested',
+        });
+      
+      if (activityError) throw activityError;
+
+      // 2. Move card to ARC (China)
+      const { error: moveError } = await (supabase.from('development_items') as any)
+        .update({ 
+          current_owner: 'arc',
+          is_new_for_other_team: true,
+        })
+        .eq('id', cardId);
+      
+      if (moveError) throw moveError;
+
+      // 3. Log ownership change
+      await supabase.from('development_card_activity').insert({
+        card_id: cardId,
+        user_id: user.id,
+        activity_type: 'ownership_change',
+        content: 'Card moved to ARC (China)',
+        metadata: { new_owner: 'arc', trigger: 'sample_request' },
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+      toast({ title: 'Sample requested & card moved to China' });
+      onOwnerChange?.();
+    } catch (error) {
+      toast({ title: 'Error', description: String(error), variant: 'destructive' });
+    } finally {
+      setIsRequesting(false);
+    }
+  };
+
   return (
     <div className="rounded-lg p-4 mb-4 border-2 bg-sky-50 border-sky-300 dark:bg-sky-950/30 dark:border-sky-700">
       <div className="flex items-center gap-2 mb-3">
@@ -267,11 +419,12 @@ function NextStepPrompt({
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={onRequestSample}
+            onClick={handleRequestSample}
+            disabled={isRequesting}
             className="bg-white hover:bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-950 dark:hover:bg-sky-900 dark:border-sky-600 dark:text-sky-200"
           >
             <Package className="h-3 w-3 mr-1" />
-            Request Sample
+            {isRequesting ? 'Requesting...' : 'Request Sample'}
           </Button>
         )}
         <Button 
@@ -460,10 +613,29 @@ export function HistoryTimeline({
     a.metadata?.trigger === 'commercial'
   );
 
+  // Find sample_requested activity (for China to show "Add Tracking" banner)
+  const sampleRequestedActivity = activities.find(a => 
+    a.activity_type === 'sample_requested'
+  );
+  
+  // Check if sample was already shipped after request
+  const sampleShippedAfterRequest = sampleRequestedActivity && activities.find(a => 
+    a.activity_type === 'sample_shipped' && 
+    new Date(a.created_at) > new Date(sampleRequestedActivity.created_at)
+  );
+  
+  // Show sample requested banner only if sample wasn't shipped yet and card is with ARC
+  const showSampleRequestedBanner = 
+    showAttentionBanner && 
+    sampleRequestedActivity && 
+    !sampleShippedAfterRequest &&
+    currentOwner === 'arc';
+
   // Show next step prompt when commercial data was recently set and no unresolved questions
   const showNextStepPrompt = 
     showAttentionBanner && 
     !firstUnresolvedQuestion &&
+    !showSampleRequestedBanner &&
     (mostRecentCommercialUpdate || commercialTriggeredMove);
   
   // Determine trigger type for prompt messaging
@@ -471,20 +643,36 @@ export function HistoryTimeline({
 
   return (
     <div className="space-y-6 py-4">
+      {/* Sample Requested Banner - for China to add tracking */}
+      {showSampleRequestedBanner && sampleRequestedActivity && (
+        <SampleRequestedBanner
+          activity={sampleRequestedActivity}
+          cardId={cardId}
+          currentOwner={currentOwner}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['development-items'] });
+            onOwnerChange?.();
+          }}
+        />
+      )}
+      
       {/* Next Step Prompt - when commercial data was set and no unresolved questions */}
-      {showNextStepPrompt && onOpenSampleSection && onOpenMessageSection && (
+      {showNextStepPrompt && onOpenMessageSection && (
         <NextStepPrompt
+          cardId={cardId}
           cardType={cardType}
+          currentOwner={currentOwner}
           triggerType={promptTriggerType}
-          onRequestSample={() => onOpenSampleSection()}
+          onRequestSample={() => onOpenSampleSection?.()}
           onAskQuestion={() => onOpenMessageSection('question')}
           onAddComment={() => onOpenMessageSection('comment')}
+          onOwnerChange={onOwnerChange}
         />
       )}
       
       {/* Attention Banner - when there's an unresolved question */}
-      {showAttentionBanner && firstUnresolvedQuestion && (
-        <AttentionBanner 
+      {showAttentionBanner && firstUnresolvedQuestion && !showSampleRequestedBanner && (
+        <AttentionBanner
           activity={firstUnresolvedQuestion} 
           onReply={handleOpenFirstReply} 
         />
