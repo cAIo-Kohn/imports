@@ -1,326 +1,221 @@
 
-## Plan: Role-Based Card Colors with Admin Settings
+## Plan: Export Development Cards to Google Sheets
 
 ### Overview
 
-This feature adds:
-1. **New roles**: Quality and Marketing (alongside Admin, Buyer, Trader, Viewer)
-2. **Role-based card coloring**: Cards display a colored indicator based on who created them
-3. **Filter by creator role** on the Development dashboard
-4. **Admin color settings** in the Users page to customize colors per role
+This feature creates a backup/sync mechanism that exports all development card data to your Google Spreadsheet, providing a summarized view of card information.
 
 ---
 
-### Visual Design
+### Prerequisites (User Action Required)
 
-**Card with Role Color Indicator:**
-```text
-┌───────────────────────────────────────────┐
-│ ● Buyer                                   │  <- Small colored dot + role label
-│ ┌─────────────────────────────────────┐   │
-│ │  [Item] [Final] [Medium]            │   │
-│ │  Card Title Here                    │   │
-│ │  Supplier Name                      │   │
-│ │  📦 2 samples   📅 28/01           │   │
-│ └─────────────────────────────────────┘   │
-└───────────────────────────────────────────┘
-```
+Before implementation, you need to:
 
-**Default Color Scheme:**
-| Role | Color | Hex |
-|------|-------|-----|
-| Admin | Purple | #8B5CF6 |
-| Buyer | Blue | #3B82F6 |
-| Quality | Teal | #14B8A6 |
-| Marketing | Pink | #EC4899 |
-| Trader | Emerald | #10B981 |
+1. **Create a Google Cloud Service Account**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com)
+   - Create a new project (or use existing)
+   - Enable the **Google Sheets API**
+   - Create a Service Account and download the JSON key file
+
+2. **Share the Spreadsheet with the Service Account**:
+   - Copy the service account email (looks like `xxx@project-id.iam.gserviceaccount.com`)
+   - Open your Google Sheet and share it with this email (Editor access)
+
+3. **Provide the Service Account Key**:
+   - You'll need to add the JSON key contents as a secret in Lovable
 
 ---
 
-### Database Changes
+### Data to Export
 
-#### 1. Add New Roles to Enum
+The spreadsheet will contain a summary of all development cards:
 
-```sql
-ALTER TYPE app_role ADD VALUE 'quality';
-ALTER TYPE app_role ADD VALUE 'marketing';
-```
-
-#### 2. Create Role Card Colors Table
-
-```sql
-CREATE TABLE public.role_card_colors (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  role app_role NOT NULL UNIQUE,
-  color_hex TEXT NOT NULL DEFAULT '#6B7280',
-  label TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Seed default colors
-INSERT INTO public.role_card_colors (role, color_hex, label) VALUES
-  ('admin', '#8B5CF6', 'Admin'),
-  ('buyer', '#3B82F6', 'Buyer'),
-  ('quality', '#14B8A6', 'Quality'),
-  ('marketing', '#EC4899', 'Marketing'),
-  ('trader', '#10B981', 'Trader'),
-  ('viewer', '#6B7280', 'Viewer');
-
--- RLS: Admins can manage, everyone can read
-ALTER TABLE public.role_card_colors ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Admins can manage role_card_colors"
-  ON public.role_card_colors FOR ALL
-  USING (has_role(auth.uid(), 'admin'));
-
-CREATE POLICY "Authenticated users can view role_card_colors"
-  ON public.role_card_colors FOR SELECT
-  USING (true);
-```
+| Column | Description |
+|--------|-------------|
+| Card ID | Unique identifier |
+| Title | Card title |
+| Description | Desired outcome |
+| Type | item / item_group / task |
+| Category | final_product / raw_material |
+| Status | pending / in_progress / waiting / solved |
+| Priority | low / medium / high / urgent |
+| Current Owner | MOR (Brazil) / ARC (China) |
+| Created By Role | Buyer / Trader / Admin / etc |
+| Supplier | Supplier company name |
+| FOB Price (USD) | Commercial data |
+| MOQ | Minimum order quantity |
+| Qty per Container | Logistics data |
+| Container Type | 20ft / 40ft / 40hq |
+| Samples Count | Number of samples |
+| Created At | Creation date |
+| Updated At | Last update date |
+| Is Solved | Yes / No |
+| Is Deleted | Yes / No |
 
 ---
 
-### Frontend Implementation
+### Technical Implementation
 
-#### 1. Update Type Definitions
+#### 1. Create Edge Function for Google Sheets Export
 
-**File: `src/hooks/useUserRole.ts`**
-```typescript
-export type AppRole = 'admin' | 'buyer' | 'quality' | 'marketing' | 'trader' | 'viewer';
-
-// Add new role checks
-const isQuality = hasRole('quality');
-const isMarketing = hasRole('marketing');
-
-return {
-  // ... existing
-  isQuality,
-  isMarketing,
-};
-```
-
-#### 2. Create Role Colors Hook
-
-**New file: `src/hooks/useRoleColors.ts`**
+**New file: `supabase/functions/export-to-sheets/index.ts`**
 
 ```typescript
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { AppRole } from './useUserRole';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-interface RoleColor {
-  role: AppRole;
-  color_hex: string;
-  label: string;
-}
-
-const DEFAULT_COLORS: Record<string, { color_hex: string; label: string }> = {
-  admin: { color_hex: '#8B5CF6', label: 'Admin' },
-  buyer: { color_hex: '#3B82F6', label: 'Buyer' },
-  quality: { color_hex: '#14B8A6', label: 'Quality' },
-  marketing: { color_hex: '#EC4899', label: 'Marketing' },
-  trader: { color_hex: '#10B981', label: 'Trader' },
-  viewer: { color_hex: '#6B7280', label: 'Viewer' },
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-export function useRoleColors() {
-  const { data: colors = [], isLoading } = useQuery({
-    queryKey: ['role-card-colors'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('role_card_colors')
-        .select('*');
-      if (error) throw error;
-      return data as RoleColor[];
-    },
-  });
-
-  const getColorForRole = (role: string | null): { color: string; label: string } => {
-    const found = colors.find(c => c.role === role);
-    if (found) return { color: found.color_hex, label: found.label };
-    const defaultColor = DEFAULT_COLORS[role || ''];
-    return defaultColor || { color: '#6B7280', label: 'Unknown' };
+// Google Sheets API helper
+async function getGoogleAccessToken(serviceAccountKey: string) {
+  const key = JSON.parse(serviceAccountKey);
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const claim = {
+    iss: key.client_email,
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600,
+    iat: now,
   };
-
-  return { colors, isLoading, getColorForRole };
+  
+  // Sign JWT and exchange for access token
+  // ... (JWT signing logic)
+  
+  return accessToken;
 }
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { spreadsheetId, sheetName = 'Development Cards' } = await req.json();
+    
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const googleServiceKey = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY')!;
+    
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Fetch all development cards with related data
+    const { data: cards, error } = await supabase
+      .from('development_items')
+      .select(`*, supplier:suppliers(company_name)`)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Format data for spreadsheet
+    const headers = [
+      'Card ID', 'Title', 'Description', 'Type', 'Category', 
+      'Status', 'Priority', 'Current Owner', 'Created By Role',
+      'Supplier', 'FOB Price (USD)', 'MOQ', 'Qty/Container', 
+      'Container Type', 'Created At', 'Updated At', 'Is Solved', 'Is Deleted'
+    ];
+
+    const rows = cards.map(card => [
+      card.id,
+      card.title,
+      card.description || '',
+      card.card_type,
+      card.product_category || '',
+      card.status,
+      card.priority,
+      card.current_owner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)',
+      card.created_by_role || '',
+      card.supplier?.company_name || '',
+      card.fob_price_usd || '',
+      card.moq || '',
+      card.qty_per_container || '',
+      card.container_type || '',
+      new Date(card.created_at).toLocaleDateString(),
+      new Date(card.updated_at).toLocaleDateString(),
+      card.is_solved ? 'Yes' : 'No',
+      card.deleted_at ? 'Yes' : 'No'
+    ]);
+
+    // Get Google access token
+    const accessToken = await getGoogleAccessToken(googleServiceKey);
+
+    // Clear existing data and write new data
+    const sheetRange = `${sheetName}!A1:R${rows.length + 1}`;
+    
+    // Write to Google Sheets
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetRange}?valueInputOption=USER_ENTERED`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ values: [headers, ...rows] }),
+      }
+    );
+
+    return new Response(
+      JSON.stringify({ success: true, rowsExported: rows.length }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: String(error) }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});
 ```
 
-#### 3. Update DevelopmentCard Component
-
-**File: `src/components/development/DevelopmentCard.tsx`**
-
-Add a role indicator badge at the top of the card:
-
-```typescript
-import { useRoleColors } from '@/hooks/useRoleColors';
-
-export function DevelopmentCard({ item, onClick, onDragStart, canDrag }: DevelopmentCardProps) {
-  const { getColorForRole } = useRoleColors();
-  
-  // Get the creator's role color
-  const creatorRole = (item as any).created_by_role;
-  const { color, label } = getColorForRole(creatorRole);
-  
-  return (
-    <div className={cn('...', highlightClass)}>
-      {/* Creator Role Indicator */}
-      {creatorRole && (
-        <div className="flex items-center gap-1.5 mb-1">
-          <span 
-            className="w-2 h-2 rounded-full" 
-            style={{ backgroundColor: color }}
-          />
-          <span className="text-[10px] text-muted-foreground">{label}</span>
-        </div>
-      )}
-      
-      {/* Rest of the card... */}
-    </div>
-  );
-}
-```
-
-#### 4. Add Filter by Creator Role on Development Page
+#### 2. Add Export Button to Development Page
 
 **File: `src/pages/Development.tsx`**
 
-Add a new filter dropdown:
+Add an "Export to Sheets" button in the header:
 
 ```typescript
-const [creatorRoleFilter, setCreatorRoleFilter] = useState<string>('all');
+import { FileSpreadsheet } from 'lucide-react';
 
-// In the filters section:
-<Select value={creatorRoleFilter} onValueChange={setCreatorRoleFilter}>
-  <SelectTrigger className="w-[160px]">
-    <SelectValue placeholder="Creator Role" />
-  </SelectTrigger>
-  <SelectContent>
-    <SelectItem value="all">All Departments</SelectItem>
-    <SelectItem value="admin">Admin</SelectItem>
-    <SelectItem value="buyer">Buyer</SelectItem>
-    <SelectItem value="quality">Quality</SelectItem>
-    <SelectItem value="marketing">Marketing</SelectItem>
-    <SelectItem value="trader">Trader</SelectItem>
-  </SelectContent>
-</Select>
+// In the header section:
+<Button 
+  variant="outline" 
+  onClick={handleExportToSheets}
+  disabled={isExporting}
+>
+  <FileSpreadsheet className="h-4 w-4 mr-2" />
+  {isExporting ? 'Exporting...' : 'Export to Sheets'}
+</Button>
 
-// Update filter logic:
-const matchesCreatorRole = creatorRoleFilter === 'all' || 
-  item.created_by_role === creatorRoleFilter;
-```
-
-#### 5. Add Card Colors Settings Section to Users Page
-
-**File: `src/pages/Users.tsx`**
-
-Add a new tab or section for managing card colors:
-
-```typescript
-// Add Tabs component to switch between Users and Card Colors
-<Tabs defaultValue="users">
-  <TabsList>
-    <TabsTrigger value="users">Users</TabsTrigger>
-    <TabsTrigger value="colors">Card Colors</TabsTrigger>
-  </TabsList>
-  
-  <TabsContent value="users">
-    {/* Existing users table */}
-  </TabsContent>
-  
-  <TabsContent value="colors">
-    <RoleColorsSettings />
-  </TabsContent>
-</Tabs>
-```
-
-#### 6. Create Role Colors Settings Component
-
-**New file: `src/components/users/RoleColorsSettings.tsx`**
-
-```typescript
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-
-export function RoleColorsSettings() {
-  const queryClient = useQueryClient();
-  
-  const { data: colors = [], isLoading } = useQuery({
-    queryKey: ['role-card-colors'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('role_card_colors')
-        .select('*')
-        .order('role');
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ role, color_hex }: { role: string; color_hex: string }) => {
-      const { error } = await supabase
-        .from('role_card_colors')
-        .update({ color_hex, updated_at: new Date().toISOString() })
-        .eq('role', role);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['role-card-colors'] });
-    },
-  });
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Card Colors by Department</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {colors.map((item) => (
-            <div key={item.role} className="flex items-center gap-3 p-3 border rounded-lg">
-              <input
-                type="color"
-                value={item.color_hex}
-                onChange={(e) => updateMutation.mutate({ 
-                  role: item.role, 
-                  color_hex: e.target.value 
-                })}
-                className="w-10 h-10 rounded cursor-pointer"
-              />
-              <div>
-                <p className="font-medium">{item.label}</p>
-                <p className="text-xs text-muted-foreground">{item.color_hex}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-```
-
-#### 7. Update Role Selection in User Modals
-
-**Files: `EditUserRoleModal.tsx`, `CreateUserModal.tsx`**
-
-Add Quality and Marketing role options:
-
-```typescript
-const roleOptions = [
-  { value: 'admin', label: 'Administrator', description: '...', icon: Shield },
-  { value: 'buyer', label: 'Buyer', description: '...', icon: ShoppingCart },
-  { value: 'quality', label: 'Quality', description: 'Quality assurance and control', icon: CheckCircle },
-  { value: 'marketing', label: 'Marketing', description: 'Product marketing and branding', icon: Megaphone },
-  { value: 'trader', label: 'Trader', description: '...', icon: TrendingUp },
-  { value: 'viewer', label: 'Viewer', description: '...', icon: Eye },
-];
+const handleExportToSheets = async () => {
+  setIsExporting(true);
+  try {
+    const response = await supabase.functions.invoke('export-to-sheets', {
+      body: { 
+        spreadsheetId: '1OKtCJQxnZgHUTxZVDrTaVS7Y8xbMTXaKAW-q_YzoA0U',
+        sheetName: 'Development Cards'
+      }
+    });
+    
+    if (response.error) throw response.error;
+    
+    toast({
+      title: 'Export Successful',
+      description: `${response.data.rowsExported} cards exported to Google Sheets`,
+    });
+  } catch (error) {
+    toast({
+      title: 'Export Failed',
+      description: String(error),
+      variant: 'destructive',
+    });
+  } finally {
+    setIsExporting(false);
+  }
+};
 ```
 
 ---
@@ -329,43 +224,37 @@ const roleOptions = [
 
 | File | Action | Purpose |
 |------|--------|---------|
-| Database migration | Create | Add roles to enum, create role_card_colors table |
-| `src/hooks/useUserRole.ts` | Modify | Add quality/marketing type and helpers |
-| `src/hooks/useRoleColors.ts` | Create | Hook to fetch and use role colors |
-| `src/components/development/DevelopmentCard.tsx` | Modify | Add role color indicator |
-| `src/pages/Development.tsx` | Modify | Add creator role filter |
-| `src/pages/Users.tsx` | Modify | Add tabs for users/colors sections |
-| `src/components/users/RoleColorsSettings.tsx` | Create | Admin color picker interface |
-| `src/components/users/EditUserRoleModal.tsx` | Modify | Add Quality/Marketing options |
-| `src/components/users/CreateUserModal.tsx` | Modify | Add Quality/Marketing options |
+| `supabase/functions/export-to-sheets/index.ts` | Create | Edge function for Google Sheets API |
+| `src/pages/Development.tsx` | Modify | Add export button |
+| Secret: `GOOGLE_SERVICE_ACCOUNT_KEY` | Add | Google Cloud credentials |
 
 ---
 
-### Implementation Order
+### Setup Steps
 
-1. **Database migration**: Add enum values and create colors table
-2. **Update useUserRole.ts**: Add new role types
-3. **Create useRoleColors.ts**: Hook for fetching colors
-4. **Update DevelopmentCard.tsx**: Add role indicator
-5. **Update Development.tsx**: Add filter dropdown
-6. **Create RoleColorsSettings.tsx**: Admin color picker
-7. **Update Users.tsx**: Add tabs and integrate settings
-8. **Update user modals**: Add new role options
+1. **You provide**: Google Cloud Service Account JSON key
+2. **I implement**: Edge function + UI button
+3. **You share**: The spreadsheet with the service account email
+4. **Test**: Click "Export to Sheets" button
 
 ---
 
-### User Flow
+### Alternative: Manual Export (Simpler)
 
-1. **Admin creates user** -> Assigns roles including Quality/Marketing
-2. **User creates card** -> `created_by_role` is set based on their primary role
-3. **Card displays** -> Shows colored dot and role label
-4. **Users filter** -> Can filter by department/role
-5. **Admin adjusts colors** -> Goes to Users > Card Colors tab to customize
+If setting up Google Cloud is too complex, I can implement a simpler **CSV download** feature that:
+- Exports all card data to a CSV file
+- You manually upload to Google Sheets
+
+This requires no API setup but means manual upload each time.
 
 ---
 
-### Edge Cases
+### Questions for You
 
-- **User with multiple roles**: Use first matching role in priority order (Admin > Buyer > Quality > Marketing > Trader > Viewer)
-- **Legacy cards without `created_by_role`**: Show as "Unknown" with gray color
-- **Color picker**: Uses native HTML color picker for simplicity
+Before proceeding, please confirm:
+
+1. **Do you want the full Google Sheets API integration** (requires Google Cloud setup) or **simple CSV export** (manual upload)?
+
+2. **If Google Sheets API**: Do you already have a Google Cloud account, or would you like guidance on setting one up?
+
+The spreadsheet ID from your URL is: `1OKtCJQxnZgHUTxZVDrTaVS7Y8xbMTXaKAW-q_YzoA0U`
