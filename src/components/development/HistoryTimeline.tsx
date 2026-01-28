@@ -20,7 +20,8 @@ import {
   Truck,
   PackageCheck,
   CheckCircle,
-  XCircle
+  XCircle,
+  Upload
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { InlineReplyBox } from './InlineReplyBox';
 import { InlineSampleShipForm } from './InlineSampleShipForm';
+import { TimelineUploadButton, AttachmentDisplay, UploadedAttachment } from './TimelineUploadButton';
 
 interface Activity {
   id: string;
@@ -54,6 +56,7 @@ interface HistoryTimelineProps {
   onOwnerChange?: () => void;
   onOpenSampleSection?: () => void;
   onOpenMessageSection?: (type: 'comment' | 'question') => void;
+  onOpenUploadSection?: () => void;
   onCloseCard?: () => void;
 }
 
@@ -342,6 +345,7 @@ interface SampleApprovedBannerProps {
   onCloseCard: () => void;
   onAskQuestion: () => void;
   onAddComment: () => void;
+  onUpload: () => void;
   isClosing: boolean;
 }
 
@@ -352,6 +356,7 @@ function SampleApprovedBanner({
   onCloseCard,
   onAskQuestion,
   onAddComment,
+  onUpload,
   isClosing,
 }: SampleApprovedBannerProps) {
   const { user } = useAuth();
@@ -401,6 +406,15 @@ function SampleApprovedBanner({
           <MessageCircle className="h-3 w-3 mr-1" />
           Add Comment
         </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={onUpload}
+          className="bg-white hover:bg-green-100 border-green-400 text-green-700 dark:bg-green-950 dark:hover:bg-green-900 dark:border-green-600 dark:text-green-200"
+        >
+          <Upload className="h-3 w-3 mr-1" />
+          Upload
+        </Button>
       </div>
       {!canClose && (
         <p className="text-xs text-green-600 dark:text-green-400 mt-3 italic">
@@ -420,6 +434,7 @@ interface NextStepPromptProps {
   onRequestSample: () => void;
   onAskQuestion: () => void;
   onAddComment: () => void;
+  onUpload: () => void;
   onOwnerChange?: () => void;
 }
 
@@ -431,6 +446,7 @@ function NextStepPrompt({
   onRequestSample, 
   onAskQuestion, 
   onAddComment,
+  onUpload,
   onOwnerChange,
 }: NextStepPromptProps) {
   const { user } = useAuth();
@@ -526,6 +542,15 @@ function NextStepPrompt({
           <MessageCircle className="h-3 w-3 mr-1" />
           Add Comment
         </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={onUpload}
+          className="bg-white hover:bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-950 dark:hover:bg-sky-900 dark:border-sky-600 dark:text-sky-200"
+        >
+          <Upload className="h-3 w-3 mr-1" />
+          Upload
+        </Button>
       </div>
     </div>
   );
@@ -542,6 +567,7 @@ export function HistoryTimeline({
   onOwnerChange,
   onOpenSampleSection,
   onOpenMessageSection,
+  onOpenUploadSection,
   onCloseCard,
 }: HistoryTimelineProps) {
   const { user } = useAuth();
@@ -792,6 +818,7 @@ export function HistoryTimeline({
           onCloseCard={() => closeCardMutation.mutate()}
           onAskQuestion={() => onOpenMessageSection('question')}
           onAddComment={() => onOpenMessageSection('comment')}
+          onUpload={() => onOpenUploadSection?.()}
           isClosing={closeCardMutation.isPending}
         />
       )}
@@ -819,6 +846,7 @@ export function HistoryTimeline({
           onRequestSample={() => onOpenSampleSection?.()}
           onAskQuestion={() => onOpenMessageSection('question')}
           onAddComment={() => onOpenMessageSection('comment')}
+          onUpload={() => onOpenUploadSection?.()}
           onOwnerChange={onOwnerChange}
         />
       )}
