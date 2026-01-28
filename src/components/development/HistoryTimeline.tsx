@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { InlineReplyBox } from './InlineReplyBox';
 
 interface Activity {
   id: string;
@@ -41,12 +42,14 @@ interface HistoryTimelineProps {
   cardCreatedAt: string;
   creatorName?: string;
   showAttentionBanner?: boolean;
-  onReplyToQuestion?: () => void;
+  currentOwner?: 'mor' | 'arc';
+  onOwnerChange?: () => void;
 }
 
 const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
   comment: <MessageCircle className="h-3.5 w-3.5" />,
   question: <HelpCircle className="h-3.5 w-3.5" />,
+  answer: <Reply className="h-3.5 w-3.5" />,
   status_change: <RefreshCw className="h-3.5 w-3.5" />,
   ownership_change: <ArrowRight className="h-3.5 w-3.5" />,
   sample_added: <Package className="h-3.5 w-3.5" />,
@@ -60,6 +63,7 @@ const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
 const ACTIVITY_STYLES: Record<string, string> = {
   comment: 'bg-blue-100 text-blue-700 border-blue-200',
   question: 'bg-purple-100 text-purple-700 border-purple-200',
+  answer: 'bg-green-100 text-green-700 border-green-200',
   status_change: 'bg-amber-100 text-amber-700 border-amber-200',
   ownership_change: 'bg-green-100 text-green-700 border-green-200',
   sample_added: 'bg-cyan-100 text-cyan-700 border-cyan-200',
@@ -73,6 +77,7 @@ const ACTIVITY_STYLES: Record<string, string> = {
 const ACTIVITY_LABELS: Record<string, string> = {
   comment: 'commented',
   question: 'asked a question',
+  answer: 'answered',
   status_change: 'changed status',
   ownership_change: 'moved card',
   sample_added: 'added sample tracking',
@@ -102,7 +107,13 @@ function groupByDate(activities: Activity[]): Record<string, Activity[]> {
 }
 
 // Attention Banner Component for highlighting important actions
-function AttentionBanner({ activity, onReply }: { activity: Activity; onReply?: () => void }) {
+function AttentionBanner({ 
+  activity, 
+  onReply 
+}: { 
+  activity: Activity; 
+  onReply?: () => void;
+}) {
   const isQuestion = activity.activity_type === 'question';
   const isCommercial = activity.activity_type === 'commercial_update';
   const isOwnershipChange = activity.activity_type === 'ownership_change';
@@ -174,9 +185,19 @@ function AttentionBanner({ activity, onReply }: { activity: Activity; onReply?: 
 }
 
 
-export function HistoryTimeline({ cardId, cardCreatedAt, creatorName, showAttentionBanner, onReplyToQuestion }: HistoryTimelineProps) {
+export function HistoryTimeline({ 
+  cardId, 
+  cardCreatedAt, 
+  creatorName, 
+  showAttentionBanner,
+  currentOwner = 'arc',
+  onOwnerChange,
+}: HistoryTimelineProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  
+  // State for which question has the inline reply box open
+  const [replyingToId, setReplyingToId] = useState<string | null>(null);
 
   // Mutation to mark question as resolved
   const resolveQuestionMutation = useMutation({
@@ -291,10 +312,22 @@ export function HistoryTimeline({ cardId, cardCreatedAt, creatorName, showAttent
     return '?';
   };
 
+  // Find the first unresolved question for keyboard shortcut / attention banner
+  const firstUnresolvedQuestion = activities.find(a => 
+    a.activity_type === 'question' && !a.metadata?.resolved
+  );
+
+  // Handle opening reply for the first unresolved question
+  const handleOpenFirstReply = () => {
+    if (firstUnresolvedQuestion) {
+      setReplyingToId(firstUnresolvedQuestion.id);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="py-8 text-center text-muted-foreground text-sm">
-        Loading history...
+        Loading timeline...
       </div>
     );
   }
@@ -309,19 +342,19 @@ export function HistoryTimeline({ cardId, cardCreatedAt, creatorName, showAttent
   }
 
   // Find the triggering action for attention banner (prioritize unresolved questions)
-  const unresolvedQuestion = activities.find(a => 
-    a.activity_type === 'question' && !a.metadata?.resolved
-  );
   const otherTriggerActivity = activities.find(a => 
     ['commercial_update', 'ownership_change'].includes(a.activity_type)
   );
-  const triggerActivity = unresolvedQuestion || otherTriggerActivity;
+  const triggerActivity = firstUnresolvedQuestion || otherTriggerActivity;
 
   return (
     <div className="space-y-6 py-4">
       {/* Attention Banner */}
       {showAttentionBanner && triggerActivity && (
-        <AttentionBanner activity={triggerActivity} onReply={onReplyToQuestion} />
+        <AttentionBanner 
+          activity={triggerActivity} 
+          onReply={firstUnresolvedQuestion ? handleOpenFirstReply : undefined} 
+        />
       )}
       
       {sortedDates.map((dateKey) => (
@@ -335,77 +368,108 @@ export function HistoryTimeline({ cardId, cardCreatedAt, creatorName, showAttent
           <div className="space-y-3">
             {groupedActivities[dateKey].map((activity) => {
               const isQuestion = activity.activity_type === 'question';
+              const isAnswer = activity.activity_type === 'answer';
               const isResolved = isQuestion && activity.metadata?.resolved;
               
               return (
-                <div 
-                  key={activity.id} 
-                  className={cn(
-                    "flex gap-3 p-3 rounded-lg border",
-                    isResolved 
-                      ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800"
-                      : ACTIVITY_STYLES[activity.activity_type] || ACTIVITY_STYLES.comment
-                  )}
-                >
-                  <Avatar className="h-7 w-7 flex-shrink-0">
-                    <AvatarFallback className="text-xs bg-background">
-                      {getInitials(activity.profile)}
-                    </AvatarFallback>
-                  </Avatar>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm">
-                        {activity.profile?.full_name || activity.profile?.email || 'Unknown'}
-                      </span>
-                      <span className="flex items-center gap-1 text-xs">
-                        {isResolved ? <Check className="h-3.5 w-3.5" /> : (ACTIVITY_ICONS[activity.activity_type] || ACTIVITY_ICONS.comment)}
-                        {isResolved ? 'question resolved' : (ACTIVITY_LABELS[activity.activity_type] || activity.activity_type)}
-                      </span>
-                      <span className="text-xs opacity-70">
-                        {format(parseISO(activity.created_at), 'HH:mm')}
-                      </span>
-                      {isResolved && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200">
-                          Resolved
-                        </Badge>
+                <div key={activity.id}>
+                  <div 
+                    className={cn(
+                      "flex gap-3 p-3 rounded-lg border",
+                      isResolved 
+                        ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800"
+                        : ACTIVITY_STYLES[activity.activity_type] || ACTIVITY_STYLES.comment
+                    )}
+                  >
+                    <Avatar className="h-7 w-7 flex-shrink-0">
+                      <AvatarFallback className="text-xs bg-background">
+                        {getInitials(activity.profile)}
+                      </AvatarFallback>
+                    </Avatar>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm">
+                          {activity.profile?.full_name || activity.profile?.email || 'Unknown'}
+                        </span>
+                        <span className="flex items-center gap-1 text-xs">
+                          {isResolved ? <Check className="h-3.5 w-3.5" /> : (ACTIVITY_ICONS[activity.activity_type] || ACTIVITY_ICONS.comment)}
+                          {isResolved ? 'question resolved' : (ACTIVITY_LABELS[activity.activity_type] || activity.activity_type)}
+                        </span>
+                        <span className="text-xs opacity-70">
+                          {format(parseISO(activity.created_at), 'HH:mm')}
+                        </span>
+                        {isResolved && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200">
+                            Resolved
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      {activity.content && (
+                        <p className={cn(
+                          "text-sm mt-1 whitespace-pre-wrap",
+                          isResolved && "line-through opacity-70"
+                        )}>
+                          {isQuestion ? (
+                            <span className="italic">"{activity.content}"</span>
+                          ) : (
+                            activity.content
+                          )}
+                        </p>
+                      )}
+                      
+                      {/* Action buttons for unresolved questions */}
+                      {isQuestion && !isResolved && (
+                        <div className="flex gap-2 mt-2 flex-wrap">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-100 dark:text-purple-400 dark:hover:bg-purple-900"
+                            onClick={() => setReplyingToId(activity.id)}
+                          >
+                            <Reply className="h-3 w-3 mr-1" />
+                            Reply
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-100 dark:text-purple-400 dark:hover:bg-purple-900"
+                            onClick={() => resolveQuestionMutation.mutate(activity.id)}
+                            disabled={resolveQuestionMutation.isPending}
+                          >
+                            <Check className="h-3 w-3 mr-1" />
+                            {resolveQuestionMutation.isPending ? 'Resolving...' : 'Mark as Resolved'}
+                          </Button>
+                        </div>
+                      )}
+                      
+                      {/* Metadata display for certain types */}
+                      {activity.activity_type === 'commercial_update' && activity.metadata && (
+                        <p className="text-xs mt-1 opacity-80">
+                          {activity.metadata.field?.replace('_', ' ')}: {activity.metadata.value}
+                        </p>
+                      )}
+                      
+                      {/* Show which question this is a reply to */}
+                      {(isAnswer || (activity.activity_type === 'comment' && activity.metadata?.reply_to_question)) && (
+                        <p className="text-xs mt-1 opacity-70 italic">
+                          ↳ Reply to question
+                        </p>
                       )}
                     </div>
-                    
-                    {activity.content && (
-                      <p className={cn(
-                        "text-sm mt-1 whitespace-pre-wrap",
-                        isResolved && "line-through opacity-70"
-                      )}>
-                        {isQuestion ? (
-                          <span className="italic">"{activity.content}"</span>
-                        ) : (
-                          activity.content
-                        )}
-                      </p>
-                    )}
-                    
-                    {/* Mark as resolved button for unresolved questions */}
-                    {isQuestion && !isResolved && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="mt-2 h-7 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-100 dark:text-purple-400 dark:hover:bg-purple-900"
-                        onClick={() => resolveQuestionMutation.mutate(activity.id)}
-                        disabled={resolveQuestionMutation.isPending}
-                      >
-                        <Check className="h-3 w-3 mr-1" />
-                        {resolveQuestionMutation.isPending ? 'Resolving...' : 'Mark as Resolved'}
-                      </Button>
-                    )}
-                    
-                    {/* Metadata display for certain types */}
-                    {activity.activity_type === 'commercial_update' && activity.metadata && (
-                      <p className="text-xs mt-1 opacity-80">
-                        {activity.metadata.field?.replace('_', ' ')}: {activity.metadata.value}
-                      </p>
-                    )}
                   </div>
+                  
+                  {/* Inline Reply Box */}
+                  {replyingToId === activity.id && (
+                    <InlineReplyBox
+                      questionId={activity.id}
+                      cardId={cardId}
+                      currentOwner={currentOwner}
+                      onClose={() => setReplyingToId(null)}
+                      onCardMove={onOwnerChange}
+                    />
+                  )}
                 </div>
               );
             })}
