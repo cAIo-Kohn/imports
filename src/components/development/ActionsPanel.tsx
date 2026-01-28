@@ -341,14 +341,14 @@ export function ActionsPanel({
     <div className="space-y-2">
       <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="w-full">
         {/* Messaging Section */}
-        <AccordionItem value="messaging" className="border rounded-lg px-3">
-          <AccordionTrigger className="py-3 hover:no-underline">
+        <AccordionItem value="messaging" className="border rounded-lg">
+          <AccordionTrigger className="py-3 px-3 hover:no-underline">
             <span className="flex items-center gap-2 text-sm font-medium">
               <MessageCircle className="h-4 w-4" />
               Add Comment / Ask Question
             </span>
           </AccordionTrigger>
-          <AccordionContent className="pb-3">
+          <AccordionContent className="px-3 pb-3">
             <form onSubmit={handleSendMessage} className="space-y-3">
               <Tabs value={messageType} onValueChange={(v) => setMessageType(v as MessageType)}>
                 <TabsList className="grid w-full grid-cols-2 h-8">
@@ -394,11 +394,11 @@ export function ActionsPanel({
           <AccordionItem 
             value="commercial" 
             className={cn(
-              "border rounded-lg px-3 mt-2",
+              "border rounded-lg mt-2",
               isCommercialPending && "border-amber-400 animate-pulse bg-amber-50/50 dark:bg-amber-950/20"
             )}
           >
-            <AccordionTrigger className="py-3 hover:no-underline">
+            <AccordionTrigger className="py-3 px-3 hover:no-underline">
               <span className="flex items-center gap-2 text-sm font-medium">
                 <DollarSign className="h-4 w-4" />
                 Commercial Data
@@ -409,7 +409,7 @@ export function ActionsPanel({
                 )}
               </span>
             </AccordionTrigger>
-            <AccordionContent className="pb-3">
+            <AccordionContent className="px-3 pb-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label htmlFor="fob-price" className="text-xs">FOB Price (USD)</Label>
@@ -505,8 +505,8 @@ export function ActionsPanel({
 
         {/* Sample Tracking Section - Only for non-task cards */}
         {cardType !== 'task' && (
-          <AccordionItem value="samples" className="border rounded-lg px-3 mt-2">
-            <AccordionTrigger className="py-3 hover:no-underline">
+          <AccordionItem value="samples" className="border rounded-lg mt-2">
+            <AccordionTrigger className="py-3 px-3 hover:no-underline">
               <span className="flex items-center gap-2 text-sm font-medium">
                 <Package className="h-4 w-4" />
                 Sample Tracking
@@ -517,7 +517,7 @@ export function ActionsPanel({
                 )}
               </span>
             </AccordionTrigger>
-            <AccordionContent className="pb-3 space-y-3">
+            <AccordionContent className="px-3 pb-3 space-y-3">
               <AddSampleForm itemId={cardId} />
               
               {samples.length > 0 && (
