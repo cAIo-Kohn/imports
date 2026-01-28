@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate } from 'react-router-dom';
-import { Plus, Pencil, Trash2, Shield, ShoppingCart, TrendingUp, Eye } from 'lucide-react';
+import { Plus, Pencil, Trash2, Shield, ShoppingCart, TrendingUp, Eye, CheckCircle, Megaphone, Palette } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole, AppRole } from '@/hooks/useUserRole';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,8 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { CreateUserModal } from '@/components/users/CreateUserModal';
 import { EditUserRoleModal } from '@/components/users/EditUserRoleModal';
+import { RoleColorsSettings } from '@/components/users/RoleColorsSettings';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format } from 'date-fns';
 
 interface UserWithRoles {
@@ -41,6 +43,8 @@ interface UserWithRoles {
 const roleConfig: Record<AppRole, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof Shield }> = {
   admin: { label: 'Admin', variant: 'destructive', icon: Shield },
   buyer: { label: 'Buyer', variant: 'default', icon: ShoppingCart },
+  quality: { label: 'Quality', variant: 'secondary', icon: CheckCircle },
+  marketing: { label: 'Marketing', variant: 'secondary', icon: Megaphone },
   trader: { label: 'Trader', variant: 'secondary', icon: TrendingUp },
   viewer: { label: 'Viewer', variant: 'outline', icon: Eye },
 };
@@ -144,17 +148,30 @@ export default function Users() {
             Manage users and their system permissions.
           </p>
         </div>
-        <Button onClick={() => setCreateModalOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          New User
-        </Button>
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      ) : (
+      <Tabs defaultValue="users" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="colors" className="gap-2">
+            <Palette className="h-4 w-4" />
+            Card Colors
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="users" className="space-y-4">
+          <div className="flex justify-end">
+            <Button onClick={() => setCreateModalOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              New User
+            </Button>
+          </div>
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : (
         <div className="border rounded-lg">
           <Table>
             <TableHeader>
@@ -224,7 +241,13 @@ export default function Users() {
             </TableBody>
           </Table>
         </div>
-      )}
+          )}
+        </TabsContent>
+
+        <TabsContent value="colors">
+          <RoleColorsSettings />
+        </TabsContent>
+      </Tabs>
 
       <CreateUserModal
         open={createModalOpen}

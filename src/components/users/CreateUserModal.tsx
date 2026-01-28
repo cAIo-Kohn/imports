@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Shield, ShoppingCart, TrendingUp, Eye } from 'lucide-react';
+import { Shield, ShoppingCart, TrendingUp, Eye, CheckCircle, Megaphone } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { AppRole } from '@/hooks/useUserRole';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,18 @@ const roleOptions: { value: AppRole; label: string; description: string; icon: t
     label: 'Buyer',
     description: 'Products, suppliers, planning and orders',
     icon: ShoppingCart,
+  },
+  {
+    value: 'quality',
+    label: 'Quality',
+    description: 'Quality assurance and control',
+    icon: CheckCircle,
+  },
+  {
+    value: 'marketing',
+    label: 'Marketing',
+    description: 'Product marketing and branding',
+    icon: Megaphone,
   },
   {
     value: 'trader',

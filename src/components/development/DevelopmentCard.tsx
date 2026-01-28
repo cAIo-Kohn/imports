@@ -4,6 +4,7 @@ import { DevelopmentItem, DevelopmentItemPriority, DevelopmentCardType, Developm
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useRoleColors } from '@/hooks/useRoleColors';
 
 interface DevelopmentCardProps {
   item: DevelopmentItem;
@@ -50,7 +51,12 @@ export function DevelopmentCard({
   canDrag,
 }: DevelopmentCardProps) {
   const { isBuyer, isTrader } = useUserRole();
+  const { getColorForRole } = useRoleColors();
   const cardType = item.card_type || 'item';
+  
+  // Get creator role color
+  const creatorRole = (item as any).created_by_role;
+  const { color: roleColor, label: roleLabel } = getColorForRole(creatorRole);
   
   // Check if this card is "new" for the current user (cross-team notification)
   const itemWithNewFields = item as any;
@@ -83,6 +89,17 @@ export function DevelopmentCard({
       draggable={canDrag}
       onDragStart={(e) => onDragStart(e, item.id)}
     >
+      {/* Creator Role Indicator */}
+      {creatorRole && (
+        <div className="flex items-center gap-1.5 mb-1">
+          <span 
+            className="w-2 h-2 rounded-full flex-shrink-0" 
+            style={{ backgroundColor: roleColor }}
+          />
+          <span className="text-[10px] text-muted-foreground">{roleLabel}</span>
+        </div>
+      )}
+
       {/* Card Type, Product Category & Priority */}
       <div className="flex items-center gap-1.5 mb-1 md:mb-2 flex-wrap">
         {isDeleted && (

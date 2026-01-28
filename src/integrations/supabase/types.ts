@@ -834,6 +834,33 @@ export type Database = {
           },
         ]
       }
+      role_card_colors: {
+        Row: {
+          color_hex: string
+          created_at: string | null
+          id: string
+          label: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at: string | null
+        }
+        Insert: {
+          color_hex?: string
+          created_at?: string | null
+          id?: string
+          label: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
+        }
+        Update: {
+          color_hex?: string
+          created_at?: string | null
+          id?: string
+          label?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       sales_forecasts: {
         Row: {
           created_at: string
@@ -1209,7 +1236,13 @@ export type Database = {
       refresh_supplier_health_summary: { Args: never; Returns: undefined }
     }
     Enums: {
-      app_role: "admin" | "buyer" | "viewer" | "trader"
+      app_role:
+        | "admin"
+        | "buyer"
+        | "viewer"
+        | "trader"
+        | "quality"
+        | "marketing"
       development_card_status: "pending" | "in_progress" | "waiting" | "solved"
       development_card_type: "item" | "item_group" | "task"
       development_item_priority: "low" | "medium" | "high" | "urgent"
@@ -1368,7 +1401,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "buyer", "viewer", "trader"],
+      app_role: ["admin", "buyer", "viewer", "trader", "quality", "marketing"],
       development_card_status: ["pending", "in_progress", "waiting", "solved"],
       development_card_type: ["item", "item_group", "task"],
       development_item_priority: ["low", "medium", "high", "urgent"],
