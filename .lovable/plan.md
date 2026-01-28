@@ -1,313 +1,281 @@
 
-## Plan: Complete Sample Workflow System
+## Plan: Sample Approved Banner with Card Closing
 
 ### Overview
 
-This implements a multi-stage sample workflow that facilitates communication between Brazil (MOR) and China (ARC) teams through the card system.
+After a sample is approved, the timeline will display a prominent banner highlighting this milestone and suggesting the card be closed. The banner provides options to close the card (if allowed) or continue with comments/questions.
 
 ---
 
-### Sample Workflow Stages
+### Permissions Logic
+
+| User Type | Can Close Card? |
+|-----------|-----------------|
+| Admin | Always |
+| Card Creator (the user who opened it) | Yes |
+| Other users | No (can only comment/ask) |
+
+The system checks:
+- `development_items.created_by` to identify who opened the card
+- `useUserRole().isAdmin` to check admin status
+
+---
+
+### UI Flow
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         SAMPLE WORKFLOW LIFECYCLE                          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  1. REQUEST SAMPLE (Brazil)                                                 │
-│     └─► Buyer clicks "Request Sample" → Card moves to ARC (China)          │
-│         Activity: sample_requested                                         │
-│                                                                             │
-│  2. SHIP SAMPLE (China)                                                     │
-│     └─► China adds tracking info → Card moves back to MOR (Brazil)         │
-│         Activity: sample_shipped                                           │
-│         Sample status: in_transit                                          │
-│                                                                             │
-│  3. RECEIVE SAMPLE (Brazil)                                                 │
-│     └─► Brazil marks arrival → Sample status: delivered                    │
-│         Activity: sample_arrived                                           │
-│         Card stays with Brazil                                             │
-│                                                                             │
-│  4. APPROVE/REJECT (Brazil)                                                │
-│     └─► Brazil reviews and decides → Can upload report (PDF/images)        │
-│         Activity: sample_approved OR sample_rejected                       │
-│         Card can be marked as solved if approved                           │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  SAMPLE APPROVED BANNER (Green, pulsing)                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ✓ Sample Approved                                              │
+│  ─────────────────────                                          │
+│  This item's sample has been approved. What's next?             │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  [Close Card]  [Ask Question]  [Add Comment]                ││
+│  │       ↑                                                     ││
+│  │  Only visible to Admins or Card Creator                     ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                                                                 │
+│  "This card was opened by [Creator Name]"                       │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### UI Changes
+### Technical Implementation
 
-#### 1. Update "Request Sample" Button Behavior
+#### 1. New Banner Component: `SampleApprovedBanner`
 
-**File: `HistoryTimeline.tsx`**
+**File: `src/components/development/HistoryTimeline.tsx`**
 
-When buyer clicks "Request Sample" in the NextStepPrompt:
-- Log `sample_requested` activity
-- Move card to ARC (China)
-- Show success toast
-
-```typescript
-// In NextStepPrompt, onRequestSample now does:
-const handleRequestSample = async () => {
-  // 1. Log sample_requested activity
-  await supabase.from('development_card_activity').insert({
-    card_id: cardId,
-    user_id: user.id,
-    activity_type: 'sample_requested',
-    content: 'Sample requested',
-  });
-  
-  // 2. Move card to ARC
-  await supabase.from('development_items')
-    .update({ 
-      current_owner: 'arc',
-      is_new_for_other_team: true 
-    })
-    .eq('id', cardId);
-  
-  // 3. Log ownership change
-  await supabase.from('development_card_activity').insert({
-    card_id: cardId,
-    user_id: user.id,
-    activity_type: 'ownership_change',
-    content: 'Card moved to ARC (China)',
-    metadata: { new_owner: 'arc', trigger: 'sample_request' },
-  });
-};
-```
-
-#### 2. New Attention Banner Variants
-
-**File: `HistoryTimeline.tsx` - AttentionBanner component**
-
-Add support for sample-related activity types:
-
-| Activity Type | Banner Color | Title | Actions |
-|---------------|--------------|-------|---------|
-| `sample_requested` | Cyan | "Sample Requested" | "Add Tracking" / "Comment" |
-| `sample_shipped` | Blue | "Sample Shipped" | "Mark Arrived" / "Comment" |
-| `sample_arrived` (delivered status) | Amber | "Awaiting Review" | "Approve" / "Reject" |
+Add a new banner component that:
+- Shows after a `sample_approved` activity is detected
+- Displays "Sample Approved - Ready to Close" message
+- Shows action buttons based on permissions:
+  - **Close Card**: Visible only to Admin or Card Creator
+  - **Ask Question**: Opens messaging section
+  - **Add Comment**: Opens messaging section
+- Shows who created the card (helpful context)
 
 ```typescript
-// AttentionBanner additions:
-const isSampleRequested = activity.activity_type === 'sample_requested';
-const isSampleShipped = activity.activity_type === 'sample_shipped';
-
-// Styling:
-isSampleRequested && "bg-cyan-50 border-cyan-300"
-isSampleShipped && "bg-blue-50 border-blue-300"
-```
-
-#### 3. Inline Sample Shipping Form
-
-**New file: `InlineSampleShipForm.tsx`**
-
-When China sees "Sample Requested" banner, they can:
-1. Click "Add Tracking" to expand inline form
-2. Fill in courier, tracking number, shipped date, ETA
-3. Submit → Creates sample record + logs activity + moves card
-
-```typescript
-interface InlineSampleShipFormProps {
+interface SampleApprovedBannerProps {
+  activity: Activity;
   cardId: string;
-  currentOwner: 'mor' | 'arc';
-  onClose: () => void;
-  onSuccess: () => void;
+  cardCreatedBy: string; // User ID who created the card
+  onCloseCard: () => void;
+  onAskQuestion: () => void;
+  onAddComment: () => void;
 }
 
-export function InlineSampleShipForm({ cardId, currentOwner, onClose, onSuccess }) {
-  // Form fields: courier, tracking, shipped date, ETA, quantity, notes
+function SampleApprovedBanner({
+  activity,
+  cardId,
+  cardCreatedBy,
+  onCloseCard,
+  onAskQuestion,
+  onAddComment,
+}: SampleApprovedBannerProps) {
+  const { user } = useAuth();
+  const { isAdmin } = useUserRole();
   
-  const handleSubmit = async () => {
-    // 1. Create sample record
-    await supabase.from('development_item_samples').insert({
-      item_id: cardId,
-      courier_name: courier,
-      tracking_number: tracking,
-      shipped_date: shippedDate,
-      estimated_arrival: eta,
-      quantity: qty,
-      notes: notes,
-      status: 'in_transit',
-    });
-    
-    // 2. Log sample_shipped activity
-    await supabase.from('development_card_activity').insert({
-      card_id: cardId,
-      user_id: user.id,
-      activity_type: 'sample_shipped',
-      content: 'Sample shipped',
-      metadata: { courier, tracking, eta },
-    });
-    
-    // 3. Move card to MOR (Brazil)
-    await supabase.from('development_items')
-      .update({ current_owner: 'mor', is_new_for_other_team: true })
-      .eq('id', cardId);
-    
-    // 4. Log ownership change
-    await supabase.from('development_card_activity').insert({
-      activity_type: 'ownership_change',
-      content: 'Card moved to MOR (Brazil)',
-      metadata: { new_owner: 'mor', trigger: 'sample_shipped' },
-    });
-  };
-}
-```
-
-#### 4. Sample Arrival Action
-
-**Update: `SampleTrackingCard.tsx`**
-
-Add "Mark as Arrived" button when sample is in_transit:
-
-```typescript
-{sample.status === 'in_transit' && canEdit && (
-  <Button 
-    size="sm" 
-    variant="outline"
-    onClick={handleMarkArrived}
-  >
-    <CheckCircle className="h-3 w-3 mr-1" />
-    Mark as Arrived
-  </Button>
-)}
-
-const handleMarkArrived = async () => {
-  // 1. Update sample status
-  await supabase.from('development_item_samples')
-    .update({ 
-      status: 'delivered', 
-      actual_arrival: new Date().toISOString() 
-    })
-    .eq('id', sample.id);
-  
-  // 2. Log activity
-  await supabase.from('development_card_activity').insert({
-    activity_type: 'sample_arrived',
-    content: 'Sample arrived',
-    metadata: { sample_id: sample.id },
-  });
-};
-```
-
-#### 5. Sample Approval/Rejection Section
-
-**New file: `SampleReviewSection.tsx`**
-
-Shows when sample is delivered, before approval:
-
-```typescript
-export function SampleReviewSection({ cardId, sample, onReviewed }) {
-  const [showReportUpload, setShowReportUpload] = useState(false);
+  // User can close if they're admin OR they created the card
+  const canClose = isAdmin || user?.id === cardCreatedBy;
   
   return (
-    <div className="border-2 border-amber-300 bg-amber-50 rounded-lg p-4">
-      <h4 className="font-medium flex items-center gap-2">
-        <FileCheck className="h-4 w-4" />
-        Sample Review Required
-      </h4>
-      <p className="text-sm text-muted-foreground mb-4">
-        The sample has arrived. Please test and provide your decision.
+    <div className="rounded-lg p-4 mb-4 border-2 animate-pulse bg-green-50 border-green-400">
+      <div className="flex items-center gap-2 mb-3">
+        <CheckCircle className="h-5 w-5 text-green-600" />
+        <span className="font-medium text-green-800">
+          Sample Approved - Ready to Close
+        </span>
+      </div>
+      <p className="text-sm text-green-700 mb-3">
+        The sample has been tested and approved. You can now close this card 
+        or continue the discussion.
       </p>
-      
-      {/* Optional Report Upload */}
-      <div className="mb-4">
-        <Button variant="outline" size="sm" onClick={() => setShowReportUpload(true)}>
-          <Upload className="h-3 w-3 mr-1" />
-          Upload Report (PDF/Images)
+      <div className="flex flex-wrap gap-2">
+        {canClose && (
+          <Button 
+            variant="default" 
+            size="sm"
+            onClick={onCloseCard}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Close Card
+          </Button>
+        )}
+        <Button variant="outline" size="sm" onClick={onAskQuestion}>
+          <HelpCircle className="h-3 w-3 mr-1" />
+          Ask Question
         </Button>
-        {/* File upload component here */}
-      </div>
-      
-      {/* Decision Buttons */}
-      <div className="flex gap-2">
-        <Button 
-          variant="outline" 
-          className="border-red-300 text-red-700 hover:bg-red-50"
-          onClick={() => handleDecision('rejected')}
-        >
-          <XCircle className="h-4 w-4 mr-1" />
-          Reject Sample
-        </Button>
-        <Button 
-          className="bg-green-600 hover:bg-green-700"
-          onClick={() => handleDecision('approved')}
-        >
-          <CheckCircle className="h-4 w-4 mr-1" />
-          Approve Sample
+        <Button variant="outline" size="sm" onClick={onAddComment}>
+          <MessageCircle className="h-3 w-3 mr-1" />
+          Add Comment
         </Button>
       </div>
+      {!canClose && (
+        <p className="text-xs text-muted-foreground mt-3 italic">
+          Only the card creator or an Admin can close this card.
+        </p>
+      )}
     </div>
   );
 }
 ```
 
----
+#### 2. Update `HistoryTimelineProps` Interface
 
-### Activity Types to Add
+Add `cardCreatedBy` prop to pass the card creator's ID:
 
-| Activity Type | Icon | Color | Description |
-|---------------|------|-------|-------------|
-| `sample_requested` | Package | Cyan | Buyer requests a sample |
-| `sample_shipped` | Truck | Blue | China ships the sample |
-| `sample_arrived` | PackageCheck | Green | Sample arrived at Brazil |
-| `sample_approved` | CheckCircle | Green | Sample approved with optional report |
-| `sample_rejected` | XCircle | Red | Sample rejected with feedback |
+```typescript
+interface HistoryTimelineProps {
+  cardId: string;
+  cardType?: 'item' | 'item_group' | 'task';
+  cardCreatedBy?: string; // NEW: Who created the card
+  showAttentionBanner?: boolean;
+  currentOwner?: 'mor' | 'arc';
+  onOwnerChange?: () => void;
+  onOpenSampleSection?: () => void;
+  onOpenMessageSection?: (type: 'comment' | 'question') => void;
+  onCloseCard?: () => void; // NEW: Callback to close the card
+}
+```
 
----
+#### 3. Add Close Card Logic
 
-### Database Changes
+**File: `src/components/development/HistoryTimeline.tsx`**
 
-#### Add `report_url` to development_item_samples
+Add mutation for closing the card:
 
-```sql
-ALTER TABLE public.development_item_samples
-  ADD COLUMN IF NOT EXISTS report_url TEXT,
-  ADD COLUMN IF NOT EXISTS decision TEXT CHECK (decision IN ('approved', 'rejected', NULL)),
-  ADD COLUMN IF NOT EXISTS decision_notes TEXT,
-  ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS decided_by UUID REFERENCES auth.users(id);
+```typescript
+const closeCardMutation = useMutation({
+  mutationFn: async () => {
+    if (!user?.id) throw new Error('Not authenticated');
+    
+    // 1. Update card status to solved
+    await (supabase.from('development_items') as any)
+      .update({ 
+        status: 'approved',
+        is_solved: true,
+      })
+      .eq('id', cardId);
+    
+    // 2. Log the activity
+    await supabase.from('development_card_activity').insert({
+      card_id: cardId,
+      user_id: user.id,
+      activity_type: 'status_change',
+      content: 'Card closed - development complete',
+      metadata: { new_status: 'solved', action: 'closed' },
+    });
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['development-items'] });
+    queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+    toast({ title: 'Card closed', description: 'Development complete!' });
+    onCloseCard?.();
+  },
+  onError: () => {
+    toast({ title: 'Error', description: 'Failed to close card', variant: 'destructive' });
+  },
+});
+```
+
+#### 4. Update Banner Display Logic
+
+In the timeline render logic, detect `sample_approved` and show the banner:
+
+```typescript
+// Find sample_approved activity (most recent)
+const sampleApprovedActivity = activities.find(a => 
+  a.activity_type === 'sample_approved'
+);
+
+// Check if card is already closed
+const isCardClosed = /* passed from parent or check is_solved */;
+
+// Show sample approved banner if sample was approved AND card not yet closed
+const showSampleApprovedBanner = 
+  sampleApprovedActivity && 
+  !isCardClosed &&
+  showAttentionBanner;
+```
+
+#### 5. Update `ItemDetailDrawer.tsx`
+
+Pass the required props to `HistoryTimeline`:
+
+```typescript
+<HistoryTimeline
+  cardId={item.id}
+  cardType={cardType}
+  cardCreatedBy={item.created_by} // NEW
+  showAttentionBanner={shouldShowAttentionBanner}
+  currentOwner={itemWithNewFields.current_owner || 'arc'}
+  onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
+  onOpenSampleSection={() => setForcedOpenSection('samples')}
+  onOpenMessageSection={(type) => {
+    setForcedMessageType(type);
+    setForcedOpenSection('messaging');
+  }}
+  onCloseCard={() => onOpenChange(false)} // NEW: Close drawer when card is closed
+/>
 ```
 
 ---
 
-### Files to Create/Modify
+### Activity Type for Card Closed
 
-| File | Action | Purpose |
-|------|--------|---------|
-| Database migration | Create | Add report fields to samples table |
-| `src/components/development/InlineSampleShipForm.tsx` | Create | Form for China to add tracking |
-| `src/components/development/SampleReviewSection.tsx` | Create | Approval/rejection UI for Brazil |
-| `src/components/development/HistoryTimeline.tsx` | Modify | Add sample workflow banners and actions |
-| `src/components/development/SampleTrackingCard.tsx` | Modify | Add "Mark as Arrived" and show decision |
-| `src/components/development/ActionsPanel.tsx` | Modify | Integrate new sample flow |
+The close action uses `status_change` activity type with metadata:
+```json
+{
+  "new_status": "solved",
+  "action": "closed"
+}
+```
 
----
-
-### User Experience Flow
-
-**Brazil Team (Buyer):**
-1. Reviews commercial data, clicks "Request Sample"
-2. Card moves to China
-3. Waits for sample to be shipped
-4. Receives notification when shipped
-5. Marks sample as arrived when it comes
-6. Tests sample, uploads report if needed
-7. Approves or rejects
-
-**China Team (Trader):**
-1. Sees "Sample Requested" attention banner
-2. Clicks "Add Tracking" to expand form
-3. Enters courier, tracking number, dates
-4. Submits → Card moves to Brazil
-5. Can track status in timeline
+This displays as a compact row in the timeline: "Fabio closed this card"
 
 ---
 
-### Timeline Visual Hierarchy
+### Banner Priority
 
-Sample activities will be displayed as **compact rows** (like other system activities) to keep focus on conversations, but the **Attention Banner** will prominently highlight the current sample stage requiring action.
+The timeline banners follow this priority order:
+1. **Unresolved Question** (purple) - highest priority
+2. **Sample Requested** (cyan) - for China to add tracking
+3. **Sample Approved** (green) - ready to close
+4. **Next Step Prompt** (sky) - after commercial data set
+
+---
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/components/development/HistoryTimeline.tsx` | Add `SampleApprovedBanner`, close card mutation, banner logic |
+| `src/components/development/ItemDetailDrawer.tsx` | Pass `cardCreatedBy` and `onCloseCard` props |
+
+---
+
+### Edge Cases Handled
+
+1. **Card already closed**: Banner doesn't appear if `is_solved = true`
+2. **Multiple samples**: Only triggers banner if at least one sample is approved
+3. **Rejected samples**: If sample was rejected after approval, banner still shows (last state wins based on activity order)
+4. **Permission denied**: Non-creator, non-admin users see message explaining they can't close
+
+---
+
+### Visual Design
+
+| Element | Style |
+|---------|-------|
+| Banner background | `bg-green-50 dark:bg-green-950/30` |
+| Border | `border-2 border-green-400 dark:border-green-600` |
+| Icon | CheckCircle (green) |
+| Close button | Solid green `bg-green-600 hover:bg-green-700` |
+| Other buttons | Outline with green border |
