@@ -1,103 +1,84 @@
 
-## Plan: De-duplicate Timeline by Filtering Actionable Items
 
-### Problem
+## Plan: Fix Pending Action Indicator Not Showing
 
-Currently, actionable items (unresolved questions, sample requests, etc.) appear TWICE:
-1. In the **Attention Banner** at the top (highlighted area for action)
-2. In the **Timeline history** below (as a regular activity entry)
+### Problem Identified
 
-This is redundant and confusing, as shown in the screenshot.
+The `pending_action_type` field is **NULL** for all cards, even those with unresolved questions:
+
+| Card | Has Unresolved Question? | `pending_action_type` |
+|------|--------------------------|----------------------|
+| PE Strap | Yes ("What is the best price?") | NULL |
+| Yuanda Quotation | Yes ("what do you think?") | NULL |  
+| Test | Yes ("he") | NULL |
+
+The indicator only shows when `pending_action_type` is set, but existing questions were posted before the code was added to set this field.
 
 ---
 
-### Solution
+### Solution: Compute Pending Action Dynamically
 
-**Keep actionable items ONLY in the highlight area at the top until they're resolved.** Once resolved/acted upon, they appear in the timeline history.
-
-The principle:
-- **Pending actions** → Show in banner at top, HIDE from timeline
-- **Resolved/completed actions** → Show in timeline history only
+Rather than relying solely on the database field (which requires perfect synchronization), we should **compute the pending action state** when fetching cards. This is more robust and handles edge cases automatically.
 
 ---
 
 ### Implementation
 
-#### Filter Logic
+#### Step 1: Query unresolved questions per card
 
-When rendering the timeline, **exclude activities that are currently shown in banners:**
+In `Development.tsx`, fetch unresolved questions along with other card data:
 
 ```typescript
-// Activities to exclude from timeline (shown in banners)
-const activitiesInBanners = new Set<string>();
+// Fetch unresolved questions per card
+const unresolvedQuestionsRes = await supabase
+  .from('development_card_activity')
+  .select('card_id')
+  .eq('activity_type', 'question')
+  .or('metadata->resolved.is.null,metadata->>resolved.eq.false')
+  .in('card_id', itemIds);
 
-// If unresolved question is shown in AttentionBanner, exclude it
-if (firstUnresolvedQuestion) {
-  activitiesInBanners.add(firstUnresolvedQuestion.id);
-}
-
-// If sample_requested is shown in SampleRequestedBanner, exclude it
-if (showSampleRequestedBanner && sampleRequestedActivity) {
-  activitiesInBanners.add(sampleRequestedActivity.id);
-}
-
-// Filter activities for timeline
-const timelineActivities = allActivities.filter(a => 
-  !activitiesInBanners.has(a.id)
+const cardsWithUnresolvedQuestions = new Set(
+  (unresolvedQuestionsRes.data || []).map(q => q.card_id)
 );
 ```
 
-#### Changes to HistoryTimeline.tsx
+#### Step 2: Compute effective pending action type
 
-1. **Add filtering before groupByDate():**
-   - Identify which activities are currently displayed in banners
-   - Exclude them from the timeline list
+When mapping items, compute the effective pending action:
 
-2. **Move action buttons INTO the banners:**
-   - AttentionBanner already has a Reply button
-   - Need to add "Mark as Resolved" and "Snooze" to the AttentionBanner too (since timeline won't show them)
-
-3. **Add inline reply box support to AttentionBanner:**
-   - When user clicks Reply in the banner, show the InlineReplyBox there
-
----
-
-### Visual Result
-
-**BEFORE (current - redundant):**
-```
-┌────────────────────────────────────────────────┐
-│  ❓ Question for you               [Reply]     │  ← Banner
-│  ┌────────────────────────────────────────┐   │
-│  │ Caio Kohn • 15:59                     │   │
-│  │ "he"                                   │   │
-│  └────────────────────────────────────────┘   │
-└────────────────────────────────────────────────┘
-
-TODAY
-→ Caio moved card — MOR (Brazil) • 15:59
-
-┌────────────────────────────────────────────────┐  
-│  Caio Kohn  ❓ asked a question  15:59         │  ← DUPLICATE!
-│  "he"                                          │
-│  [Reply] [Mark as Resolved] [Snooze]          │
-└────────────────────────────────────────────────┘
+```typescript
+return data.map(item => {
+  // Compute effective pending action type
+  let effectivePendingActionType = item.pending_action_type;
+  
+  // If no pending_action_type set but has unresolved question, set it
+  if (!effectivePendingActionType && cardsWithUnresolvedQuestions.has(item.id)) {
+    effectivePendingActionType = 'question';
+  }
+  
+  return {
+    ...item,
+    pending_action_type: effectivePendingActionType,
+    // ... other fields
+  };
+});
 ```
 
-**AFTER (optimized - no duplication):**
-```
-┌────────────────────────────────────────────────┐
-│  ❓ Question for you                           │  ← Banner with ALL actions
-│  ┌────────────────────────────────────────┐   │
-│  │ Caio Kohn • 15:59                      │   │
-│  │ "he"                                    │   │
-│  └────────────────────────────────────────┘   │
-│  [Reply] [Mark as Resolved] [⏰ Snooze]       │  ← Actions moved here
-└────────────────────────────────────────────────┘
+#### Step 3: Also sync the database (backfill)
 
-TODAY
-→ Caio moved card — MOR (Brazil) • 15:59        ← Compact row only
-◎ Caio created this card — Created task • 14:54 ← Compact row only
+Add a one-time database update to fix existing cards:
+
+```sql
+-- Update cards with unresolved questions to have pending_action_type = 'question'
+UPDATE development_items di
+SET pending_action_type = 'question'
+WHERE di.pending_action_type IS NULL
+  AND EXISTS (
+    SELECT 1 FROM development_card_activity dca
+    WHERE dca.card_id = di.id
+      AND dca.activity_type = 'question'
+      AND (dca.metadata->>'resolved' IS NULL OR dca.metadata->>'resolved' = 'false')
+  );
 ```
 
 ---
@@ -106,107 +87,86 @@ TODAY
 
 | File | Changes |
 |------|---------|
-| `src/components/development/HistoryTimeline.tsx` | 1. Filter out activities shown in banners from timeline. 2. Add "Mark as Resolved" and "Snooze" buttons to AttentionBanner. 3. Support inline reply box in AttentionBanner. |
+| `src/pages/Development.tsx` | Add query for unresolved questions; compute effective `pending_action_type` |
+| **Database Migration** | Backfill `pending_action_type` for existing cards with unresolved questions |
 
 ---
 
-### Detailed Changes
+### Why This Approach
 
-#### 1. Update AttentionBanner Component
+1. **Immediate fix**: Cards will show indicators right away based on computed state
+2. **Robust**: Even if database field gets out of sync, the computed value catches it
+3. **Backfill**: Migration ensures database stays accurate for future queries
+4. **Performance**: Single additional query batched with existing queries
 
-Add all action buttons (Reply, Mark as Resolved, Snooze) plus inline reply box support:
+---
+
+### Code Changes
+
+**Development.tsx** - Add to the parallel queries section:
 
 ```typescript
-function AttentionBanner({ 
-  activity, 
-  cardId,
-  pendingActionType,
-  currentOwner,
-  onReply,
-  onResolve,
-  onOwnerChange,
-  isResolving,
-}: { 
-  activity: Activity;
-  cardId: string;
-  pendingActionType?: string | null;
-  currentOwner?: 'mor' | 'arc';
-  onReply?: () => void;
-  onResolve?: () => void;
-  onOwnerChange?: () => void;
-  isResolving?: boolean;
-}) {
-  const [showReplyBox, setShowReplyBox] = useState(false);
-  
-  // ... existing banner content ...
-  
-  {/* Action buttons row */}
-  {isQuestion && (
-    <div className="flex gap-2 mt-3 flex-wrap">
-      <Button onClick={() => setShowReplyBox(true)}>
-        <Reply /> Reply
-      </Button>
-      <Button onClick={onResolve} disabled={isResolving}>
-        <Check /> Mark as Resolved
-      </Button>
-      <SnoozeButton cardId={cardId} currentActionType="question" />
-    </div>
-  )}
-  
-  {/* Inline reply box inside banner */}
-  {showReplyBox && (
-    <InlineReplyBox
-      questionId={activity.id}
-      cardId={cardId}
-      currentOwner={currentOwner}
-      pendingActionType={pendingActionType}
-      onClose={() => setShowReplyBox(false)}
-      onCardMove={onOwnerChange}
-    />
-  )}
+// Add this to the Promise.all() around line 144
+const unresolvedQuestionsRes = await supabase
+  .from('development_card_activity')
+  .select('card_id, metadata')
+  .eq('activity_type', 'question')
+  .in('card_id', itemIds);
+
+// Process to find cards with unresolved questions
+const cardsWithUnresolvedQuestions = new Set<string>();
+for (const q of unresolvedQuestionsRes.data || []) {
+  const metadata = q.metadata as { resolved?: boolean } | null;
+  if (!metadata?.resolved) {
+    cardsWithUnresolvedQuestions.add(q.card_id);
+  }
 }
 ```
 
-#### 2. Filter Timeline Activities
-
-Before grouping activities by date, filter out ones shown in banners:
+**Then in the map function:**
 
 ```typescript
-// Collect IDs of activities shown in banners
-const bannerActivityIds = new Set<string>();
-
-if (showAttentionBanner && firstUnresolvedQuestion) {
-  bannerActivityIds.add(firstUnresolvedQuestion.id);
-}
-
-if (showSampleRequestedBanner && sampleRequestedActivity) {
-  bannerActivityIds.add(sampleRequestedActivity.id);
-}
-
-// Filter activities for timeline (exclude banner items)
-const timelineActivities = allActivities.filter(a => 
-  !bannerActivityIds.has(a.id)
-);
-
-// Group filtered activities
-const groupedActivities = groupByDate(timelineActivities);
+return data.map(item => {
+  // Compute effective pending action type
+  let effectivePendingActionType = item.pending_action_type;
+  
+  // If no pending_action_type but has unresolved question, compute it
+  if (!effectivePendingActionType && cardsWithUnresolvedQuestions.has(item.id)) {
+    effectivePendingActionType = 'question';
+  }
+  
+  return {
+    ...item,
+    pending_action_type: effectivePendingActionType,
+    // ... rest of fields
+  };
+});
 ```
 
 ---
 
-### Edge Cases
+### Database Migration SQL
 
-1. **Question gets resolved** → Banner disappears, question appears in timeline as "Resolved"
-2. **Question gets snoozed** → Banner could stay but with snooze indicator, or move to timeline
-3. **Multiple unresolved questions** → First one shows in banner, others show in timeline
-4. **Sample requested then shipped** → SampleRequestedBanner disappears, both activities appear in timeline
+```sql
+-- Backfill pending_action_type for cards with unresolved questions
+UPDATE development_items 
+SET pending_action_type = 'question'
+WHERE pending_action_type IS NULL
+  AND id IN (
+    SELECT DISTINCT card_id 
+    FROM development_card_activity 
+    WHERE activity_type = 'question'
+      AND (metadata->>'resolved' IS NULL OR metadata->>'resolved' = 'false')
+  );
+```
 
 ---
 
 ### Summary
 
-This change:
-1. **Eliminates duplication** by filtering banner activities from the timeline
-2. **Consolidates actions** by moving all buttons (Reply, Resolve, Snooze) into the banner
-3. **Keeps history clean** by only showing completed/resolved items in the timeline
-4. **Supports inline replies** directly in the banner
+This fix:
+1. **Computes pending action dynamically** when fetching cards (catches all cases)
+2. **Backfills database** to fix existing cards
+3. **Works immediately** without requiring users to re-post questions
+4. **Shows blinking indicator** for urgent actions and static indicator for snoozed ones
+
