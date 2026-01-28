@@ -1,230 +1,272 @@
 
-## Plan: Reorganize Card Header and Add Upload Functionality Throughout Timeline
+
+## Plan: Pending Action Indicator with Snooze/Delay Timers
 
 ### Overview
 
-This plan addresses two main areas:
-1. **Header Cleanup**: Reorganize the card details header to emphasize the title and description, removing the image upload from that location
-2. **Ubiquitous Upload**: Add upload buttons throughout the timeline - in reply boxes, action hints, and messaging sections
+This plan implements a smarter "pending action" system that differentiates between:
+1. **Unseen activity** (amber dot - already exists): "Something new happened"
+2. **Pending action** (blinking indicator - NEW): "You need to do something"
+
+The pending action indicator will:
+- Blink when there's an actionable item requiring attention
+- Pause blinking when a delay/snooze timer is active OR when waiting for a sample ETA
+- Resume blinking once the timer expires
+- Track all delays in the timeline history
 
 ---
 
-### Current Issues (from screenshot)
+### Part 1: What Triggers a "Pending Action"?
 
-The current layout has the image upload button awkwardly placed next to the card title, making the header cluttered and confusing.
+A card has a pending action when one of these conditions is met:
 
----
+| Trigger | Who sees it? | Resolves when... |
+|---------|--------------|------------------|
+| **Unresolved question** | Card owner (MOR/ARC team) | Question is marked resolved or answered |
+| **Commercial data sent** | MOR team (waiting for sample request) | Sample is requested or comment added |
+| **Sample requested** | ARC team | Tracking is added |
+| **Sample in transit** | MOR team | ETA reached OR marked as arrived |
+| **Sample delivered** | MOR team | Sample approved/rejected |
 
-### Part 1: Header Reorganization
-
-**Goal**: Make title and description the focal point, remove image upload from header.
-
-#### New Header Layout
-
-```text
-┌────────────────────────────────────────────────────────────────┐
-│  Card Details                                       [🗑 Delete] │
-├────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  PE Strap                                 ← Large title         │
-│  [Single Item] [Raw Material] [medium]    ← Badges below        │
-│                                                                 │
-│  Status: [Pending ▼]                                           │
-│                                                                 │
-│  ┌────────────────────────────────────────────────────────────┐│
-│  │ Price and MOQ for PE strap of our chairs.                  ││
-│  │                                          ← Desired outcome ││
-│  └────────────────────────────────────────────────────────────┘│
-│                                                                 │
-└────────────────────────────────────────────────────────────────┘
-```
-
-**Changes to `CardInfoSection.tsx`**:
-- Remove the image upload/display from the header entirely
-- Make title larger and more prominent (`text-xl` instead of `text-lg`)
-- Keep badges and status below title
-- Keep the "Desired Outcome" description box
+**Comments do NOT create pending actions** - they only trigger the existing "unseen activity" amber dot.
 
 ---
 
-### Part 2: Add Upload Buttons in Timeline
+### Part 2: Database Changes
 
-#### 2A. Add Upload to "What's next?" Prompt
+**Add columns to `development_items` table:**
 
-When the "What's next?" hint appears in the timeline, add an "Upload" button alongside existing actions:
+```sql
+ALTER TABLE public.development_items
+ADD COLUMN pending_action_type text DEFAULT NULL,
+ADD COLUMN pending_action_due_at timestamptz DEFAULT NULL,
+ADD COLUMN pending_action_snoozed_until timestamptz DEFAULT NULL,
+ADD COLUMN pending_action_snoozed_by uuid DEFAULT NULL,
+ADD COLUMN pending_action_snoozed_at timestamptz DEFAULT NULL;
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  💡 What's next?                                                │
-├─────────────────────────────────────────────────────────────────┤
-│  Commercial data has been set. What would you like to do?       │
-│                                                                 │
-│  [Request Sample] [Ask a Question] [Add Comment] [📎 Upload]   │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+COMMENT ON COLUMN development_items.pending_action_type IS 'Type: question, commercial_review, sample_tracking, sample_review, etc.';
+COMMENT ON COLUMN development_items.pending_action_due_at IS 'When action becomes urgent (sample ETA, etc.)';
+COMMENT ON COLUMN development_items.pending_action_snoozed_until IS 'Delay timer - dont blink until this time';
 ```
-
-**Changes to `HistoryTimeline.tsx` - `NextStepPrompt` component**:
-- Add `onUpload` callback prop
-- Add "Upload" button that triggers the upload flow
-
-#### 2B. Add Upload to Sample Approved Banner
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  ✓ Sample Approved - Ready to Close                            │
-├─────────────────────────────────────────────────────────────────┤
-│  [Close Card] [Ask Question] [Add Comment] [📎 Upload]         │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Changes to `HistoryTimeline.tsx` - `SampleApprovedBanner` component**:
-- Add `onUpload` callback prop
-- Add "Upload" button
-
-#### 2C. Add Upload to Inline Reply Box
-
-When replying to a question, allow attaching files:
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  [Textarea: Type your reply...]                                 │
-│                                                                 │
-│  [Cancel] [📎 Upload] [Just Comment] [Answer & Move to ARC →]  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Changes to `InlineReplyBox.tsx`**:
-- Add upload button with file picker
-- Display attached files as previews before sending
-- Include file URLs in the activity metadata when submitting
-
-#### 2D. Add Upload to ActionsPanel Messaging Section
-
-In the Comment/Question accordion, add upload alongside the message:
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  📝 Add Comment / Ask Question                                  │
-├─────────────────────────────────────────────────────────────────┤
-│  [Comment] [Question]                                           │
-│                                                                 │
-│  [Textarea...]                                                  │
-│                                                                 │
-│  [📎 Attachments: None]                    [Send]              │
-│           ↑                                                     │
-│    Shows file previews when attached                            │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Changes to `ActionsPanel.tsx`**:
-- Add upload state to track attached files
-- Add upload button in messaging section
-- Display file previews below textarea
-- Include file URLs in activity metadata on send
 
 ---
 
-### Part 3: Upload Implementation
+### Part 3: Logic Flow
 
-#### Shared Upload Component
-
-Create a lightweight inline upload button that can be reused:
-
-**New file: `src/components/development/TimelineUploadButton.tsx`**
-
-```typescript
-interface TimelineUploadButtonProps {
-  onFilesSelected: (files: File[]) => void;
-  attachments: UploadedFile[];
-  variant?: 'button' | 'icon';
-  className?: string;
-}
-
-interface UploadedFile {
-  id: string;
-  name: string;
-  url: string;
-  type: 'image' | 'file';
-}
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    PENDING ACTION INDICATOR LOGIC                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  1. COMPUTE hasPendingAction:                                           │
+│     - Check for unresolved questions directed at current owner          │
+│     - Check for sample_requested (needs tracking from ARC)              │
+│     - Check for sample_in_transit (needs arrival from MOR)              │
+│     - Check for sample_delivered (needs review from MOR)                │
+│     - Check for commercial_update trigger                               │
+│                                                                         │
+│  2. COMPUTE isActionUrgent:                                             │
+│     - If snoozed_until is set AND now() < snoozed_until → NOT urgent    │
+│     - If pending_action_due_at is set AND now() < due_at → NOT urgent   │
+│     - Otherwise → IS urgent (blink!)                                    │
+│                                                                         │
+│  3. DISPLAY:                                                            │
+│     - hasPendingAction + isActionUrgent = Show BLINKING indicator       │
+│     - hasPendingAction + NOT urgent = Show STATIC indicator + due date  │
+│     - No pending action = Show nothing (or just unseen dot if new)      │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
-
-Features:
-- Uses existing Supabase storage bucket (`development-images`)
-- Shows file picker on click
-- Supports multiple files
-- Shows inline preview of attached files
-- Allows removing attachments before submitting
 
 ---
 
-### Part 4: Display Attachments in Timeline
+### Part 4: Visual Design
 
-When activities have attachments in metadata, display them:
-
-**Changes to `HistoryTimeline.tsx`**:
-- Check activity metadata for `attachments` array
-- Render thumbnails for images, file icons for documents
-- Clicking opens in new tab
+#### On Card (in list)
 
 ```text
+┌────────────────────────────────────────────────────┐
+│  Caio                                    🔴← blink │
+├────────────────────────────────────────────────────┤
+│  [Item] [Raw Material] [medium]                    │
+│  PE Strap                                          │
+│                                                    │
+│  📦 1 sample  📅 15/02  ⏰ Due Feb 20             │
+│                      └── shows when action is     │
+│                          snoozed or waiting       │
+└────────────────────────────────────────────────────┘
+```
+
+**Indicator States:**
+- **🔴 Blinking red/coral**: Urgent pending action NOW
+- **🟡 Static yellow**: Pending action, but waiting (snoozed/ETA not reached)
+- **🟠 Amber dot (existing)**: Just unseen activity, no action needed
+
+#### Inside Card Details
+
+Show a banner or badge with the pending action info:
+```text
 ┌─────────────────────────────────────────────────────────────────┐
-│  👤 Caio Kohn  [commented]  10:30                               │
-│                                                                 │
-│  "Here's the sample photo for reference"                        │
-│                                                                 │
-│  [📷 thumbnail] [📷 thumbnail]   ← Attached images              │
-│                                                                 │
+│  ⏰ Action Due: Feb 20, 2026                                    │
+│  You snoozed this until then. Sample ETA is Feb 18.            │
+│  [Resume Now] [Extend Snooze]                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### Files to Modify
+### Part 5: Snooze/Delay Feature
+
+#### Where users can snooze:
+
+1. **When replying to a question** - "Reply & Snooze for X days"
+2. **When adding a comment** - "Comment & Snooze"  
+3. **On any pending action banner** - "Snooze until..."
+
+#### Snooze options:
+
+```text
+┌─────────────────────────────────────────┐
+│  ⏰ Snooze this action:                 │
+│  [1 day] [3 days] [1 week] [Custom]    │
+└─────────────────────────────────────────┘
+```
+
+#### Log to timeline:
+
+```text
+  ⏰ Caio snoozed until Feb 25 — "Waiting for factory response"
+```
+
+---
+
+### Part 6: Integration with Sample ETA
+
+When a sample is shipped with an ETA:
+1. Set `pending_action_due_at` = sample.estimated_arrival
+2. Card shows "Due: Feb 20" on the card exterior
+3. Indicator stays static (yellow) until ETA
+4. After ETA passes, indicator starts blinking
+
+---
+
+### Part 7: Implementation Steps
+
+#### Database Migration
+
+```sql
+-- Add pending action tracking columns
+ALTER TABLE public.development_items
+ADD COLUMN pending_action_type text DEFAULT NULL,
+ADD COLUMN pending_action_due_at timestamptz DEFAULT NULL,
+ADD COLUMN pending_action_snoozed_until timestamptz DEFAULT NULL,
+ADD COLUMN pending_action_snoozed_by uuid DEFAULT NULL;
+```
+
+#### Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/development/CardInfoSection.tsx` | Remove image upload from header, clean up layout |
-| `src/components/development/HistoryTimeline.tsx` | Add upload to NextStepPrompt & SampleApprovedBanner, display attachments on activities |
-| `src/components/development/InlineReplyBox.tsx` | Add upload button and attachment handling |
-| `src/components/development/ActionsPanel.tsx` | Add upload to messaging section |
-| **NEW** `src/components/development/TimelineUploadButton.tsx` | Reusable upload component for timeline |
+| **Database Migration** | Add pending action columns |
+| `src/pages/Development.tsx` | Fetch pending action data, compute urgency |
+| `src/components/development/DevelopmentCard.tsx` | Add blinking/static indicator, show due date |
+| `src/components/development/HistoryTimeline.tsx` | Show snooze banner, add snooze option to replies |
+| `src/components/development/InlineReplyBox.tsx` | Add "Reply & Snooze" option |
+| `src/components/development/ActionsPanel.tsx` | Add snooze option to messaging |
+| `src/components/development/InlineSampleShipForm.tsx` | Set `pending_action_due_at` from ETA |
+| `src/components/development/SampleTrackingCard.tsx` | Update pending action on arrival/review |
+| **NEW** `src/components/development/SnoozeButton.tsx` | Reusable snooze button/modal |
+| **NEW** `src/components/development/PendingActionBadge.tsx` | Show action due info |
 
----
+#### Update DevelopmentItem Interface
 
-### Activity Metadata Schema for Attachments
-
-```json
-{
-  "attachments": [
-    {
-      "id": "uuid",
-      "name": "sample-photo.jpg",
-      "url": "https://storage.supabase.co/...",
-      "type": "image"
-    }
-  ],
-  "reply_to_question": "question-id" // if applicable
+```typescript
+export interface DevelopmentItem {
+  // ... existing fields
+  pending_action_type?: string | null;
+  pending_action_due_at?: string | null;
+  pending_action_snoozed_until?: string | null;
+  pending_action_snoozed_by?: string | null;
 }
+```
+
+#### Logic in DevelopmentCard
+
+```typescript
+// Check if there's a pending action for this card
+const hasPendingAction = useMemo(() => {
+  // Check unresolved questions, sample states, etc.
+  return item.pending_action_type !== null;
+}, [item.pending_action_type]);
+
+// Check if action is urgent (not snoozed, past due date)
+const isActionUrgent = useMemo(() => {
+  if (!hasPendingAction) return false;
+  
+  const now = new Date();
+  const snoozedUntil = item.pending_action_snoozed_until 
+    ? new Date(item.pending_action_snoozed_until) 
+    : null;
+  const dueAt = item.pending_action_due_at 
+    ? new Date(item.pending_action_due_at) 
+    : null;
+  
+  // If snoozed and snooze hasn't expired, not urgent
+  if (snoozedUntil && now < snoozedUntil) return false;
+  
+  // If has due date and due date hasn't passed, not urgent
+  if (dueAt && now < dueAt) return false;
+  
+  // Otherwise, urgent!
+  return true;
+}, [hasPendingAction, item.pending_action_snoozed_until, item.pending_action_due_at]);
 ```
 
 ---
 
-### User Experience Flow
+### Part 8: Automatic Pending Action Updates
 
-1. User opens a card and sees clean header with title/description prominent
-2. User scrolls to timeline and sees "What's next?" prompt with Upload option
-3. User clicks "Upload" → file picker opens → selects files
-4. Files upload to storage, URLs are stored in activity metadata
-5. Activity appears in timeline with thumbnails/file icons
-6. Other users can view/download attachments from the timeline
+When certain activities happen, automatically set/clear pending actions:
+
+| Event | Action on pending_action fields |
+|-------|--------------------------------|
+| Question asked | Set `pending_action_type = 'question'` |
+| Question resolved/answered | Clear pending_action fields |
+| Commercial data sent | Set `pending_action_type = 'commercial_review'` |
+| Sample requested | Set `pending_action_type = 'sample_tracking'` |
+| Sample shipped (with ETA) | Set `pending_action_type = 'sample_in_transit'`, `due_at = ETA` |
+| Sample arrived | Set `pending_action_type = 'sample_review'` |
+| Sample approved/rejected | Clear pending_action fields |
+| User snoozes | Set `snoozed_until`, `snoozed_by` |
 
 ---
 
-### Technical Notes
+### Part 9: Timeline Log for Snooze Actions
 
-- Reuses existing `development-images` Supabase storage bucket
-- File uploads happen immediately on selection (before submitting message)
-- Cancelled uploads are cleaned up (files deleted from storage)
-- Maximum file size: 10MB per file
-- Supported types: Images (jpg, png, gif, webp), PDFs, Documents (docx, xlsx)
+Activity type: `'action_snoozed'`
+
+```typescript
+await supabase.from('development_card_activity').insert({
+  card_id: cardId,
+  user_id: user.id,
+  activity_type: 'action_snoozed',
+  content: 'Waiting for factory response',
+  metadata: { 
+    snooze_until: '2026-02-25',
+    original_action_type: 'question',
+  },
+});
+```
+
+---
+
+### Summary
+
+This implementation creates a smart notification system that:
+
+1. **Distinguishes** between "something happened" (amber dot) and "you need to act" (blinking indicator)
+2. **Respects timing** - won't blink while waiting for sample ETAs or user-set snooze timers
+3. **Shows context** - displays due dates on cards so everyone knows when action is expected
+4. **Tracks everything** - all snoozes and status changes logged to timeline
+5. **Enables collaboration** - allows users to communicate "I'll handle this in 3 days"
+
