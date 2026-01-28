@@ -92,7 +92,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
       }
 
       // Always update last viewed timestamp for current user
-      await supabase
+      const { error } = await supabase
         .from('card_user_views')
         .upsert({
           card_id: item.id,
@@ -102,7 +102,13 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
           onConflict: 'card_id,user_id',
         });
 
-      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      if (!error) {
+        // Force immediate refetch of active queries to update the card list
+        queryClient.invalidateQueries({ 
+          queryKey: ['development-items'],
+          refetchType: 'active'
+        });
+      }
     };
 
     markAsSeenAndUpdateView();
