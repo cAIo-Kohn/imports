@@ -196,13 +196,27 @@ function CompactActivityRow({ activity }: { activity: Activity }) {
 }
 
 // Attention Banner Component for highlighting important actions
+interface AttentionBannerProps {
+  activity: Activity;
+  cardId: string;
+  currentOwner?: 'mor' | 'arc';
+  pendingActionType?: string | null;
+  onResolve: (activityId: string) => void;
+  onOwnerChange?: () => void;
+  isResolving?: boolean;
+}
+
 function AttentionBanner({ 
   activity, 
-  onReply 
-}: { 
-  activity: Activity; 
-  onReply?: () => void;
-}) {
+  cardId,
+  currentOwner,
+  pendingActionType,
+  onResolve,
+  onOwnerChange,
+  isResolving,
+}: AttentionBannerProps) {
+  const [showReplyBox, setShowReplyBox] = useState(false);
+  
   const isQuestion = activity.activity_type === 'question';
   const isCommercial = activity.activity_type === 'commercial_update';
   const isOwnershipChange = activity.activity_type === 'ownership_change';
@@ -238,17 +252,6 @@ function AttentionBanner({
             {isQuestion ? "Question for you" : isCommercial ? "Commercial data updated" : "Card moved to you"}
           </span>
         </div>
-        {isQuestion && onReply && (
-          <Button 
-            size="sm" 
-            variant="outline"
-            onClick={onReply}
-            className="bg-white hover:bg-purple-100 border-purple-300 text-purple-700 dark:bg-purple-950 dark:hover:bg-purple-900 dark:border-purple-600 dark:text-purple-200"
-          >
-            <Reply className="h-3 w-3 mr-1" />
-            Reply
-          </Button>
-        )}
       </div>
       <div className="bg-white dark:bg-background rounded-lg p-3 border">
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
@@ -269,6 +272,52 @@ function AttentionBanner({
           </p>
         )}
       </div>
+      
+      {/* Action buttons for questions */}
+      {isQuestion && !showReplyBox && (
+        <div className="flex gap-2 mt-3 flex-wrap">
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => setShowReplyBox(true)}
+            className="bg-white hover:bg-purple-100 border-purple-300 text-purple-700 dark:bg-purple-950 dark:hover:bg-purple-900 dark:border-purple-600 dark:text-purple-200"
+          >
+            <Reply className="h-3 w-3 mr-1" />
+            Reply
+          </Button>
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => onResolve(activity.id)}
+            disabled={isResolving}
+            className="bg-white hover:bg-purple-100 border-purple-300 text-purple-700 dark:bg-purple-950 dark:hover:bg-purple-900 dark:border-purple-600 dark:text-purple-200"
+          >
+            <Check className="h-3 w-3 mr-1" />
+            {isResolving ? 'Resolving...' : 'Mark as Resolved'}
+          </Button>
+          <SnoozeButton
+            cardId={cardId}
+            currentActionType="question"
+            variant="outline"
+            size="sm"
+            className="bg-white hover:bg-purple-100 border-purple-300 text-purple-700 dark:bg-purple-950 dark:hover:bg-purple-900 dark:border-purple-600 dark:text-purple-200"
+          />
+        </div>
+      )}
+      
+      {/* Inline reply box inside banner */}
+      {showReplyBox && (
+        <div className="mt-3">
+          <InlineReplyBox
+            questionId={activity.id}
+            cardId={cardId}
+            currentOwner={currentOwner}
+            pendingActionType={pendingActionType}
+            onClose={() => setShowReplyBox(false)}
+            onCardMove={onOwnerChange}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -726,7 +775,44 @@ export function HistoryTimeline({
   // Use activities from database directly (no synthetic creation activity)
   const allActivities: Activity[] = activities;
 
-  const groupedActivities = groupByDate(allActivities);
+  // Find the first unresolved question for keyboard shortcut / attention banner
+  const firstUnresolvedQuestion = allActivities.find(a => 
+    a.activity_type === 'question' && !a.metadata?.resolved
+  );
+
+  // Find sample_requested activity (for China to show "Add Tracking" banner)
+  const sampleRequestedActivity = allActivities.find(a => 
+    a.activity_type === 'sample_requested'
+  );
+  
+  // Check if sample was already shipped after request
+  const sampleShippedAfterRequest = sampleRequestedActivity && allActivities.find(a => 
+    a.activity_type === 'sample_shipped' && 
+    new Date(a.created_at) > new Date(sampleRequestedActivity.created_at)
+  );
+  
+  // Show sample requested banner only if sample wasn't shipped yet and card is with ARC
+  const showSampleRequestedBanner = 
+    showAttentionBanner && 
+    sampleRequestedActivity && 
+    !sampleShippedAfterRequest &&
+    currentOwner === 'arc';
+
+  // Collect IDs of activities shown in banners (to exclude from timeline)
+  const bannerActivityIds = new Set<string>();
+  
+  if (showAttentionBanner && firstUnresolvedQuestion && !showSampleRequestedBanner) {
+    bannerActivityIds.add(firstUnresolvedQuestion.id);
+  }
+  
+  if (showSampleRequestedBanner && sampleRequestedActivity) {
+    bannerActivityIds.add(sampleRequestedActivity.id);
+  }
+  
+  // Filter activities for timeline (exclude ones shown in banners)
+  const timelineActivities = allActivities.filter(a => !bannerActivityIds.has(a.id));
+
+  const groupedActivities = groupByDate(timelineActivities);
   const sortedDates = Object.keys(groupedActivities).sort((a, b) => b.localeCompare(a));
 
   const getInitials = (profile: Activity['profile']) => {
@@ -744,16 +830,9 @@ export function HistoryTimeline({
     return '?';
   };
 
-  // Find the first unresolved question for keyboard shortcut / attention banner
-  const firstUnresolvedQuestion = activities.find(a => 
-    a.activity_type === 'question' && !a.metadata?.resolved
-  );
-
-  // Handle opening reply for the first unresolved question
+  // Handle opening reply for the first unresolved question (unused now, actions in banner)
   const handleOpenFirstReply = () => {
-    if (firstUnresolvedQuestion) {
-      setReplyingToId(firstUnresolvedQuestion.id);
-    }
+    // No longer needed since actions are now in banner
   };
 
   if (isLoading) {
@@ -790,23 +869,7 @@ export function HistoryTimeline({
     a.metadata?.trigger === 'commercial'
   );
 
-  // Find sample_requested activity (for China to show "Add Tracking" banner)
-  const sampleRequestedActivity = activities.find(a => 
-    a.activity_type === 'sample_requested'
-  );
-  
-  // Check if sample was already shipped after request
-  const sampleShippedAfterRequest = sampleRequestedActivity && activities.find(a => 
-    a.activity_type === 'sample_shipped' && 
-    new Date(a.created_at) > new Date(sampleRequestedActivity.created_at)
-  );
-  
-  // Show sample requested banner only if sample wasn't shipped yet and card is with ARC
-  const showSampleRequestedBanner = 
-    showAttentionBanner && 
-    sampleRequestedActivity && 
-    !sampleShippedAfterRequest &&
-    currentOwner === 'arc';
+  // (sample_requested variables already defined above in banner filtering section)
 
   // Find sample_approved activity (for showing "Ready to Close" banner)
   const sampleApprovedActivity = activities.find(a => 
@@ -884,8 +947,13 @@ export function HistoryTimeline({
       {/* Attention Banner - when there's an unresolved question */}
       {showAttentionBanner && firstUnresolvedQuestion && !showSampleRequestedBanner && !showSampleApprovedBanner && (
         <AttentionBanner
-          activity={firstUnresolvedQuestion} 
-          onReply={handleOpenFirstReply} 
+          activity={firstUnresolvedQuestion}
+          cardId={cardId}
+          currentOwner={currentOwner}
+          pendingActionType={pendingActionType}
+          onResolve={(id) => resolveQuestionMutation.mutate(id)}
+          onOwnerChange={onOwnerChange}
+          isResolving={resolveQuestionMutation.isPending}
         />
       )}
       
