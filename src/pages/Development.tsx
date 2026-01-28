@@ -69,6 +69,8 @@ export interface DevelopmentItem {
   // For unseen activity indicator
   latest_activity_at?: string;
   last_viewed_at?: string | null;
+  // Creator info
+  creator_name?: string | null;
 }
 
 // New simplified status order (3 active + 1 solved)
@@ -130,8 +132,11 @@ export default function Development() {
 
       const itemIds = data.map(item => item.id);
       
-      // Fetch sample counts, product counts, latest activity, and user views in parallel
-      const [sampleCountsRes, productCountsRes, latestActivitiesRes, userViewsRes] = await Promise.all([
+      // Get unique creator user IDs
+      const creatorIds = [...new Set(data.map(item => item.created_by).filter(Boolean))];
+
+      // Fetch sample counts, product counts, latest activity, user views, and creator profiles in parallel
+      const [sampleCountsRes, productCountsRes, latestActivitiesRes, userViewsRes, creatorProfilesRes] = await Promise.all([
         supabase
           .from('development_item_samples')
           .select('item_id')
@@ -151,6 +156,12 @@ export default function Development() {
               .select('card_id, last_viewed_at')
               .eq('user_id', user.id)
               .in('card_id', itemIds)
+          : Promise.resolve({ data: [] }),
+        creatorIds.length > 0
+          ? supabase
+              .from('profiles')
+              .select('user_id, full_name')
+              .in('user_id', creatorIds)
           : Promise.resolve({ data: [] }),
       ]);
 
@@ -178,6 +189,12 @@ export default function Development() {
         return acc;
       }, {} as Record<string, string>);
 
+      // Get creator names
+      const creatorNameMap = (creatorProfilesRes.data || []).reduce((acc, p) => {
+        acc[p.user_id] = p.full_name;
+        return acc;
+      }, {} as Record<string, string | null>);
+
       return data.map(item => ({
         ...item,
         card_type: item.card_type || 'item',
@@ -189,6 +206,7 @@ export default function Development() {
         products_count: productCountMap[item.id] || 0,
         latest_activity_at: latestActivityMap[item.id] || item.created_at,
         last_viewed_at: userViewMap[item.id] || null,
+        creator_name: creatorNameMap[item.created_by] || null,
       })) as DevelopmentItem[];
     },
   });

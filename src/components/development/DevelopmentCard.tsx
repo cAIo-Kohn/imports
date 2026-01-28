@@ -123,10 +123,10 @@ export function DevelopmentCard({
           </span>
         </div>
       )}
-      {/* Creator Role Label */}
-      {creatorRole && (
+      {/* Creator Name Label */}
+      {(item as any).creator_name && (
         <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-[10px] font-medium" style={{ color: roleColor }}>{roleLabel}</span>
+          <span className="text-[10px] font-medium" style={{ color: roleColor }}>{(item as any).creator_name}</span>
         </div>
       )}
 
