@@ -517,16 +517,18 @@ export function ActionsPanel({
                 )}
               </span>
             </AccordionTrigger>
-            <AccordionContent className="px-3 pb-3 space-y-3">
-              <AddSampleForm itemId={cardId} />
-              
-              {samples.length > 0 && (
-                <div className="space-y-2 pt-2">
-                  {samples.map((sample) => (
-                    <SampleTrackingCard key={sample.id} sample={sample} canEdit={canEdit} />
-                  ))}
-                </div>
-              )}
+            <AccordionContent className="px-3 pb-3">
+              <div className="max-h-[50vh] overflow-y-auto space-y-3 pr-1">
+                <AddSampleForm itemId={cardId} />
+                
+                {samples.length > 0 && (
+                  <div className="space-y-2 pt-2">
+                    {samples.map((sample) => (
+                      <SampleTrackingCard key={sample.id} sample={sample} canEdit={canEdit} />
+                    ))}
+                  </div>
+                )}
+              </div>
             </AccordionContent>
           </AccordionItem>
         )}
