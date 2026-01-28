@@ -103,6 +103,16 @@ export function SampleTrackingCard({ sample, canEdit, onSampleArrived }: SampleT
 
       if (updateError) throw updateError;
 
+      // Update card pending action to sample_review
+      const { error: cardError } = await (supabase.from('development_items') as any)
+        .update({ 
+          pending_action_type: 'sample_review',
+          pending_action_due_at: null, // Clear the ETA since sample arrived
+        })
+        .eq('id', sample.item_id);
+
+      if (cardError) throw cardError;
+
       // Log activity
       const { error: activityError } = await supabase
         .from('development_card_activity')

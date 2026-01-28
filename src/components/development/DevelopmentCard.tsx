@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
-import { format } from 'date-fns';
-import { Calendar, Package, Layers, ListTodo, Box, Leaf, Sparkles, Trash2 } from 'lucide-react';
+import { format, parseISO, isAfter } from 'date-fns';
+import { Calendar, Package, Layers, ListTodo, Box, Leaf, Sparkles, Trash2, Clock } from 'lucide-react';
 import { DevelopmentItem, DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useRoleColors } from '@/hooks/useRoleColors';
+import { PendingActionIndicator, ActionDueDate } from './PendingActionBadge';
 
 interface DevelopmentCardProps {
   item: DevelopmentItem;
@@ -114,8 +115,16 @@ export function DevelopmentCard({
       draggable={canDrag}
       onDragStart={(e) => onDragStart(e, item.id)}
     >
-      {/* Unseen Activity Indicator */}
-      {hasUnseenActivity && (
+      {/* Pending Action Indicator (priority over unseen activity) */}
+      {item.pending_action_type ? (
+        <div className="absolute top-2 right-2">
+          <PendingActionIndicator
+            pendingActionType={item.pending_action_type}
+            pendingActionDueAt={item.pending_action_due_at || null}
+            snoozedUntil={item.pending_action_snoozed_until || null}
+          />
+        </div>
+      ) : hasUnseenActivity && (
         <div className="absolute top-2 right-2">
           <span className="relative flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
@@ -206,6 +215,14 @@ export function DevelopmentCard({
             <Calendar className="h-3 w-3" />
             <span>{format(new Date(item.due_date), 'dd/MM')}</span>
           </div>
+        )}
+
+        {/* Pending Action Due Date (if different from card due date) */}
+        {item.pending_action_type && (item.pending_action_due_at || item.pending_action_snoozed_until) && (
+          <ActionDueDate
+            pendingActionDueAt={item.pending_action_due_at || null}
+            snoozedUntil={item.pending_action_snoozed_until || null}
+          />
         )}
 
         {/* Product Code (for single items) */}

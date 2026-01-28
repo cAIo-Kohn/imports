@@ -2,16 +2,18 @@ import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton';
+import { SnoozeButton } from './SnoozeButton';
 
 interface InlineReplyBoxProps {
   questionId: string;
   cardId: string;
   currentOwner: 'mor' | 'arc';
+  pendingActionType?: string | null;
   onClose: () => void;
   onCardMove?: () => void;
 }
@@ -20,6 +22,7 @@ export function InlineReplyBox({
   questionId, 
   cardId, 
   currentOwner, 
+  pendingActionType,
   onClose, 
   onCardMove 
 }: InlineReplyBoxProps) {
@@ -174,6 +177,15 @@ export function InlineReplyBox({
         >
           Cancel
         </Button>
+        
+        {/* Snooze button - allows user to delay the pending action */}
+        <SnoozeButton
+          cardId={cardId}
+          currentActionType={pendingActionType}
+          variant="outline"
+          size="sm"
+        />
+        
         <Button 
           variant="outline" 
           size="sm" 

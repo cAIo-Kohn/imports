@@ -110,15 +110,27 @@ export function SampleReviewSection({
 
       if (activityError) throw activityError;
 
-      // If approved, optionally move card or mark solved - for now just log
+      // Clear pending action and optionally move card
       if (decision === 'approved') {
-        // The card stays with Brazil to decide next steps
+        // Clear pending action - card stays with Brazil to decide next steps
+        await (supabase.from('development_items') as any)
+          .update({ 
+            pending_action_type: null,
+            pending_action_due_at: null,
+            pending_action_snoozed_until: null,
+            pending_action_snoozed_by: null,
+          })
+          .eq('id', cardId);
       } else {
-        // If rejected, move card back to China to request new sample
+        // If rejected, clear pending action and move card back to China to request new sample
         await (supabase.from('development_items') as any)
           .update({ 
             current_owner: 'arc',
             is_new_for_other_team: true,
+            pending_action_type: 'sample_tracking', // They need to send a new sample
+            pending_action_due_at: null,
+            pending_action_snoozed_until: null,
+            pending_action_snoozed_by: null,
           })
           .eq('id', cardId);
 
