@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 import { InlineReplyBox } from './InlineReplyBox';
 import { InlineSampleShipForm } from './InlineSampleShipForm';
 import { TimelineUploadButton, AttachmentDisplay, UploadedAttachment } from './TimelineUploadButton';
+import { SnoozeButton } from './SnoozeButton';
 
 interface Activity {
   id: string;
@@ -635,6 +636,7 @@ export function HistoryTimeline({
     mutationFn: async (activityId: string) => {
       if (!user?.id) throw new Error('Not authenticated');
       
+      // Update the activity metadata
       const { error } = await supabase
         .from('development_card_activity')
         .update({
@@ -647,9 +649,20 @@ export function HistoryTimeline({
         .eq('id', activityId);
       
       if (error) throw error;
+
+      // Clear pending action on the card if it was a question
+      await (supabase.from('development_items') as any)
+        .update({
+          pending_action_type: null,
+          pending_action_due_at: null,
+          pending_action_snoozed_until: null,
+          pending_action_snoozed_by: null,
+        })
+        .eq('id', cardId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
       toast({ title: 'Question marked as resolved' });
     },
     onError: () => {
@@ -965,6 +978,13 @@ export function HistoryTimeline({
                             <Check className="h-3 w-3 mr-1" />
                             {resolveQuestionMutation.isPending ? 'Resolving...' : 'Mark as Resolved'}
                           </Button>
+                          <SnoozeButton
+                            cardId={cardId}
+                            currentActionType="question"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-100 dark:text-purple-400 dark:hover:bg-purple-900"
+                          />
                         </div>
                       )}
                       

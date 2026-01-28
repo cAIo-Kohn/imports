@@ -186,15 +186,25 @@ export function ActionsPanel({
       });
       if (error) throw error;
 
-      // If it's a question and we should prompt for movement
+      // If it's a question, set pending action and prompt for movement
       if (messageType === 'question') {
-        const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
+        // Set pending_action_type on the card
+        await (supabase.from('development_items') as any)
+          .update({
+            pending_action_type: 'question',
+            pending_action_due_at: null,
+            pending_action_snoozed_until: null,
+            pending_action_snoozed_by: null,
+          })
+          .eq('id', cardId);
+
         setMoveModalTrigger('question');
         setShowMoveModal(true);
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
       setMessageContent('');
       toast({ title: messageType === 'question' ? 'Question posted' : 'Comment added' });
     },
