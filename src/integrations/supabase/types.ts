@@ -151,11 +151,16 @@ export type Database = {
           actual_arrival: string | null
           courier_name: string | null
           created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision: string | null
+          decision_notes: string | null
           estimated_arrival: string | null
           id: string
           item_id: string
           notes: string | null
           quantity: number | null
+          report_url: string | null
           shipped_date: string | null
           status: Database["public"]["Enums"]["sample_shipment_status"] | null
           tracking_number: string | null
@@ -164,11 +169,16 @@ export type Database = {
           actual_arrival?: string | null
           courier_name?: string | null
           created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision?: string | null
+          decision_notes?: string | null
           estimated_arrival?: string | null
           id?: string
           item_id: string
           notes?: string | null
           quantity?: number | null
+          report_url?: string | null
           shipped_date?: string | null
           status?: Database["public"]["Enums"]["sample_shipment_status"] | null
           tracking_number?: string | null
@@ -177,11 +187,16 @@ export type Database = {
           actual_arrival?: string | null
           courier_name?: string | null
           created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision?: string | null
+          decision_notes?: string | null
           estimated_arrival?: string | null
           id?: string
           item_id?: string
           notes?: string | null
           quantity?: number | null
+          report_url?: string | null
           shipped_date?: string | null
           status?: Database["public"]["Enums"]["sample_shipment_status"] | null
           tracking_number?: string | null
