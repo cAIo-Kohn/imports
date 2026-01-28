@@ -1,57 +1,297 @@
 
-## Plan: Expand Drawer Layout and Add Attention-Drawing Features
 
-### Problems Identified
+## Plan: Inline Timeline Replies with Conditional Card Movement
 
-1. **Drawer too narrow**: Current `sm:max-w-xl` (576px) is cramped for all the content
-2. **History section too small**: Compressed between fixed header/footer sections
-3. **No attention mechanism**: When a question or FOB price triggers a card move, the receiving team doesn't immediately see what requires their attention
+### Summary
 
----
-
-### Solution Overview
-
-| Change | Description |
-|--------|-------------|
-| **Wider drawer** | Increase to `sm:max-w-2xl` (672px) or `sm:max-w-3xl` (768px) |
-| **Better space distribution** | Reduce card info height, give history more vertical space |
-| **Attention banner** | Add a highlighted "What Needs Your Attention" section at the top of history when card was moved to your team |
-| **Latest trigger highlight** | Find the most recent question, FOB update, or ownership_change and display it prominently |
+This plan restructures the reply workflow to be more intuitive and context-specific. Instead of opening the "Add Comment / Ask Question" accordion when clicking "Reply" on a question, users will see an inline reply box directly within the timeline, attached to the specific question being answered.
 
 ---
 
-### Layout Changes
+### Key Workflow Changes
 
-#### Current Layout
+| Action | Location | Card Moves? |
+|--------|----------|-------------|
+| **Comment** (general) | Opens accordion tab | No |
+| **Ask Question** (new) | Opens accordion tab | Prompts to move |
+| **Reply to Question** | Inline in Timeline | Two options: "Comment" (no move) or "Answer" (moves card) |
+
+---
+
+### User Experience Flow
+
+#### Replying to a Question (new inline flow):
+1. User clicks "Reply" on a question in the timeline
+2. An inline reply box appears directly below the question
+3. User types their response
+4. User chooses:
+   - **Just Comment** - "Give me 5 days and I'll let you know" - card stays
+   - **Answer & Move** - "The price is $2.50" - card moves to other team + question marked as resolved
+
+---
+
+### Visual Design
+
 ```text
-┌─────────────────────────────────────────┐  sm:max-w-xl (576px)
-│ Header                                  │  ~60px
-├─────────────────────────────────────────┤
-│ Card Info (image, badges, description)  │  ~200px (fixed)
-├─────────────────────────────────────────┤
-│ History (scrollable)                    │  ~150px (squeezed)
-├─────────────────────────────────────────┤
-│ Actions Panel (accordion)               │  ~200px+ (fixed)
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│ ? Caio Kohn asked a question • 17:39                            │
+│   "What is the expected annual volume for this product?"        │
+│                                                                 │
+│   [Mark as Resolved]                                            │
+│                                                                 │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │ Type your reply...                                      │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│   [Just Comment]  [Answer & Move Card →]                        │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-#### New Layout
-```text
-┌─────────────────────────────────────────────────┐  sm:max-w-2xl (672px)
-│ Header                                          │  ~50px
-├─────────────────────────────────────────────────┤
-│ Card Info (compact: image + title + status)     │  ~120px
-├─────────────────────────────────────────────────┤
-│ ⚡ ATTENTION REQUIRED (if card moved to you)    │  ~80px
-│ ┌─────────────────────────────────────────────┐ │
-│ │ Trader Wang asked: "What volume per year?" │ │
-│ └─────────────────────────────────────────────┘ │
-├─────────────────────────────────────────────────┤
-│ History (scrollable, much larger)               │  ~300px+
-├─────────────────────────────────────────────────┤
-│ Actions Panel (collapsed by default)            │  ~60px collapsed
-└─────────────────────────────────────────────────┘
+---
+
+### Component Changes
+
+#### 1. Rename "History" to "Timeline"
+
+**File:** `ItemDetailDrawer.tsx`
+- Change heading text from "History" to "Timeline"
+
+---
+
+#### 2. Add Inline Reply Component
+
+**File:** `HistoryTimeline.tsx`
+
+Create a new `InlineReplyBox` component:
+
+```typescript
+interface InlineReplyBoxProps {
+  questionId: string;
+  cardId: string;
+  currentOwner: 'mor' | 'arc';
+  onClose: () => void;
+  onCardMove?: () => void;
+}
+
+function InlineReplyBox({ questionId, cardId, currentOwner, onClose, onCardMove }: InlineReplyBoxProps) {
+  const [replyContent, setReplyContent] = useState('');
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  
+  // Reply as comment (no move)
+  const handleCommentReply = async () => {
+    // Insert activity with type 'comment' and metadata linking to question
+    await supabase.from('development_card_activity').insert({
+      card_id: cardId,
+      user_id: user.id,
+      activity_type: 'comment',
+      content: replyContent,
+      metadata: { reply_to_question: questionId },
+    });
+    // Close reply box, do NOT move card
+  };
+  
+  // Reply as answer (moves card + resolves question)
+  const handleAnswerReply = async () => {
+    // Insert activity with type 'answer' and metadata
+    await supabase.from('development_card_activity').insert({
+      card_id: cardId,
+      user_id: user.id,
+      activity_type: 'answer',
+      content: replyContent,
+      metadata: { reply_to_question: questionId },
+    });
+    
+    // Mark question as resolved
+    await supabase.from('development_card_activity')
+      .update({ metadata: { resolved: true, resolved_at: new Date().toISOString(), resolved_by: user.id } })
+      .eq('id', questionId);
+    
+    // Move card to other team
+    const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
+    await supabase.from('development_items')
+      .update({ current_owner: targetOwner, is_new_for_other_team: true })
+      .eq('id', cardId);
+    
+    // Log ownership change
+    await supabase.from('development_card_activity').insert({
+      card_id: cardId,
+      user_id: user.id,
+      activity_type: 'ownership_change',
+      content: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}`,
+    });
+    
+    onCardMove?.();
+  };
+  
+  return (
+    <div className="mt-3 p-3 bg-slate-50 rounded-lg border">
+      <Textarea
+        value={replyContent}
+        onChange={(e) => setReplyContent(e.target.value)}
+        placeholder="Type your reply..."
+        rows={2}
+        autoFocus
+      />
+      <div className="flex gap-2 mt-2 justify-end">
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleCommentReply}>
+          Just Comment
+        </Button>
+        <Button size="sm" onClick={handleAnswerReply}>
+          Answer & Move Card
+          <ArrowRight className="h-3 w-3 ml-1" />
+        </Button>
+      </div>
+    </div>
+  );
+}
 ```
+
+---
+
+#### 3. Track Reply State in Timeline
+
+**File:** `HistoryTimeline.tsx`
+
+Add state for which question has the reply box open:
+
+```typescript
+const [replyingToId, setReplyingToId] = useState<string | null>(null);
+
+// In the question activity render:
+{isQuestion && !isResolved && (
+  <div className="flex gap-2 mt-2">
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => setReplyingToId(activity.id)}
+    >
+      <Reply className="h-3 w-3 mr-1" />
+      Reply
+    </Button>
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => resolveQuestionMutation.mutate(activity.id)}
+    >
+      <Check className="h-3 w-3 mr-1" />
+      Mark as Resolved
+    </Button>
+  </div>
+)}
+
+{replyingToId === activity.id && (
+  <InlineReplyBox
+    questionId={activity.id}
+    cardId={cardId}
+    currentOwner={currentOwner}
+    onClose={() => setReplyingToId(null)}
+    onCardMove={onOwnerChange}
+  />
+)}
+```
+
+---
+
+#### 4. Update HistoryTimeline Props
+
+**File:** `HistoryTimeline.tsx`
+
+Add new props needed for inline replies:
+
+```typescript
+interface HistoryTimelineProps {
+  cardId: string;
+  cardCreatedAt: string;
+  creatorName?: string;
+  showAttentionBanner?: boolean;
+  currentOwner?: 'mor' | 'arc';  // NEW - needed for move logic
+  onOwnerChange?: () => void;    // NEW - callback after card moves
+}
+```
+
+---
+
+#### 5. Update ItemDetailDrawer
+
+**File:** `ItemDetailDrawer.tsx`
+
+- Rename "History" heading to "Timeline"
+- Pass `currentOwner` and `onOwnerChange` to `HistoryTimeline`
+- Remove `onReplyToQuestion` prop (no longer opens accordion)
+
+```typescript
+<h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide pt-4 pb-2 sticky top-0 bg-background">
+  Timeline
+</h4>
+<HistoryTimeline
+  cardId={item.id}
+  cardCreatedAt={item.created_at}
+  creatorName={creatorProfile?.full_name || creatorProfile?.email || undefined}
+  showAttentionBanner={...}
+  currentOwner={itemWithNewFields.current_owner || 'arc'}
+  onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
+/>
+```
+
+---
+
+#### 6. Update Attention Banner
+
+**File:** `HistoryTimeline.tsx`
+
+Change the "Reply" button in the attention banner to open the inline reply box instead of calling `onReplyToQuestion`:
+
+```typescript
+{isQuestion && (
+  <Button 
+    size="sm" 
+    variant="outline"
+    onClick={() => setReplyingToId(activity.id)}
+    className="..."
+  >
+    <Reply className="h-3 w-3 mr-1" />
+    Reply
+  </Button>
+)}
+```
+
+---
+
+#### 7. Add New Activity Type: "answer"
+
+**File:** `HistoryTimeline.tsx`
+
+Add styling for the new "answer" activity type:
+
+```typescript
+const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
+  // ... existing
+  answer: <Reply className="h-3.5 w-3.5" />,
+};
+
+const ACTIVITY_STYLES: Record<string, string> = {
+  // ... existing
+  answer: 'bg-green-100 text-green-700 border-green-200',
+};
+
+const ACTIVITY_LABELS: Record<string, string> = {
+  // ... existing
+  answer: 'answered',
+};
+```
+
+---
+
+#### 8. Clean Up ActionsPanel
+
+**File:** `ActionsPanel.tsx`
+
+- Remove the `focusReply` exposed method (no longer needed)
+- Keep the comment/question tabs for NEW comments and questions (not replies)
 
 ---
 
@@ -59,145 +299,26 @@
 
 | File | Changes |
 |------|---------|
-| `ItemDetailDrawer.tsx` | Increase width to `sm:max-w-2xl`, add attention banner logic |
-| `CardInfoSection.tsx` | Compact layout, reduce padding |
-| `HistoryTimeline.tsx` | Add "attention required" highlighted item at top |
-| `ActionsPanel.tsx` | Default to collapsed (not expanded) to give history more space |
+| `HistoryTimeline.tsx` | Add `InlineReplyBox` component, reply state, new props, "answer" activity type |
+| `ItemDetailDrawer.tsx` | Rename to "Timeline", pass `currentOwner` and `onOwnerChange`, remove `onReplyToQuestion` |
+| `ActionsPanel.tsx` | Remove `focusReply` method and ref logic (can be simplified) |
 
 ---
 
-### Attention Banner Implementation
+### Activity Types Summary
 
-The attention banner will appear when:
-1. Card was moved to the current user's team (`is_new_for_other_team = true`)
-2. The most recent activity is a question, commercial_update, or ownership_change
-
-```typescript
-// In HistoryTimeline.tsx or ItemDetailDrawer.tsx
-interface HistoryTimelineProps {
-  cardId: string;
-  cardCreatedAt: string;
-  creatorName?: string;
-  showAttentionBanner?: boolean; // New prop
-}
-
-// Find the triggering action (most recent question/commercial update)
-const triggerActivity = activities.find(a => 
-  ['question', 'commercial_update'].includes(a.activity_type)
-);
-
-// Render attention banner if card is new for this team
-{showAttentionBanner && triggerActivity && (
-  <div className="bg-amber-50 border-2 border-amber-300 rounded-lg p-4 mb-4 animate-pulse-subtle">
-    <div className="flex items-center gap-2 text-amber-800 font-medium mb-2">
-      <AlertCircle className="h-5 w-5" />
-      Attention Required
-    </div>
-    <div className="bg-white rounded p-3 border border-amber-200">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Avatar className="h-6 w-6">...</Avatar>
-        {triggerActivity.profile?.full_name} 
-        {triggerActivity.activity_type === 'question' ? 'asked:' : 'updated:'}
-      </div>
-      <p className="mt-1 font-medium">
-        {triggerActivity.content}
-      </p>
-    </div>
-  </div>
-)}
-```
+| Type | Created By | Card Moves? |
+|------|------------|-------------|
+| `comment` | General comment or reply-comment | No |
+| `question` | New question asking for info | Prompts to move |
+| `answer` | Direct answer to a question | Yes (auto) + resolves question |
 
 ---
 
-### Visual Differentiation for Trigger Actions
+### Keyboard Shortcut Update
 
-| Activity Type | Banner Style | Icon |
-|---------------|--------------|------|
-| Question | Purple/violet border, "?" icon | HelpCircle |
-| FOB Price update | Green/emerald border, "$" icon | DollarSign |
-| Ownership change | Blue border, arrow icon | ArrowRight |
+The "R" keyboard shortcut will now:
+1. Find the first unresolved question in the timeline
+2. Open the inline reply box for that question
+3. Auto-focus the textarea
 
----
-
-### Detailed Changes
-
-#### 1. ItemDetailDrawer.tsx
-
-```typescript
-// Increase width
-<SheetContent className="w-full sm:max-w-2xl flex flex-col h-full p-0">
-
-// Pass attention flag to HistoryTimeline
-<HistoryTimeline
-  cardId={item.id}
-  cardCreatedAt={item.created_at}
-  creatorName={creatorProfile?.full_name || creatorProfile?.email}
-  showAttentionBanner={itemWithNewFields.is_new_for_other_team && isNewForMe}
-/>
-```
-
-#### 2. CardInfoSection.tsx
-
-- Make image smaller (w-20 h-20 instead of w-24 h-24)
-- Reduce padding in "Desired Outcome" box
-- More compact badge layout
-
-#### 3. HistoryTimeline.tsx
-
-Add attention banner component at top:
-
-```typescript
-// New component for attention banner
-function AttentionBanner({ activity }: { activity: Activity }) {
-  const isQuestion = activity.activity_type === 'question';
-  const isCommercial = activity.activity_type === 'commercial_update';
-  
-  return (
-    <div className={cn(
-      "rounded-lg p-4 mb-4 border-2",
-      isQuestion && "bg-purple-50 border-purple-300",
-      isCommercial && "bg-emerald-50 border-emerald-300",
-    )}>
-      <div className="flex items-center gap-2 font-medium mb-2">
-        {isQuestion ? <HelpCircle className="h-5 w-5 text-purple-600" /> : null}
-        {isCommercial ? <DollarSign className="h-5 w-5 text-emerald-600" /> : null}
-        <span className={cn(
-          isQuestion && "text-purple-800",
-          isCommercial && "text-emerald-800",
-        )}>
-          {isQuestion ? "Question for you" : "Commercial data updated"}
-        </span>
-      </div>
-      <div className="bg-white rounded-lg p-3 border">
-        <p className="text-sm font-medium">{activity.content}</p>
-        {isCommercial && activity.metadata && (
-          <p className="text-xs text-muted-foreground mt-1">
-            {activity.metadata.field}: ${activity.metadata.value}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-```
-
-#### 4. ActionsPanel.tsx
-
-Change default accordion state to show collapsed:
-
-```typescript
-// Before: defaultValue={['messaging']}
-<Accordion type="multiple" defaultValue={[]} className="w-full">
-```
-
----
-
-### Summary
-
-| Improvement | Implementation |
-|-------------|----------------|
-| Wider drawer | `sm:max-w-2xl` (672px) |
-| Compact card info | Smaller image, tighter spacing |
-| Attention banner | Prominent highlighted section for trigger actions |
-| More history space | Actions collapsed by default |
-| Visual differentiation | Purple for questions, green for commercial updates |
