@@ -282,8 +282,6 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
             </h4>
             <HistoryTimeline
               cardId={item.id}
-              cardCreatedAt={item.created_at}
-              creatorName={creatorProfile?.full_name || creatorProfile?.email || undefined}
               showAttentionBanner={
                 itemWithNewFields.is_new_for_other_team && (
                   (isBuyer && itemWithNewFields.created_by_role === 'trader') ||

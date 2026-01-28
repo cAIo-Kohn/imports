@@ -39,8 +39,6 @@ interface Activity {
 
 interface HistoryTimelineProps {
   cardId: string;
-  cardCreatedAt: string;
-  creatorName?: string;
   showAttentionBanner?: boolean;
   currentOwner?: 'mor' | 'arc';
   onOwnerChange?: () => void;
@@ -119,8 +117,14 @@ function CompactActivityRow({ activity }: { activity: Activity }) {
   // Build inline content based on activity type
   let inlineContent = '';
   if (activity.activity_type === 'commercial_update' && activity.metadata) {
-    const field = activity.metadata.field?.replace(/_/g, ' ');
-    inlineContent = `${field}: ${activity.metadata.value}`;
+    // Check if batch update (has multiple fields)
+    if (activity.metadata.fob_price_usd !== undefined) {
+      inlineContent = `FOB $${activity.metadata.fob_price_usd}, MOQ ${activity.metadata.moq}, ${activity.metadata.qty_per_container}/${activity.metadata.container_type}`;
+    } else {
+      // Legacy single field update
+      const field = activity.metadata.field?.replace(/_/g, ' ');
+      inlineContent = `${field}: ${activity.metadata.value}`;
+    }
   } else if (activity.activity_type === 'ownership_change' && activity.content) {
     // Extract target from content like "Card moved to ARC (China)"
     const match = activity.content.match(/to (.*)/);
@@ -230,8 +234,6 @@ function AttentionBanner({
 
 export function HistoryTimeline({ 
   cardId, 
-  cardCreatedAt, 
-  creatorName, 
   showAttentionBanner,
   currentOwner = 'arc',
   onOwnerChange,
@@ -322,20 +324,8 @@ export function HistoryTimeline({
     };
   }, [cardId, queryClient]);
 
-  // Add card creation as the first activity
-  const allActivities: Activity[] = [
-    ...activities,
-    {
-      id: 'card-creation',
-      card_id: cardId,
-      user_id: '',
-      activity_type: 'created',
-      content: null,
-      metadata: null,
-      created_at: cardCreatedAt,
-      profile: creatorName ? { full_name: creatorName, email: null } : null,
-    },
-  ];
+  // Use activities from database directly (no synthetic creation activity)
+  const allActivities: Activity[] = activities;
 
   const groupedActivities = groupByDate(allActivities);
   const sortedDates = Object.keys(groupedActivities).sort((a, b) => b.localeCompare(a));
@@ -375,11 +365,11 @@ export function HistoryTimeline({
     );
   }
 
-  if (allActivities.length === 1) {
+  if (allActivities.length === 0) {
     return (
       <div className="py-8 text-center text-muted-foreground text-sm">
         <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-50" />
-        Card created on {format(parseISO(cardCreatedAt), 'dd/MM/yyyy')}
+        No activity yet
       </div>
     );
   }

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
-import { MessageCircle, HelpCircle, DollarSign, Package, Container, Send } from 'lucide-react';
+import { MessageCircle, HelpCircle, DollarSign, Package, Container, Send, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,6 +23,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 import { MoveCardModal } from './MoveCardModal';
 import { AddSampleForm } from './AddSampleForm';
 import { SampleTrackingCard } from './SampleTrackingCard';
@@ -145,31 +146,74 @@ export function ActionsPanel({
     },
   });
 
-  // Update commercial data mutation
-  const updateCommercialMutation = useMutation({
-    mutationFn: async (field: { name: string; value: string | number | null }) => {
+  // Batch save commercial data mutation
+  const saveCommercialDataMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) throw new Error('Not authenticated');
+      
+      // Validate all fields are filled
+      if (!localFobPrice || !localMoq || !localQtyPerContainer || !localContainerType) {
+        throw new Error('All commercial data fields are required');
+      }
+
+      const fobValue = parseFloat(localFobPrice);
+      const moqValue = parseInt(localMoq);
+      const qtyValue = parseInt(localQtyPerContainer);
+
+      // Batch update all commercial fields
       const { error } = await (supabase.from('development_items') as any)
-        .update({ [field.name]: field.value })
+        .update({
+          fob_price_usd: fobValue,
+          moq: moqValue,
+          qty_per_container: qtyValue,
+          container_type: localContainerType,
+        })
         .eq('id', cardId);
       if (error) throw error;
 
-      // Log the update
-      if (user?.id && field.value) {
-        await supabase.from('development_card_activity').insert({
-          card_id: cardId,
-          user_id: user.id,
-          activity_type: 'commercial_update',
-          content: `Updated ${field.name.replace('_', ' ')}`,
-          metadata: { field: field.name, value: field.value },
-        });
-      }
+      // Log single activity with all values
+      await supabase.from('development_card_activity').insert({
+        card_id: cardId,
+        user_id: user.id,
+        activity_type: 'commercial_update',
+        content: 'Updated commercial data',
+        metadata: {
+          fob_price_usd: fobValue,
+          moq: moqValue,
+          qty_per_container: qtyValue,
+          container_type: localContainerType,
+        },
+      });
+
+      // Move card to other team
+      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
+      const { error: moveError } = await (supabase.from('development_items') as any)
+        .update({ 
+          current_owner: targetOwner,
+          is_new_for_other_team: true,
+        })
+        .eq('id', cardId);
+      if (moveError) throw moveError;
+
+      // Log ownership change
+      await supabase.from('development_card_activity').insert({
+        card_id: cardId,
+        user_id: user.id,
+        activity_type: 'ownership_change',
+        content: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}`,
+        metadata: { new_owner: targetOwner, trigger: 'commercial' },
+      });
+
+      return targetOwner;
     },
-    onSuccess: () => {
+    onSuccess: (targetOwner) => {
       queryClient.invalidateQueries({ queryKey: ['development-items'] });
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+      onOwnerChange?.(targetOwner as 'mor' | 'arc');
+      toast({ title: `Commercial data saved & card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}` });
     },
-    onError: () => {
-      toast({ title: 'Error', description: 'Failed to update', variant: 'destructive' });
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
     },
   });
 
@@ -210,20 +254,8 @@ export function ActionsPanel({
     }
   };
 
-  const handleCommercialBlur = (fieldName: string, value: string, isNumeric: boolean = true) => {
-    const parsedValue = isNumeric ? (value ? parseFloat(value) : null) : (value || null);
-    updateCommercialMutation.mutate({ name: fieldName, value: parsedValue });
-
-    // Prompt to move card if trader updates significant field
-    if (isTrader && currentOwner === 'arc' && fieldName === 'fob_price_usd' && parsedValue) {
-      setMoveModalTrigger('commercial');
-      setShowMoveModal(true);
-    }
-  };
-
-  const handleContainerTypeChange = (value: string) => {
-    setLocalContainerType(value);
-    updateCommercialMutation.mutate({ name: 'container_type', value: value || null });
+  const handleSaveCommercialData = () => {
+    saveCommercialDataMutation.mutate();
   };
 
   const handleMoveConfirm = () => {
@@ -231,6 +263,22 @@ export function ActionsPanel({
     moveCardMutation.mutate(targetOwner);
     setShowMoveModal(false);
   };
+
+  // Determine if commercial data is complete for the pending indicator
+  const isCommercialComplete = Boolean(
+    (fobPriceUsd || localFobPrice) && 
+    (moq || localMoq) && 
+    (qtyPerContainer || localQtyPerContainer) && 
+    (containerType || localContainerType)
+  );
+  const isCommercialPending = !isCommercialComplete && cardType !== 'task';
+
+  // Check if form is ready to submit
+  const canSubmitCommercial = Boolean(
+    localFobPrice && localMoq && localQtyPerContainer && localContainerType
+  );
+
+  const targetTeamName = currentOwner === 'arc' ? 'MOR (Brazil)' : 'ARC (China)';
 
   if (!canEdit) {
     return null;
@@ -290,11 +338,22 @@ export function ActionsPanel({
 
         {/* Commercial Data Section - Only for non-task cards */}
         {cardType !== 'task' && (
-          <AccordionItem value="commercial" className="border rounded-lg px-3 mt-2">
+          <AccordionItem 
+            value="commercial" 
+            className={cn(
+              "border rounded-lg px-3 mt-2",
+              isCommercialPending && "border-amber-400 animate-pulse bg-amber-50/50 dark:bg-amber-950/20"
+            )}
+          >
             <AccordionTrigger className="py-3 hover:no-underline">
               <span className="flex items-center gap-2 text-sm font-medium">
                 <DollarSign className="h-4 w-4" />
                 Commercial Data
+                {isCommercialPending && (
+                  <span className="text-xs text-amber-600 dark:text-amber-400 font-normal ml-1">
+                    (pending)
+                  </span>
+                )}
               </span>
             </AccordionTrigger>
             <AccordionContent className="pb-3">
@@ -311,7 +370,6 @@ export function ActionsPanel({
                       placeholder="0.00"
                       value={localFobPrice}
                       onChange={(e) => setLocalFobPrice(e.target.value)}
-                      onBlur={() => handleCommercialBlur('fob_price_usd', localFobPrice)}
                       className="pl-6 h-8 text-sm"
                     />
                   </div>
@@ -329,7 +387,6 @@ export function ActionsPanel({
                     placeholder="Min order qty"
                     value={localMoq}
                     onChange={(e) => setLocalMoq(e.target.value)}
-                    onBlur={() => handleCommercialBlur('moq', localMoq)}
                     className="h-8 text-sm"
                   />
                 </div>
@@ -346,7 +403,6 @@ export function ActionsPanel({
                     placeholder="Qty per container"
                     value={localQtyPerContainer}
                     onChange={(e) => setLocalQtyPerContainer(e.target.value)}
-                    onBlur={() => handleCommercialBlur('qty_per_container', localQtyPerContainer)}
                     className="h-8 text-sm"
                   />
                 </div>
@@ -355,7 +411,7 @@ export function ActionsPanel({
                   <Label htmlFor="container-type" className="text-xs">Container Type</Label>
                   <Select
                     value={localContainerType}
-                    onValueChange={handleContainerTypeChange}
+                    onValueChange={setLocalContainerType}
                   >
                     <SelectTrigger id="container-type" className="h-8 text-sm">
                       <SelectValue placeholder="Select type" />
@@ -369,6 +425,27 @@ export function ActionsPanel({
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              {/* Batch Save Button */}
+              <div className="mt-4 pt-3 border-t">
+                <Button
+                  onClick={handleSaveCommercialData}
+                  disabled={!canSubmitCommercial || saveCommercialDataMutation.isPending}
+                  className="w-full"
+                  size="sm"
+                >
+                  <ArrowRight className="h-4 w-4 mr-2" />
+                  {saveCommercialDataMutation.isPending 
+                    ? 'Saving...' 
+                    : `Save & Move Card to ${targetTeamName}`
+                  }
+                </Button>
+                {!canSubmitCommercial && (
+                  <p className="text-xs text-muted-foreground text-center mt-2">
+                    All 4 fields are required to submit
+                  </p>
+                )}
               </div>
             </AccordionContent>
           </AccordionItem>
