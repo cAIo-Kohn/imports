@@ -28,6 +28,9 @@ import { MoveCardModal } from './MoveCardModal';
 import { AddSampleForm } from './AddSampleForm';
 import { SampleTrackingCard } from './SampleTrackingCard';
 
+// Ref for scrolling to review section after marking sample as arrived
+const SAMPLE_REVIEW_SCROLL_DELAY = 300;
+
 interface ActionsPanelProps {
   cardId: string;
   cardType: 'item' | 'item_group' | 'task';
@@ -69,6 +72,7 @@ export function ActionsPanel({
   const { isTrader } = useUserRole();
   const queryClient = useQueryClient();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const samplesSectionRef = useRef<HTMLDivElement>(null);
 
   // Accordion state - controlled
   const [openSections, setOpenSections] = useState<string[]>([]);
@@ -521,9 +525,22 @@ export function ActionsPanel({
               <AddSampleForm itemId={cardId} />
               
               {samples.length > 0 && (
-                <div className="space-y-2 pt-2">
+                <div ref={samplesSectionRef} className="space-y-2 pt-2">
                   {samples.map((sample) => (
-                    <SampleTrackingCard key={sample.id} sample={sample} canEdit={canEdit} />
+                    <SampleTrackingCard 
+                      key={sample.id} 
+                      sample={sample} 
+                      canEdit={canEdit}
+                      onSampleArrived={() => {
+                        // Scroll to the bottom of the samples section after the review form appears
+                        setTimeout(() => {
+                          samplesSectionRef.current?.scrollIntoView({ 
+                            behavior: 'smooth', 
+                            block: 'end' 
+                          });
+                        }, SAMPLE_REVIEW_SCROLL_DELAY);
+                      }}
+                    />
                   ))}
                 </div>
               )}
