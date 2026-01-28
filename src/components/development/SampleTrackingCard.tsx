@@ -31,6 +31,7 @@ interface Sample {
 interface SampleTrackingCardProps {
   sample: Sample;
   canEdit: boolean;
+  onSampleArrived?: () => void;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -81,7 +82,7 @@ function getTrackingUrl(courier: string | null, trackingNumber: string | null): 
   return null;
 }
 
-export function SampleTrackingCard({ sample, canEdit }: SampleTrackingCardProps) {
+export function SampleTrackingCard({ sample, canEdit, onSampleArrived }: SampleTrackingCardProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const trackingUrl = getTrackingUrl(sample.courier_name, sample.tracking_number);
@@ -119,6 +120,8 @@ export function SampleTrackingCard({ sample, canEdit }: SampleTrackingCardProps)
       queryClient.invalidateQueries({ queryKey: ['development-item-samples', sample.item_id] });
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', sample.item_id] });
       toast({ title: 'Sample marked as arrived' });
+      // Trigger scroll to review section
+      onSampleArrived?.();
     },
     onError: (error: Error) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
