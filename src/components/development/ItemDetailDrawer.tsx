@@ -311,12 +311,16 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               isCardSolved={itemWithNewFields.is_solved || false}
               showAttentionBanner={shouldShowAttentionBanner}
               currentOwner={itemWithNewFields.current_owner || 'arc'}
+              pendingActionType={itemWithNewFields.pending_action_type || null}
+              pendingActionDueAt={itemWithNewFields.pending_action_due_at || null}
+              snoozedUntil={itemWithNewFields.pending_action_snoozed_until || null}
               onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
               onOpenSampleSection={() => setForcedOpenSection('samples')}
               onOpenMessageSection={(type) => {
                 setForcedMessageType(type);
                 setForcedOpenSection('messaging');
               }}
+              onOpenUploadSection={() => setForcedOpenSection('messaging')}
               onCloseCard={() => onOpenChange(false)}
             />
           </div>

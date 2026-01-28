@@ -260,6 +260,10 @@ export type Database = {
           is_solved: boolean | null
           item_type: Database["public"]["Enums"]["development_item_type"] | null
           moq: number | null
+          pending_action_due_at: string | null
+          pending_action_snoozed_by: string | null
+          pending_action_snoozed_until: string | null
+          pending_action_type: string | null
           position: number | null
           priority:
             | Database["public"]["Enums"]["development_item_priority"]
@@ -297,6 +301,10 @@ export type Database = {
             | Database["public"]["Enums"]["development_item_type"]
             | null
           moq?: number | null
+          pending_action_due_at?: string | null
+          pending_action_snoozed_by?: string | null
+          pending_action_snoozed_until?: string | null
+          pending_action_type?: string | null
           position?: number | null
           priority?:
             | Database["public"]["Enums"]["development_item_priority"]
@@ -334,6 +342,10 @@ export type Database = {
             | Database["public"]["Enums"]["development_item_type"]
             | null
           moq?: number | null
+          pending_action_due_at?: string | null
+          pending_action_snoozed_by?: string | null
+          pending_action_snoozed_until?: string | null
+          pending_action_type?: string | null
           position?: number | null
           priority?:
             | Database["public"]["Enums"]["development_item_priority"]

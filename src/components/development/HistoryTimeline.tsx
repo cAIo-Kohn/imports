@@ -21,7 +21,8 @@ import {
   PackageCheck,
   CheckCircle,
   XCircle,
-  Upload
+  Upload,
+  Clock
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -53,6 +54,9 @@ interface HistoryTimelineProps {
   isCardSolved?: boolean;
   showAttentionBanner?: boolean;
   currentOwner?: 'mor' | 'arc';
+  pendingActionType?: string | null;
+  pendingActionDueAt?: string | null;
+  snoozedUntil?: string | null;
   onOwnerChange?: () => void;
   onOpenSampleSection?: () => void;
   onOpenMessageSection?: (type: 'comment' | 'question') => void;
@@ -77,6 +81,8 @@ const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
   product_added: <Plus className="h-3.5 w-3.5" />,
   image_updated: <Image className="h-3.5 w-3.5" />,
   created: <CheckCircle2 className="h-3.5 w-3.5" />,
+  action_snoozed: <Clock className="h-3.5 w-3.5" />,
+  action_resumed: <RefreshCw className="h-3.5 w-3.5" />,
 };
 
 const ACTIVITY_STYLES: Record<string, string> = {
@@ -96,6 +102,8 @@ const ACTIVITY_STYLES: Record<string, string> = {
   product_added: 'bg-indigo-100 text-indigo-700 border-indigo-200',
   image_updated: 'bg-pink-100 text-pink-700 border-pink-200',
   created: 'bg-slate-100 text-slate-700 border-slate-200',
+  action_snoozed: 'bg-slate-100 text-slate-700 border-slate-200',
+  action_resumed: 'bg-blue-100 text-blue-700 border-blue-200',
 };
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -115,6 +123,8 @@ const ACTIVITY_LABELS: Record<string, string> = {
   product_added: 'added product',
   image_updated: 'updated image',
   created: 'created this card',
+  action_snoozed: 'snoozed action',
+  action_resumed: 'resumed action',
 };
 
 // Primary activity types get full cards; all others are compact
@@ -470,11 +480,15 @@ function NextStepPrompt({
       
       if (activityError) throw activityError;
 
-      // 2. Move card to ARC (China)
+      // 2. Move card to ARC (China) and set pending action for sample tracking
       const { error: moveError } = await (supabase.from('development_items') as any)
         .update({ 
           current_owner: 'arc',
           is_new_for_other_team: true,
+          pending_action_type: 'sample_tracking',
+          pending_action_due_at: null,
+          pending_action_snoozed_until: null,
+          pending_action_snoozed_by: null,
         })
         .eq('id', cardId);
       
@@ -564,6 +578,9 @@ export function HistoryTimeline({
   isCardSolved = false,
   showAttentionBanner,
   currentOwner = 'arc',
+  pendingActionType,
+  pendingActionDueAt,
+  snoozedUntil,
   onOwnerChange,
   onOpenSampleSection,
   onOpenMessageSection,
@@ -973,6 +990,7 @@ export function HistoryTimeline({
                       questionId={activity.id}
                       cardId={cardId}
                       currentOwner={currentOwner}
+                      pendingActionType={pendingActionType}
                       onClose={() => setReplyingToId(null)}
                       onCardMove={onOwnerChange}
                     />

@@ -73,13 +73,21 @@ export function InlineSampleShipForm({
 
       if (activityError) throw activityError;
 
-      // 3. Move card to MOR (Brazil)
+      // 3. Move card to MOR (Brazil) and set pending action for sample in transit
       const targetOwner = 'mor';
+      const updateData: Record<string, any> = { 
+        current_owner: targetOwner,
+        is_new_for_other_team: true,
+        pending_action_type: 'sample_in_transit',
+      };
+      
+      // Set due date from ETA if provided
+      if (estimatedArrival) {
+        updateData.pending_action_due_at = new Date(estimatedArrival).toISOString();
+      }
+      
       const { error: moveError } = await (supabase.from('development_items') as any)
-        .update({ 
-          current_owner: targetOwner,
-          is_new_for_other_team: true,
-        })
+        .update(updateData)
         .eq('id', cardId);
 
       if (moveError) throw moveError;
