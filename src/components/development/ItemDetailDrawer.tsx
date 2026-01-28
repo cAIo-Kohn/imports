@@ -103,11 +103,23 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
         });
 
       if (!error) {
-        // Force immediate refetch of active queries to update the card list
-        // Use partial key match to ensure we catch queries with user.id suffix
-        await queryClient.refetchQueries({ 
-          queryKey: ['development-items'],
-          type: 'active'
+        // Optimistically mark as viewed in the cache so the dot clears immediately,
+        // then force an immediate refetch for the *exact* query key.
+        const optimisticSeenAt = new Date().toISOString();
+
+        queryClient.setQueryData<DevelopmentItem[]>(
+          ['development-items', user.id],
+          (prev) => {
+            if (!prev) return prev;
+            return prev.map((it) =>
+              it.id === item.id ? { ...it, last_viewed_at: optimisticSeenAt } : it
+            );
+          }
+        );
+
+        await queryClient.invalidateQueries({
+          queryKey: ['development-items', user.id],
+          refetchType: 'active',
         });
       }
     };
