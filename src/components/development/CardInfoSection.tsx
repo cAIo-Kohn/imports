@@ -94,42 +94,39 @@ export function CardInfoSection({
   });
 
   return (
-    <div className="space-y-4">
-      {/* Title - large and prominent */}
-      <div>
-        <h3 className="font-semibold text-xl leading-tight">{item.title}</h3>
-        
-        {/* Badges Row */}
-        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-          <Badge variant="outline" className="text-xs">
-            {CARD_TYPE_LABELS[cardType]}
-          </Badge>
-          {itemWithNewFields.product_category && (
-            <Badge variant="secondary" className="text-xs">
-              {CATEGORY_LABELS[itemWithNewFields.product_category] || itemWithNewFields.product_category}
+    <div className="space-y-2">
+      {/* Title + Badges + Status in compact layout */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h3 className="font-semibold text-base leading-tight truncate">{item.title}</h3>
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
+            <Badge variant="outline" className="text-[10px] h-5">
+              {CARD_TYPE_LABELS[cardType]}
             </Badge>
-          )}
-          <Badge className={cn('text-xs', PRIORITY_STYLES[item.priority])}>
-            {item.priority}
-          </Badge>
-          {item.product_code && (
-            <Badge variant="outline" className="text-xs font-mono">
-              {item.product_code}
+            {itemWithNewFields.product_category && (
+              <Badge variant="secondary" className="text-[10px] h-5">
+                {CATEGORY_LABELS[itemWithNewFields.product_category] || itemWithNewFields.product_category}
+              </Badge>
+            )}
+            <Badge className={cn('text-[10px] h-5', PRIORITY_STYLES[item.priority])}>
+              {item.priority}
             </Badge>
-          )}
+            {item.product_code && (
+              <Badge variant="outline" className="text-[10px] h-5 font-mono">
+                {item.product_code}
+              </Badge>
+            )}
+          </div>
         </div>
-      </div>
-
-      {/* Status and Due Date Row */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <Label className="text-xs text-muted-foreground">Status:</Label>
+        
+        {/* Status dropdown on the right */}
+        <div className="flex-shrink-0">
           {canEdit ? (
             <Select
               value={currentStatus}
               onValueChange={(v) => onUpdateStatus(v as DevelopmentCardStatus)}
             >
-              <SelectTrigger className="h-7 text-xs w-28">
+              <SelectTrigger className="h-6 text-[10px] w-24">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -141,34 +138,35 @@ export function CardInfoSection({
               </SelectContent>
             </Select>
           ) : (
-            <span className="text-xs capitalize">{currentStatus.replace('_', ' ')}</span>
+            <span className="text-[10px] capitalize text-muted-foreground">{currentStatus.replace('_', ' ')}</span>
           )}
         </div>
-        
-        {item.due_date && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Calendar className="h-3 w-3" />
-            Due: {format(new Date(item.due_date), 'dd/MM/yyyy')}
-          </div>
-        )}
       </div>
 
-      {/* Desired Outcome - emphasized */}
-      {item.description && (
-        <div className="bg-muted/50 rounded-lg p-3 border">
-          <Label className="text-xs text-muted-foreground block mb-1">Desired Outcome</Label>
-          <p className="text-sm">
-            {item.description}
-          </p>
+      {/* Due date + Supplier inline */}
+      {(item.due_date || item.supplier) && (
+        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+          {item.due_date && (
+            <span className="flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              {format(new Date(item.due_date), 'dd/MM/yyyy')}
+            </span>
+          )}
+          {item.supplier && (
+            <span className="flex items-center gap-1">
+              <Factory className="h-3 w-3" />
+              {item.supplier.company_name}
+            </span>
+          )}
         </div>
       )}
 
-      {/* Supplier */}
-      {item.supplier && (
-        <div className="flex items-center gap-2 text-sm">
-          <Factory className="h-4 w-4 text-muted-foreground" />
-          <span className="text-muted-foreground">Supplier:</span>
-          <span className="font-medium">{item.supplier.company_name}</span>
+      {/* Desired Outcome - compact */}
+      {item.description && (
+        <div className="bg-muted/40 rounded-md p-2 border">
+          <p className="text-xs leading-relaxed">
+            {item.description}
+          </p>
         </div>
       )}
 
