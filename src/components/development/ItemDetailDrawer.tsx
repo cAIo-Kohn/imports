@@ -104,9 +104,10 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
 
       if (!error) {
         // Force immediate refetch of active queries to update the card list
-        queryClient.invalidateQueries({ 
+        // Use partial key match to ensure we catch queries with user.id suffix
+        await queryClient.refetchQueries({ 
           queryKey: ['development-items'],
-          refetchType: 'active'
+          type: 'active'
         });
       }
     };
