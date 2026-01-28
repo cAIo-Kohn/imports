@@ -48,6 +48,10 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  
+  // State for forcing ActionsPanel sections open from timeline hints
+  const [forcedOpenSection, setForcedOpenSection] = useState<string | null>(null);
+  const [forcedMessageType, setForcedMessageType] = useState<'comment' | 'question' | null>(null);
 
   const canManage = canManageOrders || isTrader;
   const canDelete = canManage;
@@ -282,6 +286,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
             </h4>
             <HistoryTimeline
               cardId={item.id}
+              cardType={cardType}
               showAttentionBanner={
                 itemWithNewFields.is_new_for_other_team && (
                   (isBuyer && itemWithNewFields.created_by_role === 'trader') ||
@@ -291,6 +296,11 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               }
               currentOwner={itemWithNewFields.current_owner || 'arc'}
               onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
+              onOpenSampleSection={() => setForcedOpenSection('samples')}
+              onOpenMessageSection={(type) => {
+                setForcedMessageType(type);
+                setForcedOpenSection('messaging');
+              }}
             />
           </div>
         </ScrollArea>
@@ -307,6 +317,12 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               containerType={itemWithNewFields.container_type}
               currentOwner={itemWithNewFields.current_owner || 'arc'}
               canEdit={canManage}
+              forcedOpenSection={forcedOpenSection}
+              forcedMessageType={forcedMessageType}
+              onForcedSectionHandled={() => {
+                setForcedOpenSection(null);
+                setForcedMessageType(null);
+              }}
               onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
             />
           </div>

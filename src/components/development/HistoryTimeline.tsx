@@ -14,7 +14,8 @@ import {
   Plus,
   CheckCircle2,
   Reply,
-  Check
+  Check,
+  Lightbulb
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -39,9 +40,12 @@ interface Activity {
 
 interface HistoryTimelineProps {
   cardId: string;
+  cardType?: 'item' | 'item_group' | 'task';
   showAttentionBanner?: boolean;
   currentOwner?: 'mor' | 'arc';
   onOwnerChange?: () => void;
+  onOpenSampleSection?: () => void;
+  onOpenMessageSection?: (type: 'comment' | 'question') => void;
 }
 
 const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
@@ -231,12 +235,77 @@ function AttentionBanner({
   );
 }
 
+// Next Step Prompt Component
+interface NextStepPromptProps {
+  cardType: 'item' | 'item_group' | 'task';
+  triggerType?: 'commercial' | 'ownership';
+  onRequestSample: () => void;
+  onAskQuestion: () => void;
+  onAddComment: () => void;
+}
+
+function NextStepPrompt({ 
+  cardType,
+  triggerType,
+  onRequestSample, 
+  onAskQuestion, 
+  onAddComment,
+}: NextStepPromptProps) {
+  return (
+    <div className="rounded-lg p-4 mb-4 border-2 bg-sky-50 border-sky-300 dark:bg-sky-950/30 dark:border-sky-700">
+      <div className="flex items-center gap-2 mb-3">
+        <Lightbulb className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+        <span className="font-medium text-sm text-sky-800 dark:text-sky-200">What's next?</span>
+      </div>
+      <p className="text-sm text-sky-700 dark:text-sky-300 mb-3">
+        {triggerType === 'commercial' 
+          ? "Commercial data has been set. What would you like to do?"
+          : "The card is now with you. What's your next step?"}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {cardType !== 'task' && (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={onRequestSample}
+            className="bg-white hover:bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-950 dark:hover:bg-sky-900 dark:border-sky-600 dark:text-sky-200"
+          >
+            <Package className="h-3 w-3 mr-1" />
+            Request Sample
+          </Button>
+        )}
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={onAskQuestion}
+          className="bg-white hover:bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-950 dark:hover:bg-sky-900 dark:border-sky-600 dark:text-sky-200"
+        >
+          <HelpCircle className="h-3 w-3 mr-1" />
+          Ask a Question
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={onAddComment}
+          className="bg-white hover:bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-950 dark:hover:bg-sky-900 dark:border-sky-600 dark:text-sky-200"
+        >
+          <MessageCircle className="h-3 w-3 mr-1" />
+          Add Comment
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 
 export function HistoryTimeline({ 
   cardId, 
+  cardType = 'item',
   showAttentionBanner,
   currentOwner = 'arc',
   onOwnerChange,
+  onOpenSampleSection,
+  onOpenMessageSection,
 }: HistoryTimelineProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -380,13 +449,30 @@ export function HistoryTimeline({
   );
   const triggerActivity = firstUnresolvedQuestion || otherTriggerActivity;
 
+  // Show next step prompt when attention banner would show but no unresolved question
+  const showNextStepPrompt = 
+    showAttentionBanner && 
+    !firstUnresolvedQuestion &&
+    triggerActivity?.activity_type === 'commercial_update';
+
   return (
     <div className="space-y-6 py-4">
-      {/* Attention Banner */}
-      {showAttentionBanner && triggerActivity && (
+      {/* Next Step Prompt - when commercial data was set and no unresolved questions */}
+      {showNextStepPrompt && onOpenSampleSection && onOpenMessageSection && (
+        <NextStepPrompt
+          cardType={cardType}
+          triggerType="commercial"
+          onRequestSample={() => onOpenSampleSection()}
+          onAskQuestion={() => onOpenMessageSection('question')}
+          onAddComment={() => onOpenMessageSection('comment')}
+        />
+      )}
+      
+      {/* Attention Banner - when there's an unresolved question */}
+      {showAttentionBanner && firstUnresolvedQuestion && (
         <AttentionBanner 
-          activity={triggerActivity} 
-          onReply={firstUnresolvedQuestion ? handleOpenFirstReply : undefined} 
+          activity={firstUnresolvedQuestion} 
+          onReply={handleOpenFirstReply} 
         />
       )}
       

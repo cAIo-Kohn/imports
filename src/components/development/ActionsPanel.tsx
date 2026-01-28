@@ -38,6 +38,9 @@ interface ActionsPanelProps {
   currentOwner: 'mor' | 'arc';
   canEdit: boolean;
   onOwnerChange?: (newOwner: 'mor' | 'arc') => void;
+  forcedOpenSection?: string | null;
+  forcedMessageType?: 'comment' | 'question' | null;
+  onForcedSectionHandled?: () => void;
 }
 
 const CONTAINER_TYPES = [
@@ -58,6 +61,9 @@ export function ActionsPanel({
   currentOwner,
   canEdit,
   onOwnerChange,
+  forcedOpenSection,
+  forcedMessageType,
+  onForcedSectionHandled,
 }: ActionsPanelProps) {
   const { user } = useAuth();
   const { isTrader } = useUserRole();
@@ -110,6 +116,21 @@ export function ActionsPanel({
     const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     setter(formatted);
   };
+
+  // Handle forced section opening from parent
+  useEffect(() => {
+    if (forcedOpenSection) {
+      setOpenSections([forcedOpenSection]);
+      if (forcedMessageType) {
+        setMessageType(forcedMessageType);
+      }
+      // Focus textarea after section opens
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 100);
+      onForcedSectionHandled?.();
+    }
+  }, [forcedOpenSection, forcedMessageType, onForcedSectionHandled]);
 
   // Fetch samples
   const { data: samples = [] } = useQuery({
