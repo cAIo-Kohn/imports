@@ -227,6 +227,14 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   const cardType = item.card_type || 'item';
   const isDeleted = !!(itemWithNewFields.deleted_at);
 
+  // Determine user's team affiliation
+  const userTeam: 'mor' | 'arc' = isTrader ? 'arc' : 'mor';
+
+  // Show prompt when card is new AND belongs to user's team (or user is admin)
+  const shouldShowAttentionBanner = 
+    itemWithNewFields.is_new_for_other_team && 
+    (isAdmin || itemWithNewFields.current_owner === userTeam);
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-2xl flex flex-col h-full p-0">
@@ -287,13 +295,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
             <HistoryTimeline
               cardId={item.id}
               cardType={cardType}
-              showAttentionBanner={
-                itemWithNewFields.is_new_for_other_team && (
-                  (isBuyer && itemWithNewFields.created_by_role === 'trader') ||
-                  (isTrader && itemWithNewFields.created_by_role === 'buyer') ||
-                  itemWithNewFields.current_owner === (isBuyer ? 'mor' : 'arc')
-                )
-              }
+              showAttentionBanner={shouldShowAttentionBanner}
               currentOwner={itemWithNewFields.current_owner || 'arc'}
               onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
               onOpenSampleSection={() => setForcedOpenSection('samples')}
