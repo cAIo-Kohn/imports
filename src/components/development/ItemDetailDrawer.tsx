@@ -73,10 +73,10 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
     enabled: !!item?.created_by,
   });
 
-  // Mark as seen when opened by the other team
+  // Mark as seen when opened by the other team AND update last viewed timestamp
   useEffect(() => {
-    const markAsSeen = async () => {
-      if (!item?.id || !open) return;
+    const markAsSeenAndUpdateView = async () => {
+      if (!item?.id || !open || !user?.id) return;
       
       const itemWithNewFields = item as any;
       const isNewForMe = itemWithNewFields.is_new_for_other_team && (
@@ -84,16 +84,29 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
         (isTrader && itemWithNewFields.created_by_role === 'buyer')
       );
 
+      // Update is_new_for_other_team if applicable
       if (isNewForMe) {
         await (supabase.from('development_items') as any)
           .update({ is_new_for_other_team: false })
           .eq('id', item.id);
-        queryClient.invalidateQueries({ queryKey: ['development-items'] });
       }
+
+      // Always update last viewed timestamp for current user
+      await supabase
+        .from('card_user_views')
+        .upsert({
+          card_id: item.id,
+          user_id: user.id,
+          last_viewed_at: new Date().toISOString(),
+        }, {
+          onConflict: 'card_id,user_id',
+        });
+
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
     };
 
-    markAsSeen();
-  }, [item?.id, open, isBuyer, isTrader, queryClient]);
+    markAsSeenAndUpdateView();
+  }, [item?.id, open, user?.id, isBuyer, isTrader, queryClient]);
 
   // Update status mutation
   const updateStatusMutation = useMutation({

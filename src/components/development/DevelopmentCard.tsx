@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { format } from 'date-fns';
 import { Calendar, Package, Layers, ListTodo, Box, Leaf, Sparkles, Trash2 } from 'lucide-react';
 import { DevelopmentItem, DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
@@ -68,6 +69,17 @@ export function DevelopmentCard({
   // Check if this card is deleted
   const isDeleted = !!(item as any).deleted_at;
 
+  // Check if there's unseen activity for this user
+  const hasUnseenActivity = useMemo(() => {
+    const latestActivity = item.latest_activity_at;
+    const lastViewed = item.last_viewed_at;
+    
+    if (!latestActivity) return false;
+    if (!lastViewed) return true; // Never viewed = unseen
+    
+    return new Date(latestActivity) > new Date(lastViewed);
+  }, [item.latest_activity_at, item.last_viewed_at]);
+
   // Determine the highlight color based on who created it
   const highlightClass = isNewForMe
     ? itemWithNewFields.created_by_role === 'buyer'
@@ -88,7 +100,7 @@ export function DevelopmentCard({
   return (
     <div
       className={cn(
-        'rounded-md border shadow-sm p-2 md:p-3 cursor-pointer transition-all',
+        'relative rounded-md border shadow-sm p-2 md:p-3 cursor-pointer transition-all',
         'hover:shadow-md',
         canDrag && 'cursor-grab active:cursor-grabbing',
         highlightClass
@@ -102,6 +114,15 @@ export function DevelopmentCard({
       draggable={canDrag}
       onDragStart={(e) => onDragStart(e, item.id)}
     >
+      {/* Unseen Activity Indicator */}
+      {hasUnseenActivity && (
+        <div className="absolute top-2 right-2">
+          <span className="relative flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
+          </span>
+        </div>
+      )}
       {/* Creator Role Label */}
       {creatorRole && (
         <div className="flex items-center gap-1.5 mb-1">

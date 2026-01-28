@@ -66,6 +66,9 @@ export interface DevelopmentItem {
   assigned_profile?: { id: string; full_name: string | null; email: string | null } | null;
   samples_count?: number;
   products_count?: number;
+  // For unseen activity indicator
+  latest_activity_at?: string;
+  last_viewed_at?: string | null;
 }
 
 // New simplified status order (3 active + 1 solved)
@@ -113,7 +116,7 @@ export default function Development() {
 
   // Fetch development items
   const { data: items = [], isLoading } = useQuery({
-    queryKey: ['development-items'],
+    queryKey: ['development-items', user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('development_items')
@@ -125,28 +128,55 @@ export default function Development() {
 
       if (error) throw error;
 
-      // Fetch sample counts
       const itemIds = data.map(item => item.id);
-      const { data: sampleCounts } = await supabase
-        .from('development_item_samples')
-        .select('item_id')
-        .in('item_id', itemIds);
+      
+      // Fetch sample counts, product counts, latest activity, and user views in parallel
+      const [sampleCountsRes, productCountsRes, latestActivitiesRes, userViewsRes] = await Promise.all([
+        supabase
+          .from('development_item_samples')
+          .select('item_id')
+          .in('item_id', itemIds),
+        supabase
+          .from('development_card_products')
+          .select('card_id')
+          .in('card_id', itemIds),
+        supabase
+          .from('development_card_activity')
+          .select('card_id, created_at')
+          .in('card_id', itemIds)
+          .order('created_at', { ascending: false }),
+        user?.id 
+          ? supabase
+              .from('card_user_views')
+              .select('card_id, last_viewed_at')
+              .eq('user_id', user.id)
+              .in('card_id', itemIds)
+          : Promise.resolve({ data: [] }),
+      ]);
 
-      // Fetch product counts for groups
-      const { data: productCounts } = await supabase
-        .from('development_card_products')
-        .select('card_id')
-        .in('card_id', itemIds);
-
-      const sampleCountMap = (sampleCounts || []).reduce((acc, s) => {
+      const sampleCountMap = (sampleCountsRes.data || []).reduce((acc, s) => {
         acc[s.item_id] = (acc[s.item_id] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
 
-      const productCountMap = (productCounts || []).reduce((acc, p) => {
+      const productCountMap = (productCountsRes.data || []).reduce((acc, p) => {
         acc[p.card_id] = (acc[p.card_id] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
+
+      // Get latest activity per card (MAX created_at)
+      const latestActivityMap = (latestActivitiesRes.data || []).reduce((acc, a) => {
+        if (!acc[a.card_id] || new Date(a.created_at) > new Date(acc[a.card_id])) {
+          acc[a.card_id] = a.created_at;
+        }
+        return acc;
+      }, {} as Record<string, string>);
+
+      // Get user's last viewed times
+      const userViewMap = (userViewsRes.data || []).reduce((acc, v) => {
+        acc[v.card_id] = v.last_viewed_at;
+        return acc;
+      }, {} as Record<string, string>);
 
       return data.map(item => ({
         ...item,
@@ -157,6 +187,8 @@ export default function Development() {
         current_owner: item.current_owner || 'arc',
         samples_count: sampleCountMap[item.id] || 0,
         products_count: productCountMap[item.id] || 0,
+        latest_activity_at: latestActivityMap[item.id] || item.created_at,
+        last_viewed_at: userViewMap[item.id] || null,
       })) as DevelopmentItem[];
     },
   });

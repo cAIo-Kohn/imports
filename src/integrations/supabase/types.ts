@@ -14,6 +14,35 @@ export type Database = {
   }
   public: {
     Tables: {
+      card_user_views: {
+        Row: {
+          card_id: string
+          id: string
+          last_viewed_at: string
+          user_id: string
+        }
+        Insert: {
+          card_id: string
+          id?: string
+          last_viewed_at?: string
+          user_id: string
+        }
+        Update: {
+          card_id?: string
+          id?: string
+          last_viewed_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_user_views_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "development_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categories: {
         Row: {
           created_at: string
