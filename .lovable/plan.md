@@ -1,199 +1,170 @@
 
 
-## Plan: Fix Duplicate Activities & Batch Commercial Data Updates
+## Plan: Auto-Format Numbers in Commercial Data Fields
 
-### Problem Summary
+### Summary
 
-Two issues identified from the screenshots:
-
-1. **Duplicate "created" activities** - Card creation shows twice because:
-   - `CreateCardModal.tsx` inserts a real "created" activity to the database
-   - `HistoryTimeline.tsx` also adds a synthetic "created" activity based on `cardCreatedAt`
-
-2. **Multiple commercial data activities** - Each field update (FOB price, MOQ, qty per container, container type) creates a separate activity entry because they save on blur individually
-
-Additionally, the user wants:
-- Commercial Data section to show a yellow/orange blinking indicator when pending
-- All 4 commercial fields must be filled together and submitted with a single "Save & Move Card" action
+Add automatic number formatting with Brazilian locale (dots as thousands separators, comma for decimals) to the Commercial Data inputs. Numbers will be formatted as the user types, showing:
+- **FOB Price**: `9.000,00` (with 2 decimal places)
+- **MOQ / Qty per Container**: `90.000` (integers only)
 
 ---
 
-### Solution Overview
+### Technical Approach
 
-| Issue | Fix |
-|-------|-----|
-| Duplicate "created" | Remove the synthetic activity from `HistoryTimeline.tsx` since the DB already has the real one |
-| Multiple commercial updates | Replace individual onBlur saves with a batch "Save Commercial Data" button that logs one activity |
-| Pending indicator | Add visual styling (blinking amber/orange border) when commercial data is incomplete |
+The key challenge is that `<input type="number">` doesn't support visual formatting with dots and commas. The solution is to switch to `type="text"` inputs with custom formatting logic:
+
+1. **Display formatted value** - Show `90.000` in the input
+2. **Accept only digits** - Filter out non-numeric characters on input
+3. **Store raw number** - Keep the actual numeric value for saving to DB
+4. **Format on change** - Apply formatting as the user types
 
 ---
 
-### Technical Changes
+### Implementation Details
 
-#### 1. Remove Synthetic "created" Activity
+#### 1. Create Formatting Utility Functions
 
-**File:** `HistoryTimeline.tsx`
-
-Remove the code that adds a synthetic "created" activity:
+Add new utility functions to `src/lib/utils.ts`:
 
 ```typescript
-// BEFORE: Adding synthetic activity
-const allActivities: Activity[] = [
-  ...activities,
-  {
-    id: 'card-creation',
-    card_id: cardId,
-    activity_type: 'created',
-    created_at: cardCreatedAt,
-    ...
-  },
-];
-
-// AFTER: Just use activities from database
-const allActivities: Activity[] = activities;
-```
-
-Also remove the `cardCreatedAt` and `creatorName` props since they're no longer needed for the synthetic activity.
-
----
-
-#### 2. Redesign Commercial Data Section
-
-**File:** `ActionsPanel.tsx`
-
-Replace individual onBlur saves with a batch submission:
-
-**Current Flow:**
-```text
-User types in FOB price → onBlur → saves → logs activity
-User types in MOQ → onBlur → saves → logs activity  
-User types in Qty/Container → onBlur → saves → logs activity
-User changes Container Type → onChange → saves → logs activity
-```
-
-**New Flow:**
-```text
-User fills all 4 fields → clicks "Save & Move Card" → batch save → logs 1 activity → moves card
-```
-
-**Key Changes:**
-
-1. **Remove onBlur handlers** from individual inputs
-2. **Add validation** to ensure all 4 fields are filled before saving
-3. **Single save mutation** that:
-   - Updates all 4 fields at once
-   - Logs one `commercial_update` activity with all values in metadata
-   - Automatically moves card to other team
-4. **Visual indicator** - blinking amber border when commercial data is incomplete
-
-```typescript
-// New save function
-const handleSaveCommercialData = async () => {
-  // Validate all fields are filled
-  if (!localFobPrice || !localMoq || !localQtyPerContainer || !localContainerType) {
-    toast({ title: 'All commercial data fields are required', variant: 'destructive' });
-    return;
-  }
-
-  // Batch update all fields
-  await supabase.from('development_items')
-    .update({
-      fob_price_usd: parseFloat(localFobPrice),
-      moq: parseInt(localMoq),
-      qty_per_container: parseInt(localQtyPerContainer),
-      container_type: localContainerType,
-    })
-    .eq('id', cardId);
-
-  // Log single activity with all values
-  await supabase.from('development_card_activity').insert({
-    card_id: cardId,
-    user_id: user.id,
-    activity_type: 'commercial_update',
-    content: 'Updated commercial data',
-    metadata: {
-      fob_price_usd: parseFloat(localFobPrice),
-      moq: parseInt(localMoq),
-      qty_per_container: parseInt(localQtyPerContainer),
-      container_type: localContainerType,
-    },
+/**
+ * Format number with Brazilian locale (1.234,56)
+ * @param value - The number or string to format
+ * @param decimals - Number of decimal places (0 for integers)
+ */
+export function formatBrazilianNumber(value: number | string, decimals: number = 0): string {
+  const num = typeof value === 'string' ? parseFloat(value.replace(/\./g, '').replace(',', '.')) : value;
+  if (isNaN(num)) return '';
+  return num.toLocaleString('pt-BR', { 
+    minimumFractionDigits: decimals, 
+    maximumFractionDigits: decimals 
   });
+}
 
-  // Move card to other team
-  const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
-  await supabase.from('development_items')
-    .update({ current_owner: targetOwner, is_new_for_other_team: true })
-    .eq('id', cardId);
-
-  // Log ownership change
-  await supabase.from('development_card_activity').insert({
-    card_id: cardId,
-    user_id: user.id,
-    activity_type: 'ownership_change',
-    content: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}`,
-  });
-};
-```
-
----
-
-#### 3. Pending Indicator Styling
-
-Add visual indicator when commercial data is incomplete:
-
-```typescript
-const isCommercialComplete = fobPriceUsd && moq && qtyPerContainer && containerType;
-const isCommercialPending = !isCommercialComplete && cardType !== 'task';
-
-// In the AccordionItem:
-<AccordionItem 
-  value="commercial" 
-  className={cn(
-    "border rounded-lg px-3 mt-2",
-    isCommercialPending && "border-amber-400 animate-pulse bg-amber-50/50 dark:bg-amber-950/20"
-  )}
->
-```
-
----
-
-#### 4. Update CompactActivityRow for Batch Commercial Update
-
-**File:** `HistoryTimeline.tsx`
-
-Update the inline content display to show all fields when metadata contains multiple values:
-
-```typescript
-if (activity.activity_type === 'commercial_update' && activity.metadata) {
-  // Check if batch update (has multiple fields)
-  if (activity.metadata.fob_price_usd) {
-    inlineContent = `FOB $${activity.metadata.fob_price_usd}, MOQ ${activity.metadata.moq}, ${activity.metadata.qty_per_container}/${activity.metadata.container_type}`;
-  } else {
-    // Legacy single field update
-    const field = activity.metadata.field?.replace(/_/g, ' ');
-    inlineContent = `${field}: ${activity.metadata.value}`;
-  }
+/**
+ * Parse Brazilian formatted number back to raw number
+ * "90.000" → 90000
+ * "9.000,50" → 9000.50
+ */
+export function parseBrazilianNumber(formatted: string): number {
+  if (!formatted) return 0;
+  // Remove thousand separators (dots), replace comma with decimal point
+  const cleaned = formatted.replace(/\./g, '').replace(',', '.');
+  return parseFloat(cleaned) || 0;
 }
 ```
 
 ---
 
-### UI Layout for Commercial Data Section
+#### 2. Update Commercial Data Inputs in ActionsPanel
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│ 💲 Commercial Data           [Pending indicator if incomplete] │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  FOB Price (USD)  [$______]     MOQ            [________]      │
-│                                                                 │
-│  Qty / Container  [________]     Container Type [▼ Select ]    │
-│                                                                 │
-│                    [ Save & Move Card to Brazil → ]            │
-│                                                                 │
-│  ⚠️ All fields required to submit                              │
-└─────────────────────────────────────────────────────────────────┘
+**File:** `src/components/development/ActionsPanel.tsx`
+
+Replace the current `type="number"` inputs with `type="text"` and add formatting handlers:
+
+**FOB Price (with decimals):**
+```typescript
+const handleFobPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Allow digits, comma, and partial input
+  let input = e.target.value;
+  // Remove non-numeric except comma
+  input = input.replace(/[^\d,]/g, '');
+  // Only allow one comma
+  const parts = input.split(',');
+  if (parts.length > 2) input = parts[0] + ',' + parts.slice(1).join('');
+  // Limit decimal places to 2
+  if (parts[1]?.length > 2) input = parts[0] + ',' + parts[1].slice(0, 2);
+  
+  // Format with thousand separators
+  const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const formatted = parts.length > 1 ? `${integerPart},${parts[1]}` : integerPart;
+  
+  setLocalFobPrice(formatted);
+};
+
+<Input
+  id="fob-price"
+  type="text"
+  inputMode="decimal"
+  placeholder="0,00"
+  value={localFobPrice}
+  onChange={handleFobPriceChange}
+  className="pl-6 h-8 text-sm"
+/>
 ```
+
+**MOQ / Qty per Container (integers only):**
+```typescript
+const handleIntegerChange = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Remove all non-digits
+  let digits = e.target.value.replace(/\D/g, '');
+  // Format with thousand separators
+  const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  setter(formatted);
+};
+
+<Input
+  id="moq"
+  type="text"
+  inputMode="numeric"
+  placeholder="0"
+  value={localMoq}
+  onChange={handleIntegerChange(setLocalMoq)}
+  className="h-8 text-sm"
+/>
+
+<Input
+  id="qty-container"
+  type="text"
+  inputMode="numeric"
+  placeholder="0"
+  value={localQtyPerContainer}
+  onChange={handleIntegerChange(setLocalQtyPerContainer)}
+  className="h-8 text-sm"
+/>
+```
+
+---
+
+#### 3. Update Save Mutation to Parse Formatted Values
+
+The save mutation needs to convert formatted strings back to numbers:
+
+```typescript
+// In saveCommercialDataMutation
+const fobValue = parseBrazilianNumber(localFobPrice);
+const moqValue = parseBrazilianNumber(localMoq);
+const qtyValue = parseBrazilianNumber(localQtyPerContainer);
+```
+
+---
+
+#### 4. Initialize State with Formatted Values
+
+When loading existing values, format them for display:
+
+```typescript
+const [localFobPrice, setLocalFobPrice] = useState(
+  fobPriceUsd ? formatBrazilianNumber(fobPriceUsd, 2) : ''
+);
+const [localMoq, setLocalMoq] = useState(
+  moq ? formatBrazilianNumber(moq, 0) : ''
+);
+const [localQtyPerContainer, setLocalQtyPerContainer] = useState(
+  qtyPerContainer ? formatBrazilianNumber(qtyPerContainer, 0) : ''
+);
+```
+
+---
+
+### Visual Result
+
+| Field | User types | Displayed |
+|-------|------------|-----------|
+| FOB Price | `9000,50` | `9.000,50` |
+| MOQ | `90000` | `90.000` |
+| Qty/Container | `3451` | `3.451` |
 
 ---
 
@@ -201,15 +172,15 @@ if (activity.activity_type === 'commercial_update' && activity.metadata) {
 
 | File | Changes |
 |------|---------|
-| `HistoryTimeline.tsx` | Remove synthetic "created" activity, update compact row for batch commercial updates |
-| `ActionsPanel.tsx` | Replace individual field saves with batch save + move, add pending indicator |
-| `ItemDetailDrawer.tsx` | Remove `cardCreatedAt` and `creatorName` props if no longer needed |
+| `src/lib/utils.ts` | Add `formatBrazilianNumber` and `parseBrazilianNumber` functions |
+| `src/components/development/ActionsPanel.tsx` | Update inputs to use text type with formatting handlers |
 
 ---
 
 ### Edge Cases
 
-- **Existing cards with incomplete data**: They can still be edited, just can't submit until all 4 fields are filled
-- **Legacy individual activities**: The timeline will still display old single-field updates correctly
-- **Card already on Brazil side**: Button text changes to "Save & Move Card to China"
+- **Empty input**: Returns empty string, not "0"
+- **Pasting values**: Handles pasted numbers by stripping non-digits
+- **Existing data**: Already-saved numbers are formatted on load
+- **Mobile keyboards**: Uses `inputMode="numeric"` / `inputMode="decimal"` for proper mobile keyboards
 
