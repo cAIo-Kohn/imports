@@ -77,26 +77,35 @@ export function DevelopmentCard({
       ? 'opacity-60 border-destructive'
       : '';
   
+  // Convert hex to rgba for subtle background
+  const hexToRgba = (hex: string, alpha: number) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
   return (
     <div
       className={cn(
-        'bg-background rounded-md border shadow-sm p-2 md:p-3 cursor-pointer transition-all',
-        'hover:shadow-md hover:border-primary/50',
+        'rounded-md border shadow-sm p-2 md:p-3 cursor-pointer transition-all',
+        'hover:shadow-md',
         canDrag && 'cursor-grab active:cursor-grabbing',
         highlightClass
       )}
+      style={{
+        backgroundColor: creatorRole ? hexToRgba(roleColor, 0.08) : undefined,
+        borderLeftWidth: creatorRole ? '3px' : undefined,
+        borderLeftColor: creatorRole ? roleColor : undefined,
+      }}
       onClick={onClick}
       draggable={canDrag}
       onDragStart={(e) => onDragStart(e, item.id)}
     >
-      {/* Creator Role Indicator */}
+      {/* Creator Role Label */}
       {creatorRole && (
         <div className="flex items-center gap-1.5 mb-1">
-          <span 
-            className="w-2 h-2 rounded-full flex-shrink-0" 
-            style={{ backgroundColor: roleColor }}
-          />
-          <span className="text-[10px] text-muted-foreground">{roleLabel}</span>
+          <span className="text-[10px] font-medium" style={{ color: roleColor }}>{roleLabel}</span>
         </div>
       )}
 
