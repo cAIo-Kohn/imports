@@ -309,7 +309,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
 
         {/* Bottom Section - Sticky Actions */}
         {canManage && !isDeleted && (
-          <div className="flex-shrink-0 border-t bg-background p-4">
+          <div className="flex-shrink-0 border-t bg-background p-4 max-h-[60vh] overflow-y-auto overscroll-contain">
             <ActionsPanel
               cardId={item.id}
               cardType={cardType}
