@@ -1,74 +1,79 @@
 
-## Plan: Fix "What's Next?" Prompt Not Appearing After Commercial Data Submission
+## Plan: Fix "What's next?" Prompt Visibility for Admins and Owner Team
 
-### Root Cause Analysis
+### Root Cause
 
-I identified **two issues** preventing the "What's next?" prompt from appearing:
+The `showAttentionBanner` logic in `ItemDetailDrawer.tsx` is too restrictive. It only evaluates correctly for pure Buyer or Trader roles, but fails for:
+1. **Admin users** who should see prompts for both teams
+2. **The actual owner team** - the logic should check if the current user can act on behalf of the team that owns the card
 
-#### Issue 1: Activity Detection Order
-In `HistoryTimeline.tsx`, the code looks for the trigger activity like this:
-
+Current logic (broken for Admin):
 ```typescript
-const otherTriggerActivity = activities.find(a => 
-  ['commercial_update', 'ownership_change'].includes(a.activity_type)
-);
+showAttentionBanner={
+  itemWithNewFields.is_new_for_other_team && (
+    (isBuyer && itemWithNewFields.created_by_role === 'trader') ||
+    (isTrader && itemWithNewFields.created_by_role === 'buyer') ||
+    itemWithNewFields.current_owner === (isBuyer ? 'mor' : 'arc')
+  )
+}
 ```
-
-Activities are sorted by `created_at DESC` (most recent first). When commercial data is submitted, **two activities** are created:
-1. First: `commercial_update` 
-2. Then: `ownership_change` (card moves to other team)
-
-Since `ownership_change` is the **most recent**, `activities.find()` returns it first. The condition then checks:
-
-```typescript
-triggerActivity?.activity_type === 'commercial_update'  // FALSE - it's 'ownership_change'
-```
-
-**Fix:** Change the logic to also show the prompt when the trigger is `ownership_change` caused by commercial data, OR check specifically for a recent commercial update.
-
-#### Issue 2: Prompt Should Show for Both Teams' Perspective
-The current logic requires `showAttentionBanner` to be true, which depends on `is_new_for_other_team` being set and specific role conditions. But when YOU submit commercial data and the card moves to the other side, the prompt should appear for THEM (the receiving team), not for you.
-
-For the **receiving team** to see the prompt:
-- The card must be in their section (`current_owner` matches their team)
-- There should be a recent commercial update activity
-
----
 
 ### Solution
 
-#### 1. Update `showNextStepPrompt` Logic in `HistoryTimeline.tsx`
+Since you confirmed the prompt should only show for the **owner team**, we need to:
+1. Determine which team the current user belongs to (Admin can be either, Buyer = MOR, Trader = ARC)
+2. Show the prompt when `current_owner` matches the user's team AND there's recent commercial activity
 
-Change the condition to also trigger when:
-- The most recent trigger is `ownership_change` that was caused by commercial data (has `trigger: 'commercial'` in metadata)
-- OR there's a `commercial_update` in the recent activities
+**New logic:**
+- Admin: Show prompt if card is new for other team (regardless of which side)
+- Buyer: Show prompt if `current_owner === 'mor'`
+- Trader: Show prompt if `current_owner === 'arc'`
 
-```typescript
-// Find the most recent commercial update (not necessarily the first trigger)
-const mostRecentCommercialUpdate = activities.find(a => 
-  a.activity_type === 'commercial_update'
-);
+---
 
-// Show next step prompt when:
-// 1. showAttentionBanner is true (card is new for this user/team)
-// 2. No unresolved questions pending
-// 3. There's a recent commercial update OR the ownership change was triggered by commercial data
-const showNextStepPrompt = 
-  showAttentionBanner && 
-  !firstUnresolvedQuestion &&
-  (mostRecentCommercialUpdate || 
-   (triggerActivity?.activity_type === 'ownership_change' && 
-    triggerActivity?.metadata?.trigger === 'commercial'));
-```
+### Code Changes
 
-#### 2. Determine Trigger Type for NextStepPrompt
+**File: `src/components/development/ItemDetailDrawer.tsx`**
 
-Pass the correct trigger type to show the appropriate message:
+Update the `showAttentionBanner` prop calculation:
 
 ```typescript
-// Determine the type of trigger for the prompt message
-const promptTriggerType = mostRecentCommercialUpdate ? 'commercial' : 'ownership';
+// Determine if current user can see prompt for this card's owner
+const userTeam = isTrader ? 'arc' : 'mor'; // Admins and Buyers act on Brazil side
+const isCardWithUserTeam = itemWithNewFields.current_owner === userTeam || isAdmin;
+
+// Show attention banner when:
+// 1. Card has been marked as new for the receiving team
+// 2. AND either:
+//    a. The card is now with the current user's team
+//    b. OR user is Admin (can act on both sides)
+const shouldShowAttentionBanner = 
+  itemWithNewFields.is_new_for_other_team && 
+  (isAdmin || itemWithNewFields.current_owner === userTeam);
 ```
+
+Then pass this to the `HistoryTimeline`:
+```typescript
+<HistoryTimeline
+  cardId={item.id}
+  cardType={cardType}
+  showAttentionBanner={shouldShowAttentionBanner}
+  // ... other props
+/>
+```
+
+---
+
+### Why This Works
+
+| Scenario | Current Owner | User Role | Shows Prompt? |
+|----------|---------------|-----------|---------------|
+| Card moved to Brazil | `mor` | Admin | ✅ Yes (admin sees all) |
+| Card moved to Brazil | `mor` | Buyer | ✅ Yes (buyer owns mor) |
+| Card moved to Brazil | `mor` | Trader | ❌ No (trader owns arc) |
+| Card moved to China | `arc` | Admin | ✅ Yes (admin sees all) |
+| Card moved to China | `arc` | Trader | ✅ Yes (trader owns arc) |
+| Card moved to China | `arc` | Buyer | ❌ No (buyer owns mor) |
 
 ---
 
@@ -76,66 +81,27 @@ const promptTriggerType = mostRecentCommercialUpdate ? 'commercial' : 'ownership
 
 | File | Changes |
 |------|---------|
-| `HistoryTimeline.tsx` | Fix the activity detection logic to find commercial updates regardless of position |
+| `src/components/development/ItemDetailDrawer.tsx` | Simplify `showAttentionBanner` logic to check card owner vs user's team |
 
 ---
 
-### Visual Flow After Fix
+### Technical Details
 
-```text
-User A (Trader in China) submits commercial data
-    ↓
-Card moves to MOR (Brazil)
-    ↓
-User B (Buyer in Brazil) opens the card
-    ↓
-showAttentionBanner = true (is_new_for_other_team && current_owner === 'mor')
-    ↓
-mostRecentCommercialUpdate = found ✓
-firstUnresolvedQuestion = null ✓
-    ↓
-showNextStepPrompt = true ✓
-    ↓
-"What's next?" prompt appears with:
-   [Request Sample] [Ask a Question] [Add Comment]
-```
+The key change extracts the banner visibility logic into clearer variables before the JSX:
 
----
-
-### Code Changes
-
-**Before (broken):**
 ```typescript
-const otherTriggerActivity = activities.find(a => 
-  ['commercial_update', 'ownership_change'].includes(a.activity_type)
-);
-const triggerActivity = firstUnresolvedQuestion || otherTriggerActivity;
+// In ItemDetailDrawer, before the return statement:
 
-const showNextStepPrompt = 
-  showAttentionBanner && 
-  !firstUnresolvedQuestion &&
-  triggerActivity?.activity_type === 'commercial_update';
+// Determine user's team affiliation
+const userTeam: 'mor' | 'arc' = isTrader ? 'arc' : 'mor';
+
+// Show prompt when card is new AND belongs to user's team (or user is admin)
+const shouldShowAttentionBanner = 
+  itemWithNewFields.is_new_for_other_team && 
+  (isAdmin || itemWithNewFields.current_owner === userTeam);
 ```
 
-**After (fixed):**
-```typescript
-// Find the most recent commercial update activity
-const mostRecentCommercialUpdate = activities.find(a => 
-  a.activity_type === 'commercial_update'
-);
-
-// Find ownership changes triggered by commercial data
-const commercialTriggeredMove = activities.find(a => 
-  a.activity_type === 'ownership_change' && 
-  a.metadata?.trigger === 'commercial'
-);
-
-// Show next step prompt when commercial data was recently set
-const showNextStepPrompt = 
-  showAttentionBanner && 
-  !firstUnresolvedQuestion &&
-  (mostRecentCommercialUpdate || commercialTriggeredMove);
-
-// Determine trigger type for prompt messaging
-const promptTriggerType = mostRecentCommercialUpdate ? 'commercial' : 'ownership';
-```
+This ensures:
+- Traders only see prompts for ARC (China) cards
+- Buyers only see prompts for MOR (Brazil) cards
+- Admins see prompts for any card that's marked as new for the other team
