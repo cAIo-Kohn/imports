@@ -6,6 +6,7 @@ import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
+import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton';
 
 interface InlineReplyBoxProps {
   questionId: string;
@@ -23,6 +24,7 @@ export function InlineReplyBox({
   onCardMove 
 }: InlineReplyBoxProps) {
   const [replyContent, setReplyContent] = useState('');
+  const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -32,17 +34,26 @@ export function InlineReplyBox({
     textareaRef.current?.focus();
   }, []);
 
+  // Build metadata with attachments
+  const buildMetadata = () => {
+    const metadata: Record<string, any> = { reply_to_question: questionId };
+    if (attachments.length > 0) {
+      metadata.attachments = attachments;
+    }
+    return metadata;
+  };
+
   // Reply as comment (no move)
   const commentReplyMutation = useMutation({
     mutationFn: async () => {
-      if (!user?.id || !replyContent.trim()) return;
+      if (!user?.id || (!replyContent.trim() && attachments.length === 0)) return;
       
       const { error } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
         activity_type: 'comment',
-        content: replyContent.trim(),
-        metadata: { reply_to_question: questionId },
+        content: replyContent.trim() || null,
+        metadata: buildMetadata(),
       });
       if (error) throw error;
     },
@@ -50,6 +61,7 @@ export function InlineReplyBox({
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
       toast({ title: 'Reply added' });
       setReplyContent('');
+      setAttachments([]);
       onClose();
     },
     onError: () => {
@@ -60,15 +72,15 @@ export function InlineReplyBox({
   // Reply as answer (moves card + resolves question)
   const answerReplyMutation = useMutation({
     mutationFn: async () => {
-      if (!user?.id || !replyContent.trim()) return;
+      if (!user?.id || (!replyContent.trim() && attachments.length === 0)) return;
       
       // 1. Insert answer activity
       const { error: insertError } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
         activity_type: 'answer',
-        content: replyContent.trim(),
-        metadata: { reply_to_question: questionId },
+        content: replyContent.trim() || null,
+        metadata: buildMetadata(),
       });
       if (insertError) throw insertError;
 
@@ -110,6 +122,7 @@ export function InlineReplyBox({
       const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
       toast({ title: `Answer posted. Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}` });
       setReplyContent('');
+      setAttachments([]);
       onClose();
       onCardMove?.();
     },
@@ -127,6 +140,7 @@ export function InlineReplyBox({
 
   const isPending = commentReplyMutation.isPending || answerReplyMutation.isPending;
   const targetTeam = currentOwner === 'arc' ? 'MOR' : 'ARC';
+  const canSubmit = replyContent.trim() || attachments.length > 0;
 
   return (
     <div className="mt-3 p-3 bg-muted/50 rounded-lg border">
@@ -140,6 +154,17 @@ export function InlineReplyBox({
         className="text-sm bg-background"
         disabled={isPending}
       />
+      
+      {/* Attachments */}
+      <div className="mt-2">
+        <TimelineUploadButton
+          attachments={attachments}
+          onAttachmentsChange={setAttachments}
+          variant="icon"
+          disabled={isPending}
+        />
+      </div>
+      
       <div className="flex gap-2 mt-2 justify-end flex-wrap">
         <Button 
           variant="ghost" 
@@ -153,14 +178,14 @@ export function InlineReplyBox({
           variant="outline" 
           size="sm" 
           onClick={() => commentReplyMutation.mutate()}
-          disabled={!replyContent.trim() || isPending}
+          disabled={!canSubmit || isPending}
         >
           {commentReplyMutation.isPending ? 'Sending...' : 'Just Comment'}
         </Button>
         <Button 
           size="sm" 
           onClick={() => answerReplyMutation.mutate()}
-          disabled={!replyContent.trim() || isPending}
+          disabled={!canSubmit || isPending}
         >
           {answerReplyMutation.isPending ? 'Sending...' : `Answer & Move to ${targetTeam}`}
           <ArrowRight className="h-3 w-3 ml-1" />

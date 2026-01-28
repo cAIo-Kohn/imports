@@ -13,7 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ImageUpload } from './ImageUpload';
 import { GroupedItemsDrawer } from './GroupedItemsDrawer';
 import { cn } from '@/lib/utils';
 import { DevelopmentItem, DevelopmentCardStatus, DevelopmentItemPriority, DevelopmentCardType } from '@/pages/Development';
@@ -22,7 +21,6 @@ interface CardInfoSectionProps {
   item: DevelopmentItem;
   canEdit: boolean;
   onUpdateStatus: (status: DevelopmentCardStatus) => void;
-  onUpdateImage: (url: string | null) => void;
 }
 
 const STATUS_OPTIONS: { value: DevelopmentCardStatus; label: string }[] = [
@@ -75,7 +73,6 @@ export function CardInfoSection({
   item, 
   canEdit, 
   onUpdateStatus,
-  onUpdateImage,
 }: CardInfoSectionProps) {
   const [showGroupedItems, setShowGroupedItems] = useState(false);
   const itemWithNewFields = item as any;
@@ -98,107 +95,69 @@ export function CardInfoSection({
 
   return (
     <div className="space-y-4">
-      {/* Image and Title Row */}
-      <div className="flex gap-3">
-        {/* Image - only for non-task cards, compact size */}
-        {cardType !== 'task' && (
-          <div className="flex-shrink-0">
-            {itemWithNewFields.image_url ? (
-              <div className="relative group">
-                <img
-                  src={itemWithNewFields.image_url}
-                  alt={item.title}
-                  className="w-16 h-16 rounded-lg border object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                  onClick={() => window.open(itemWithNewFields.image_url, '_blank')}
-                />
-                {canEdit && (
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <ImageUpload
-                      value={itemWithNewFields.image_url}
-                      onChange={onUpdateImage}
-                      folder="cards"
-                    />
-                  </div>
-                )}
-              </div>
-            ) : canEdit ? (
-              <div className="w-16 h-16 rounded-lg border border-dashed flex items-center justify-center bg-muted/30">
-                <ImageUpload
-                  value={null}
-                  onChange={onUpdateImage}
-                  folder="cards"
-                />
-              </div>
-            ) : (
-              <div className="w-16 h-16 rounded-lg border bg-muted/30 flex items-center justify-center">
-                <span className="text-xs text-muted-foreground">No image</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Title and Badges */}
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-lg leading-tight truncate">{item.title}</h3>
-          
-          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-            <Badge variant="outline" className="text-xs">
-              {CARD_TYPE_LABELS[cardType]}
+      {/* Title - large and prominent */}
+      <div>
+        <h3 className="font-semibold text-xl leading-tight">{item.title}</h3>
+        
+        {/* Badges Row */}
+        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          <Badge variant="outline" className="text-xs">
+            {CARD_TYPE_LABELS[cardType]}
+          </Badge>
+          {itemWithNewFields.product_category && (
+            <Badge variant="secondary" className="text-xs">
+              {CATEGORY_LABELS[itemWithNewFields.product_category] || itemWithNewFields.product_category}
             </Badge>
-            {itemWithNewFields.product_category && (
-              <Badge variant="secondary" className="text-xs">
-                {CATEGORY_LABELS[itemWithNewFields.product_category] || itemWithNewFields.product_category}
-              </Badge>
-            )}
-            <Badge className={cn('text-xs', PRIORITY_STYLES[item.priority])}>
-              {item.priority}
+          )}
+          <Badge className={cn('text-xs', PRIORITY_STYLES[item.priority])}>
+            {item.priority}
+          </Badge>
+          {item.product_code && (
+            <Badge variant="outline" className="text-xs font-mono">
+              {item.product_code}
             </Badge>
-            {item.product_code && (
-              <Badge variant="outline" className="text-xs font-mono">
-                {item.product_code}
-              </Badge>
-            )}
-          </div>
-
-          {/* Status and Due Date Row */}
-          <div className="flex items-center gap-4 mt-3">
-            <div className="flex items-center gap-2">
-              <Label className="text-xs text-muted-foreground">Status:</Label>
-              {canEdit ? (
-                <Select
-                  value={currentStatus}
-                  onValueChange={(v) => onUpdateStatus(v as DevelopmentCardStatus)}
-                >
-                  <SelectTrigger className="h-7 text-xs w-28">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <span className="text-xs capitalize">{currentStatus.replace('_', ' ')}</span>
-              )}
-            </div>
-            
-            {item.due_date && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Calendar className="h-3 w-3" />
-                Due: {format(new Date(item.due_date), 'dd/MM/yyyy')}
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Desired Outcome - compact */}
+      {/* Status and Due Date Row */}
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Label className="text-xs text-muted-foreground">Status:</Label>
+          {canEdit ? (
+            <Select
+              value={currentStatus}
+              onValueChange={(v) => onUpdateStatus(v as DevelopmentCardStatus)}
+            >
+              <SelectTrigger className="h-7 text-xs w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <span className="text-xs capitalize">{currentStatus.replace('_', ' ')}</span>
+          )}
+        </div>
+        
+        {item.due_date && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Calendar className="h-3 w-3" />
+            Due: {format(new Date(item.due_date), 'dd/MM/yyyy')}
+          </div>
+        )}
+      </div>
+
+      {/* Desired Outcome - emphasized */}
       {item.description && (
-        <div className="bg-muted/30 rounded-md p-2 border">
-          <p className="text-sm line-clamp-2">
+        <div className="bg-muted/50 rounded-lg p-3 border">
+          <Label className="text-xs text-muted-foreground block mb-1">Desired Outcome</Label>
+          <p className="text-sm">
             {item.description}
           </p>
         </div>

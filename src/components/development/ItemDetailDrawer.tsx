@@ -295,7 +295,6 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
             item={item}
             canEdit={canManage && !isDeleted}
             onUpdateStatus={(status) => updateStatusMutation.mutate(status)}
-            onUpdateImage={(url) => updateImageMutation.mutate(url)}
           />
         </div>
 
