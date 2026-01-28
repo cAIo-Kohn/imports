@@ -1,297 +1,118 @@
 
 
-## Plan: Inline Timeline Replies with Conditional Card Movement
+## Plan: Compact Timeline for System Actions
 
-### Summary
+### Problem
 
-This plan restructures the reply workflow to be more intuitive and context-specific. Instead of opening the "Add Comment / Ask Question" accordion when clicking "Reply" on a question, users will see an inline reply box directly within the timeline, attached to the specific question being answered.
+System-generated activities (card moves, status changes, image updates, etc.) take the same visual space as user-generated content (comments, questions, answers). This dilutes the focus on actual conversations and makes the timeline harder to scan.
 
----
+### Solution
 
-### Key Workflow Changes
+Create a **two-tier visual hierarchy** in the timeline:
 
-| Action | Location | Card Moves? |
-|--------|----------|-------------|
-| **Comment** (general) | Opens accordion tab | No |
-| **Ask Question** (new) | Opens accordion tab | Prompts to move |
-| **Reply to Question** | Inline in Timeline | Two options: "Comment" (no move) or "Answer" (moves card) |
-
----
-
-### User Experience Flow
-
-#### Replying to a Question (new inline flow):
-1. User clicks "Reply" on a question in the timeline
-2. An inline reply box appears directly below the question
-3. User types their response
-4. User chooses:
-   - **Just Comment** - "Give me 5 days and I'll let you know" - card stays
-   - **Answer & Move** - "The price is $2.50" - card moves to other team + question marked as resolved
+| Tier | Activity Types | Visual Treatment |
+|------|----------------|------------------|
+| **Primary** (full) | comment, question, answer | Full card with avatar, name, content, actions |
+| **Secondary** (compact) | ownership_change, status_change, sample_added, sample_updated, commercial_update, product_added, image_updated, created | Single-line inline entry, no avatar, muted styling |
 
 ---
 
 ### Visual Design
 
+**Before (current):**
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│ ? Caio Kohn asked a question • 17:39                            │
-│   "What is the expected annual volume for this product?"        │
-│                                                                 │
-│   [Mark as Resolved]                                            │
-│                                                                 │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │ Type your reply...                                      │   │
-│   └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│   [Just Comment]  [Answer & Move Card →]                        │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│ [CK] Caio Kohn  → moved card  17:39                 │
+│      Card moved to ARC (China)                      │
+└─────────────────────────────────────────────────────┘
+```
+
+**After (compact):**
+```text
+→ Caio Kohn moved card to ARC (China) • 17:39
 ```
 
 ---
 
-### Component Changes
+### Technical Changes
 
-#### 1. Rename "History" to "Timeline"
+#### 1. Define Activity Categories
 
-**File:** `ItemDetailDrawer.tsx`
-- Change heading text from "History" to "Timeline"
-
----
-
-#### 2. Add Inline Reply Component
-
-**File:** `HistoryTimeline.tsx`
-
-Create a new `InlineReplyBox` component:
+Add a constant to categorize which activities are "primary" (need full treatment) vs "secondary" (compact):
 
 ```typescript
-interface InlineReplyBoxProps {
-  questionId: string;
-  cardId: string;
-  currentOwner: 'mor' | 'arc';
-  onClose: () => void;
-  onCardMove?: () => void;
-}
+const PRIMARY_ACTIVITY_TYPES = ['comment', 'question', 'answer'];
 
-function InlineReplyBox({ questionId, cardId, currentOwner, onClose, onCardMove }: InlineReplyBoxProps) {
-  const [replyContent, setReplyContent] = useState('');
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-  
-  // Reply as comment (no move)
-  const handleCommentReply = async () => {
-    // Insert activity with type 'comment' and metadata linking to question
-    await supabase.from('development_card_activity').insert({
-      card_id: cardId,
-      user_id: user.id,
-      activity_type: 'comment',
-      content: replyContent,
-      metadata: { reply_to_question: questionId },
-    });
-    // Close reply box, do NOT move card
-  };
-  
-  // Reply as answer (moves card + resolves question)
-  const handleAnswerReply = async () => {
-    // Insert activity with type 'answer' and metadata
-    await supabase.from('development_card_activity').insert({
-      card_id: cardId,
-      user_id: user.id,
-      activity_type: 'answer',
-      content: replyContent,
-      metadata: { reply_to_question: questionId },
-    });
-    
-    // Mark question as resolved
-    await supabase.from('development_card_activity')
-      .update({ metadata: { resolved: true, resolved_at: new Date().toISOString(), resolved_by: user.id } })
-      .eq('id', questionId);
-    
-    // Move card to other team
-    const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
-    await supabase.from('development_items')
-      .update({ current_owner: targetOwner, is_new_for_other_team: true })
-      .eq('id', cardId);
-    
-    // Log ownership change
-    await supabase.from('development_card_activity').insert({
-      card_id: cardId,
-      user_id: user.id,
-      activity_type: 'ownership_change',
-      content: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}`,
-    });
-    
-    onCardMove?.();
-  };
+const isCompactActivity = (type: string) => !PRIMARY_ACTIVITY_TYPES.includes(type);
+```
+
+#### 2. Create Compact Activity Row Component
+
+A new inline component for secondary activities:
+
+```typescript
+function CompactActivityRow({ activity }: { activity: Activity }) {
+  const userName = activity.profile?.full_name?.split(' ')[0] || 'Someone';
   
   return (
-    <div className="mt-3 p-3 bg-slate-50 rounded-lg border">
-      <Textarea
-        value={replyContent}
-        onChange={(e) => setReplyContent(e.target.value)}
-        placeholder="Type your reply..."
-        rows={2}
-        autoFocus
-      />
-      <div className="flex gap-2 mt-2 justify-end">
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button variant="outline" size="sm" onClick={handleCommentReply}>
-          Just Comment
-        </Button>
-        <Button size="sm" onClick={handleAnswerReply}>
-          Answer & Move Card
-          <ArrowRight className="h-3 w-3 ml-1" />
-        </Button>
-      </div>
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground py-1.5 px-2">
+      {ACTIVITY_ICONS[activity.activity_type]}
+      <span className="font-medium">{userName}</span>
+      <span>{ACTIVITY_LABELS[activity.activity_type]}</span>
+      {activity.content && (
+        <span className="truncate max-w-[200px]">{activity.content}</span>
+      )}
+      <span className="opacity-60">• {format(parseISO(activity.created_at), 'HH:mm')}</span>
     </div>
   );
 }
 ```
 
----
+#### 3. Update Timeline Render Logic
 
-#### 3. Track Reply State in Timeline
-
-**File:** `HistoryTimeline.tsx`
-
-Add state for which question has the reply box open:
+In the main render, check the activity type and render either the full card or compact row:
 
 ```typescript
-const [replyingToId, setReplyingToId] = useState<string | null>(null);
-
-// In the question activity render:
-{isQuestion && !isResolved && (
-  <div className="flex gap-2 mt-2">
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={() => setReplyingToId(activity.id)}
-    >
-      <Reply className="h-3 w-3 mr-1" />
-      Reply
-    </Button>
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={() => resolveQuestionMutation.mutate(activity.id)}
-    >
-      <Check className="h-3 w-3 mr-1" />
-      Mark as Resolved
-    </Button>
-  </div>
-)}
-
-{replyingToId === activity.id && (
-  <InlineReplyBox
-    questionId={activity.id}
-    cardId={cardId}
-    currentOwner={currentOwner}
-    onClose={() => setReplyingToId(null)}
-    onCardMove={onOwnerChange}
-  />
-)}
+{groupedActivities[dateKey].map((activity) => {
+  const isCompact = isCompactActivity(activity.activity_type);
+  
+  if (isCompact) {
+    return <CompactActivityRow key={activity.id} activity={activity} />;
+  }
+  
+  // Existing full card rendering for comments, questions, answers
+  return (
+    <div key={activity.id}>
+      {/* ... existing full card code ... */}
+    </div>
+  );
+})}
 ```
+
+#### 4. Group Consecutive Compact Activities (Optional Enhancement)
+
+For even cleaner timelines, consecutive compact activities could be grouped:
+
+```text
+→ Caio Kohn moved card to ARC (China) • 17:39
+→ Caio Kohn updated FOB price to $2.50 • 17:40
+→ Caio Kohn added sample tracking • 17:41
+```
+
+This keeps them visually connected without taking up multiple full cards.
 
 ---
 
-#### 4. Update HistoryTimeline Props
+### Styling Details
 
-**File:** `HistoryTimeline.tsx`
-
-Add new props needed for inline replies:
-
-```typescript
-interface HistoryTimelineProps {
-  cardId: string;
-  cardCreatedAt: string;
-  creatorName?: string;
-  showAttentionBanner?: boolean;
-  currentOwner?: 'mor' | 'arc';  // NEW - needed for move logic
-  onOwnerChange?: () => void;    // NEW - callback after card moves
-}
-```
-
----
-
-#### 5. Update ItemDetailDrawer
-
-**File:** `ItemDetailDrawer.tsx`
-
-- Rename "History" heading to "Timeline"
-- Pass `currentOwner` and `onOwnerChange` to `HistoryTimeline`
-- Remove `onReplyToQuestion` prop (no longer opens accordion)
-
-```typescript
-<h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide pt-4 pb-2 sticky top-0 bg-background">
-  Timeline
-</h4>
-<HistoryTimeline
-  cardId={item.id}
-  cardCreatedAt={item.created_at}
-  creatorName={creatorProfile?.full_name || creatorProfile?.email || undefined}
-  showAttentionBanner={...}
-  currentOwner={itemWithNewFields.current_owner || 'arc'}
-  onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
-/>
-```
-
----
-
-#### 6. Update Attention Banner
-
-**File:** `HistoryTimeline.tsx`
-
-Change the "Reply" button in the attention banner to open the inline reply box instead of calling `onReplyToQuestion`:
-
-```typescript
-{isQuestion && (
-  <Button 
-    size="sm" 
-    variant="outline"
-    onClick={() => setReplyingToId(activity.id)}
-    className="..."
-  >
-    <Reply className="h-3 w-3 mr-1" />
-    Reply
-  </Button>
-)}
-```
-
----
-
-#### 7. Add New Activity Type: "answer"
-
-**File:** `HistoryTimeline.tsx`
-
-Add styling for the new "answer" activity type:
-
-```typescript
-const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
-  // ... existing
-  answer: <Reply className="h-3.5 w-3.5" />,
-};
-
-const ACTIVITY_STYLES: Record<string, string> = {
-  // ... existing
-  answer: 'bg-green-100 text-green-700 border-green-200',
-};
-
-const ACTIVITY_LABELS: Record<string, string> = {
-  // ... existing
-  answer: 'answered',
-};
-```
-
----
-
-#### 8. Clean Up ActionsPanel
-
-**File:** `ActionsPanel.tsx`
-
-- Remove the `focusReply` exposed method (no longer needed)
-- Keep the comment/question tabs for NEW comments and questions (not replies)
+| Element | Full Card | Compact Row |
+|---------|-----------|-------------|
+| Background | Colored (blue, purple, etc.) | None (transparent) |
+| Border | Yes | None (or subtle dashed line) |
+| Avatar | Yes (28px) | No |
+| Padding | p-3 | py-1.5 px-2 |
+| Font size | text-sm | text-xs |
+| Name format | Full name | First name only |
 
 ---
 
@@ -299,26 +120,13 @@ const ACTIVITY_LABELS: Record<string, string> = {
 
 | File | Changes |
 |------|---------|
-| `HistoryTimeline.tsx` | Add `InlineReplyBox` component, reply state, new props, "answer" activity type |
-| `ItemDetailDrawer.tsx` | Rename to "Timeline", pass `currentOwner` and `onOwnerChange`, remove `onReplyToQuestion` |
-| `ActionsPanel.tsx` | Remove `focusReply` method and ref logic (can be simplified) |
+| `HistoryTimeline.tsx` | Add `CompactActivityRow` component, categorize activities, conditional rendering |
 
 ---
 
-### Activity Types Summary
+### Edge Cases
 
-| Type | Created By | Card Moves? |
-|------|------------|-------------|
-| `comment` | General comment or reply-comment | No |
-| `question` | New question asking for info | Prompts to move |
-| `answer` | Direct answer to a question | Yes (auto) + resolves question |
-
----
-
-### Keyboard Shortcut Update
-
-The "R" keyboard shortcut will now:
-1. Find the first unresolved question in the timeline
-2. Open the inline reply box for that question
-3. Auto-focus the textarea
+- **"created" activity**: Show as compact since it's just a log entry
+- **commercial_update with important data**: Still compact, but shows the field/value inline
+- **Hover behavior**: Could expand compact rows on hover to show full details (future enhancement)
 
