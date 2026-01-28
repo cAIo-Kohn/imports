@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -18,7 +18,7 @@ import { toast } from '@/hooks/use-toast';
 import { DevelopmentItem, DevelopmentCardStatus } from '@/pages/Development';
 import { CardInfoSection } from './CardInfoSection';
 import { HistoryTimeline } from './HistoryTimeline';
-import { ActionsPanel, ActionsPanelRef } from './ActionsPanel';
+import { ActionsPanel } from './ActionsPanel';
 import { DeleteCardDialog } from './DeleteCardDialog';
 
 interface ItemDetailDrawerProps {
@@ -48,38 +48,10 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const actionsPanelRef = useRef<ActionsPanelRef>(null);
 
   const canManage = canManageOrders || isTrader;
   const canDelete = canManage;
   const canRestore = isAdmin;
-  
-  // Handler for reply to question button
-  const handleReplyToQuestion = useCallback(() => {
-    actionsPanelRef.current?.focusReply('comment');
-  }, []);
-
-  // Keyboard shortcut: R to reply
-  useEffect(() => {
-    if (!open || !canManage) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input/textarea
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return;
-      }
-
-      // R key to reply
-      if (e.key === 'r' || e.key === 'R') {
-        e.preventDefault();
-        handleReplyToQuestion();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, canManage, handleReplyToQuestion]);
 
   // Fetch creator profile
   const { data: creatorProfile } = useQuery({
@@ -302,11 +274,11 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
           />
         </div>
 
-        {/* Middle Section - Scrollable History */}
+        {/* Middle Section - Scrollable Timeline */}
         <ScrollArea className="flex-1 min-h-0">
           <div className="px-6">
             <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide pt-4 pb-2 sticky top-0 bg-background">
-              History
+              Timeline
             </h4>
             <HistoryTimeline
               cardId={item.id}
@@ -319,7 +291,8 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                   itemWithNewFields.current_owner === (isBuyer ? 'mor' : 'arc')
                 )
               }
-              onReplyToQuestion={handleReplyToQuestion}
+              currentOwner={itemWithNewFields.current_owner || 'arc'}
+              onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
             />
           </div>
         </ScrollArea>
@@ -328,7 +301,6 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
         {canManage && !isDeleted && (
           <div className="flex-shrink-0 border-t bg-background p-4">
             <ActionsPanel
-              ref={actionsPanelRef}
               cardId={item.id}
               cardType={cardType}
               fobPriceUsd={itemWithNewFields.fob_price_usd}

@@ -1,14 +1,14 @@
-import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
-import { MessageCircle, HelpCircle, DollarSign, Package, Container, Send, Plus } from 'lucide-react';
+import { MessageCircle, HelpCircle, DollarSign, Package, Container, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -26,10 +26,6 @@ import { toast } from '@/hooks/use-toast';
 import { MoveCardModal } from './MoveCardModal';
 import { AddSampleForm } from './AddSampleForm';
 import { SampleTrackingCard } from './SampleTrackingCard';
-
-export interface ActionsPanelRef {
-  focusReply: (type?: 'comment' | 'question') => void;
-}
 
 interface ActionsPanelProps {
   cardId: string;
@@ -51,7 +47,7 @@ const CONTAINER_TYPES = [
 
 type MessageType = 'comment' | 'question';
 
-export const ActionsPanel = forwardRef<ActionsPanelRef, ActionsPanelProps>(function ActionsPanel({
+export function ActionsPanel({
   cardId,
   cardType,
   fobPriceUsd,
@@ -61,9 +57,9 @@ export const ActionsPanel = forwardRef<ActionsPanelRef, ActionsPanelProps>(funct
   currentOwner,
   canEdit,
   onOwnerChange,
-}, ref) {
+}: ActionsPanelProps) {
   const { user } = useAuth();
-  const { isTrader, isBuyer } = useUserRole();
+  const { isTrader } = useUserRole();
   const queryClient = useQueryClient();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -81,18 +77,6 @@ export const ActionsPanel = forwardRef<ActionsPanelRef, ActionsPanelProps>(funct
   const [localMoq, setLocalMoq] = useState(moq?.toString() || '');
   const [localQtyPerContainer, setLocalQtyPerContainer] = useState(qtyPerContainer?.toString() || '');
   const [localContainerType, setLocalContainerType] = useState(containerType || '');
-
-  // Expose focusReply method via ref
-  useImperativeHandle(ref, () => ({
-    focusReply: (type: 'comment' | 'question' = 'comment') => {
-      setMessageType(type);
-      setOpenSections(prev => prev.includes('messaging') ? prev : [...prev, 'messaging']);
-      // Focus textarea after accordion opens
-      setTimeout(() => {
-        textareaRef.current?.focus();
-      }, 100);
-    },
-  }));
 
   // Fetch samples
   const { data: samples = [] } = useQuery({
@@ -430,4 +414,4 @@ export const ActionsPanel = forwardRef<ActionsPanelRef, ActionsPanelProps>(funct
       />
     </div>
   );
-});
+}
