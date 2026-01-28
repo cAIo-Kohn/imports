@@ -1,170 +1,182 @@
 
 
-## Plan: Auto-Format Numbers in Commercial Data Fields
+## Plan: Add "Next Step" Action Hints in Timeline
 
-### Summary
+### Problem
 
-Add automatic number formatting with Brazilian locale (dots as thousands separators, comma for decimals) to the Commercial Data inputs. Numbers will be formatted as the user types, showing:
-- **FOB Price**: `9.000,00` (with 2 decimal places)
-- **MOQ / Qty per Container**: `90.000` (integers only)
+When commercial data is submitted and the card moves to Brazil (or vice versa), the receiving user sees the update but has no clear call-to-action for what to do next. The timeline should actively prompt them with suggested next steps.
 
 ---
 
-### Technical Approach
+### Solution
 
-The key challenge is that `<input type="number">` doesn't support visual formatting with dots and commas. The solution is to switch to `type="text"` inputs with custom formatting logic:
+Add a **"Next Step Prompt"** component that appears at the top of the timeline when:
+1. Commercial data was recently updated (triggering activity exists)
+2. The card is now with the current user's team
+3. There are no unresolved questions pending
 
-1. **Display formatted value** - Show `90.000` in the input
-2. **Accept only digits** - Filter out non-numeric characters on input
-3. **Store raw number** - Keep the actual numeric value for saving to DB
-4. **Format on change** - Apply formatting as the user types
+The prompt will display clickable action buttons like:
+- "Ask for sample?"
+- "Ask a question?"
+- "Add a comment"
+
+Clicking these buttons will open the corresponding action in the Actions Panel or trigger inline actions.
 
 ---
 
-### Implementation Details
+### Visual Design
 
-#### 1. Create Formatting Utility Functions
+```text
+┌────────────────────────────────────────────────────────────────┐
+│ 💡 What's next?                                                │
+│                                                                │
+│ Commercial data has been set. What would you like to do?       │
+│                                                                │
+│  [ 📦 Request Sample ]   [ ❓ Ask a Question ]   [ 💬 Comment ]│
+└────────────────────────────────────────────────────────────────┘
+```
 
-Add new utility functions to `src/lib/utils.ts`:
+The prompt uses a light blue/teal background to distinguish it from the purple (question) and emerald (commercial) attention banners.
+
+---
+
+### Technical Implementation
+
+#### 1. Create NextStepPrompt Component
+
+A new component within `HistoryTimeline.tsx` that renders action hints:
 
 ```typescript
-/**
- * Format number with Brazilian locale (1.234,56)
- * @param value - The number or string to format
- * @param decimals - Number of decimal places (0 for integers)
- */
-export function formatBrazilianNumber(value: number | string, decimals: number = 0): string {
-  const num = typeof value === 'string' ? parseFloat(value.replace(/\./g, '').replace(',', '.')) : value;
-  if (isNaN(num)) return '';
-  return num.toLocaleString('pt-BR', { 
-    minimumFractionDigits: decimals, 
-    maximumFractionDigits: decimals 
-  });
+interface NextStepPromptProps {
+  onRequestSample: () => void;
+  onAskQuestion: () => void;
+  onAddComment: () => void;
+  triggerType?: 'commercial' | 'ownership';
 }
 
-/**
- * Parse Brazilian formatted number back to raw number
- * "90.000" → 90000
- * "9.000,50" → 9000.50
- */
-export function parseBrazilianNumber(formatted: string): number {
-  if (!formatted) return 0;
-  // Remove thousand separators (dots), replace comma with decimal point
-  const cleaned = formatted.replace(/\./g, '').replace(',', '.');
-  return parseFloat(cleaned) || 0;
+function NextStepPrompt({ 
+  onRequestSample, 
+  onAskQuestion, 
+  onAddComment,
+  triggerType 
+}: NextStepPromptProps) {
+  return (
+    <div className="rounded-lg p-4 mb-4 border-2 bg-sky-50 border-sky-300 dark:bg-sky-950/30 dark:border-sky-700">
+      <div className="flex items-center gap-2 mb-3">
+        <Lightbulb className="h-5 w-5 text-sky-600" />
+        <span className="font-medium text-sm text-sky-800">What's next?</span>
+      </div>
+      <p className="text-sm text-sky-700 mb-3">
+        {triggerType === 'commercial' 
+          ? "Commercial data has been set. What would you like to do?"
+          : "The card is now with you. What's your next step?"}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" onClick={onRequestSample}>
+          <Package className="h-3 w-3 mr-1" />
+          Request Sample
+        </Button>
+        <Button variant="outline" size="sm" onClick={onAskQuestion}>
+          <HelpCircle className="h-3 w-3 mr-1" />
+          Ask a Question
+        </Button>
+        <Button variant="outline" size="sm" onClick={onAddComment}>
+          <MessageCircle className="h-3 w-3 mr-1" />
+          Add Comment
+        </Button>
+      </div>
+    </div>
+  );
 }
 ```
 
----
+#### 2. Add Props to HistoryTimeline for Action Callbacks
 
-#### 2. Update Commercial Data Inputs in ActionsPanel
+The `HistoryTimeline` component needs callbacks to trigger actions in the parent drawer:
 
-**File:** `src/components/development/ActionsPanel.tsx`
-
-Replace the current `type="number"` inputs with `type="text"` and add formatting handlers:
-
-**FOB Price (with decimals):**
 ```typescript
-const handleFobPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  // Allow digits, comma, and partial input
-  let input = e.target.value;
-  // Remove non-numeric except comma
-  input = input.replace(/[^\d,]/g, '');
-  // Only allow one comma
-  const parts = input.split(',');
-  if (parts.length > 2) input = parts[0] + ',' + parts.slice(1).join('');
-  // Limit decimal places to 2
-  if (parts[1]?.length > 2) input = parts[0] + ',' + parts[1].slice(0, 2);
-  
-  // Format with thousand separators
-  const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  const formatted = parts.length > 1 ? `${integerPart},${parts[1]}` : integerPart;
-  
-  setLocalFobPrice(formatted);
+interface HistoryTimelineProps {
+  cardId: string;
+  showAttentionBanner?: boolean;
+  currentOwner?: 'mor' | 'arc';
+  onOwnerChange?: () => void;
+  // New props for action hints
+  onOpenSampleSection?: () => void;
+  onOpenMessageSection?: (type: 'comment' | 'question') => void;
+}
+```
+
+#### 3. Determine When to Show the Prompt
+
+Logic to display the prompt:
+
+```typescript
+// Show next step prompt when:
+// 1. Card is new for user (showAttentionBanner is true)
+// 2. There are no unresolved questions (user doesn't need to reply)
+// 3. The trigger was commercial update or ownership change
+const showNextStepPrompt = 
+  showAttentionBanner && 
+  !firstUnresolvedQuestion &&
+  triggerActivity?.activity_type === 'commercial_update';
+```
+
+#### 4. Update ItemDetailDrawer to Pass Callbacks
+
+The drawer needs to control which accordion section opens in ActionsPanel:
+
+```typescript
+// In ItemDetailDrawer
+const [forcedOpenSection, setForcedOpenSection] = useState<string | null>(null);
+
+const handleOpenSampleSection = () => {
+  setForcedOpenSection('samples');
 };
 
-<Input
-  id="fob-price"
-  type="text"
-  inputMode="decimal"
-  placeholder="0,00"
-  value={localFobPrice}
-  onChange={handleFobPriceChange}
-  className="pl-6 h-8 text-sm"
-/>
-```
-
-**MOQ / Qty per Container (integers only):**
-```typescript
-const handleIntegerChange = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
-  // Remove all non-digits
-  let digits = e.target.value.replace(/\D/g, '');
-  // Format with thousand separators
-  const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  setter(formatted);
+const handleOpenMessageSection = (type: 'comment' | 'question') => {
+  setForcedOpenSection('messaging');
+  // Also set the message type if needed
 };
-
-<Input
-  id="moq"
-  type="text"
-  inputMode="numeric"
-  placeholder="0"
-  value={localMoq}
-  onChange={handleIntegerChange(setLocalMoq)}
-  className="h-8 text-sm"
-/>
-
-<Input
-  id="qty-container"
-  type="text"
-  inputMode="numeric"
-  placeholder="0"
-  value={localQtyPerContainer}
-  onChange={handleIntegerChange(setLocalQtyPerContainer)}
-  className="h-8 text-sm"
-/>
 ```
 
----
-
-#### 3. Update Save Mutation to Parse Formatted Values
-
-The save mutation needs to convert formatted strings back to numbers:
+#### 5. Update ActionsPanel to Accept Forced Open Section
 
 ```typescript
-// In saveCommercialDataMutation
-const fobValue = parseBrazilianNumber(localFobPrice);
-const moqValue = parseBrazilianNumber(localMoq);
-const qtyValue = parseBrazilianNumber(localQtyPerContainer);
+interface ActionsPanelProps {
+  // ... existing props
+  forcedOpenSection?: string | null;
+  onForcedSectionHandled?: () => void;
+}
+
+// In the component:
+useEffect(() => {
+  if (forcedOpenSection) {
+    setOpenSections([forcedOpenSection]);
+    onForcedSectionHandled?.();
+  }
+}, [forcedOpenSection]);
 ```
 
 ---
 
-#### 4. Initialize State with Formatted Values
+### Display Logic Flow
 
-When loading existing values, format them for display:
-
-```typescript
-const [localFobPrice, setLocalFobPrice] = useState(
-  fobPriceUsd ? formatBrazilianNumber(fobPriceUsd, 2) : ''
-);
-const [localMoq, setLocalMoq] = useState(
-  moq ? formatBrazilianNumber(moq, 0) : ''
-);
-const [localQtyPerContainer, setLocalQtyPerContainer] = useState(
-  qtyPerContainer ? formatBrazilianNumber(qtyPerContainer, 0) : ''
-);
+```text
+┌──────────────────────────────────────────┐
+│ User receives card with commercial data  │
+└───────────────────┬──────────────────────┘
+                    ▼
+    ┌───────────────────────────────────┐
+    │ Is there an unresolved question?  │
+    └───────────────┬───────────────────┘
+           No │            │ Yes
+              ▼            ▼
+    ┌──────────────────┐  ┌──────────────────────┐
+    │ Show NextStep    │  │ Show AttentionBanner │
+    │ Prompt with      │  │ with Reply button    │
+    │ action buttons   │  └──────────────────────┘
+    └──────────────────┘
 ```
-
----
-
-### Visual Result
-
-| Field | User types | Displayed |
-|-------|------------|-----------|
-| FOB Price | `9000,50` | `9.000,50` |
-| MOQ | `90000` | `90.000` |
-| Qty/Container | `3451` | `3.451` |
 
 ---
 
@@ -172,15 +184,16 @@ const [localQtyPerContainer, setLocalQtyPerContainer] = useState(
 
 | File | Changes |
 |------|---------|
-| `src/lib/utils.ts` | Add `formatBrazilianNumber` and `parseBrazilianNumber` functions |
-| `src/components/development/ActionsPanel.tsx` | Update inputs to use text type with formatting handlers |
+| `HistoryTimeline.tsx` | Add `NextStepPrompt` component, add callback props, logic to show prompt |
+| `ItemDetailDrawer.tsx` | Pass action callbacks to HistoryTimeline, manage forced accordion state |
+| `ActionsPanel.tsx` | Accept `forcedOpenSection` prop to programmatically open sections |
 
 ---
 
 ### Edge Cases
 
-- **Empty input**: Returns empty string, not "0"
-- **Pasting values**: Handles pasted numbers by stripping non-digits
-- **Existing data**: Already-saved numbers are formatted on load
-- **Mobile keyboards**: Uses `inputMode="numeric"` / `inputMode="decimal"` for proper mobile keyboards
+- **Unresolved question exists**: Don't show NextStepPrompt, show AttentionBanner instead
+- **Already clicked an action**: Prompt can remain visible or be dismissed
+- **Task cards**: Don't show "Request Sample" option since tasks don't have samples
+- **Multiple activities**: Only show prompt once, based on most recent trigger
 
