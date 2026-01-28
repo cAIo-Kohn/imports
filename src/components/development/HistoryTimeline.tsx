@@ -449,11 +449,25 @@ export function HistoryTimeline({
   );
   const triggerActivity = firstUnresolvedQuestion || otherTriggerActivity;
 
-  // Show next step prompt when attention banner would show but no unresolved question
+  // Find the most recent commercial update activity (regardless of position)
+  const mostRecentCommercialUpdate = activities.find(a => 
+    a.activity_type === 'commercial_update'
+  );
+
+  // Find ownership changes triggered by commercial data
+  const commercialTriggeredMove = activities.find(a => 
+    a.activity_type === 'ownership_change' && 
+    a.metadata?.trigger === 'commercial'
+  );
+
+  // Show next step prompt when commercial data was recently set and no unresolved questions
   const showNextStepPrompt = 
     showAttentionBanner && 
     !firstUnresolvedQuestion &&
-    triggerActivity?.activity_type === 'commercial_update';
+    (mostRecentCommercialUpdate || commercialTriggeredMove);
+  
+  // Determine trigger type for prompt messaging
+  const promptTriggerType = mostRecentCommercialUpdate ? 'commercial' : 'ownership';
 
   return (
     <div className="space-y-6 py-4">
@@ -461,7 +475,7 @@ export function HistoryTimeline({
       {showNextStepPrompt && onOpenSampleSection && onOpenMessageSection && (
         <NextStepPrompt
           cardType={cardType}
-          triggerType="commercial"
+          triggerType={promptTriggerType}
           onRequestSample={() => onOpenSampleSection()}
           onAskQuestion={() => onOpenMessageSection('question')}
           onAddComment={() => onOpenMessageSection('comment')}
