@@ -140,8 +140,8 @@ export default function Development() {
       // Get unique creator user IDs
       const creatorIds = [...new Set(data.map(item => item.created_by).filter(Boolean))];
 
-      // Fetch sample counts, product counts, latest activity, user views, and creator profiles in parallel
-      const [sampleCountsRes, productCountsRes, latestActivitiesRes, userViewsRes, creatorProfilesRes] = await Promise.all([
+      // Fetch sample counts, product counts, latest activity, user views, creator profiles, and unresolved questions in parallel
+      const [sampleCountsRes, productCountsRes, latestActivitiesRes, userViewsRes, creatorProfilesRes, unresolvedQuestionsRes] = await Promise.all([
         supabase
           .from('development_item_samples')
           .select('item_id')
@@ -168,6 +168,12 @@ export default function Development() {
               .select('user_id, full_name')
               .in('user_id', creatorIds)
           : Promise.resolve({ data: [] }),
+        // Fetch unresolved questions to compute pending action type
+        supabase
+          .from('development_card_activity')
+          .select('card_id, metadata')
+          .eq('activity_type', 'question')
+          .in('card_id', itemIds),
       ]);
 
       const sampleCountMap = (sampleCountsRes.data || []).reduce((acc, s) => {
@@ -200,19 +206,39 @@ export default function Development() {
         return acc;
       }, {} as Record<string, string | null>);
 
-      return data.map(item => ({
-        ...item,
-        card_type: item.card_type || 'item',
-        is_solved: item.is_solved || false,
-        deleted_at: item.deleted_at || null,
-        deleted_by: item.deleted_by || null,
-        current_owner: item.current_owner || 'arc',
-        samples_count: sampleCountMap[item.id] || 0,
-        products_count: productCountMap[item.id] || 0,
-        latest_activity_at: latestActivityMap[item.id] || item.created_at,
-        last_viewed_at: userViewMap[item.id] || null,
-        creator_name: creatorNameMap[item.created_by] || null,
-      })) as DevelopmentItem[];
+      // Compute cards with unresolved questions
+      const cardsWithUnresolvedQuestions = new Set<string>();
+      for (const q of unresolvedQuestionsRes.data || []) {
+        const metadata = q.metadata as { resolved?: boolean } | null;
+        if (!metadata?.resolved) {
+          cardsWithUnresolvedQuestions.add(q.card_id);
+        }
+      }
+
+      return data.map(item => {
+        // Compute effective pending action type
+        let effectivePendingActionType = item.pending_action_type;
+        
+        // If no pending_action_type but has unresolved question, compute it
+        if (!effectivePendingActionType && cardsWithUnresolvedQuestions.has(item.id)) {
+          effectivePendingActionType = 'question';
+        }
+
+        return {
+          ...item,
+          card_type: item.card_type || 'item',
+          is_solved: item.is_solved || false,
+          deleted_at: item.deleted_at || null,
+          deleted_by: item.deleted_by || null,
+          current_owner: item.current_owner || 'arc',
+          samples_count: sampleCountMap[item.id] || 0,
+          products_count: productCountMap[item.id] || 0,
+          latest_activity_at: latestActivityMap[item.id] || item.created_at,
+          last_viewed_at: userViewMap[item.id] || null,
+          creator_name: creatorNameMap[item.created_by] || null,
+          pending_action_type: effectivePendingActionType,
+        };
+      }) as DevelopmentItem[];
     },
   });
 
