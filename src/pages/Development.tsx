@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Filter, Eye, EyeOff, Trash2, Users } from 'lucide-react';
+import { Plus, Search, Filter, Eye, EyeOff, Trash2, Users, FileSpreadsheet } from 'lucide-react';
 import { TeamSection } from '@/components/development/TeamSection';
 import { CreateCardModal } from '@/components/development/CreateCardModal';
 import { ItemDetailDrawer } from '@/components/development/ItemDetailDrawer';
@@ -109,6 +109,7 @@ export default function Development() {
   const [showDeleted, setShowDeleted] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Fetch development items
   const { data: items = [], isLoading } = useQuery({
@@ -302,6 +303,35 @@ export default function Development() {
   // Check if user can manage (admin, buyer, or trader)
   const canManage = canManageOrders || isTrader;
 
+  // Export to Google Sheets handler
+  const handleExportToSheets = async () => {
+    setIsExporting(true);
+    try {
+      const response = await supabase.functions.invoke('export-to-sheets', {
+        body: { 
+          spreadsheetId: '1OKtCJQxnZgHUTxZVDrTaVS7Y8xbMTXaKAW-q_YzoA0U',
+          sheetName: 'Development Cards'
+        }
+      });
+      
+      if (response.error) throw response.error;
+      
+      toast({
+        title: 'Export Successful',
+        description: `${response.data.rowsExported} cards exported to Google Sheets`,
+      });
+    } catch (error) {
+      console.error('Export error:', error);
+      toast({
+        title: 'Export Failed',
+        description: String(error),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full w-full min-w-0 overflow-hidden">
       {/* Header */}
@@ -313,12 +343,24 @@ export default function Development() {
               Track items, samples, and tasks
             </p>
           </div>
-          {canManage && (
-            <Button onClick={() => setIsCreateModalOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Card
-            </Button>
-          )}
+          <div className="flex gap-2">
+            {canManage && (
+              <Button 
+                variant="outline" 
+                onClick={handleExportToSheets}
+                disabled={isExporting}
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                {isExporting ? 'Exporting...' : 'Export to Sheets'}
+              </Button>
+            )}
+            {canManage && (
+              <Button onClick={() => setIsCreateModalOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Card
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Filters */}
