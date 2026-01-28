@@ -295,6 +295,8 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
             <HistoryTimeline
               cardId={item.id}
               cardType={cardType}
+              cardCreatedBy={item.created_by}
+              isCardSolved={itemWithNewFields.is_solved || false}
               showAttentionBanner={shouldShowAttentionBanner}
               currentOwner={itemWithNewFields.current_owner || 'arc'}
               onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
@@ -303,6 +305,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                 setForcedMessageType(type);
                 setForcedOpenSection('messaging');
               }}
+              onCloseCard={() => onOpenChange(false)}
             />
           </div>
         </ScrollArea>

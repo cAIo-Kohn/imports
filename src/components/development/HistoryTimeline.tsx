@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { 
   MessageCircle, 
@@ -46,11 +47,14 @@ interface Activity {
 interface HistoryTimelineProps {
   cardId: string;
   cardType?: 'item' | 'item_group' | 'task';
+  cardCreatedBy?: string;
+  isCardSolved?: boolean;
   showAttentionBanner?: boolean;
   currentOwner?: 'mor' | 'arc';
   onOwnerChange?: () => void;
   onOpenSampleSection?: () => void;
   onOpenMessageSection?: (type: 'comment' | 'question') => void;
+  onCloseCard?: () => void;
 }
 
 const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
@@ -330,6 +334,83 @@ function SampleRequestedBanner({
   );
 }
 
+// Sample Approved Banner - for closing the card after sample approval
+interface SampleApprovedBannerProps {
+  cardId: string;
+  cardCreatedBy: string;
+  creatorName?: string;
+  onCloseCard: () => void;
+  onAskQuestion: () => void;
+  onAddComment: () => void;
+  isClosing: boolean;
+}
+
+function SampleApprovedBanner({
+  cardId,
+  cardCreatedBy,
+  creatorName,
+  onCloseCard,
+  onAskQuestion,
+  onAddComment,
+  isClosing,
+}: SampleApprovedBannerProps) {
+  const { user } = useAuth();
+  const { isAdmin } = useUserRole();
+  
+  // User can close if they're admin OR they created the card
+  const canClose = isAdmin || user?.id === cardCreatedBy;
+
+  return (
+    <div className="rounded-lg p-4 mb-4 border-2 bg-green-50 border-green-400 dark:bg-green-950/30 dark:border-green-600">
+      <div className="flex items-center gap-2 mb-3">
+        <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+        <span className="font-medium text-sm text-green-800 dark:text-green-200">
+          Sample Approved - Ready to Close
+        </span>
+      </div>
+      <p className="text-sm text-green-700 dark:text-green-300 mb-3">
+        The sample has been tested and approved. You can now close this card or continue the discussion.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {canClose && (
+          <Button 
+            size="sm"
+            onClick={onCloseCard}
+            disabled={isClosing}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            <CheckCircle className="h-3 w-3 mr-1" />
+            {isClosing ? 'Closing...' : 'Close Card'}
+          </Button>
+        )}
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={onAskQuestion}
+          className="bg-white hover:bg-green-100 border-green-400 text-green-700 dark:bg-green-950 dark:hover:bg-green-900 dark:border-green-600 dark:text-green-200"
+        >
+          <HelpCircle className="h-3 w-3 mr-1" />
+          Ask Question
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={onAddComment}
+          className="bg-white hover:bg-green-100 border-green-400 text-green-700 dark:bg-green-950 dark:hover:bg-green-900 dark:border-green-600 dark:text-green-200"
+        >
+          <MessageCircle className="h-3 w-3 mr-1" />
+          Add Comment
+        </Button>
+      </div>
+      {!canClose && (
+        <p className="text-xs text-green-600 dark:text-green-400 mt-3 italic">
+          Only {creatorName || 'the card creator'} or an Admin can close this card.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // Next Step Prompt Component
 interface NextStepPromptProps {
   cardId: string;
@@ -454,17 +535,57 @@ function NextStepPrompt({
 export function HistoryTimeline({ 
   cardId, 
   cardType = 'item',
+  cardCreatedBy,
+  isCardSolved = false,
   showAttentionBanner,
   currentOwner = 'arc',
   onOwnerChange,
   onOpenSampleSection,
   onOpenMessageSection,
+  onCloseCard,
 }: HistoryTimelineProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   
   // State for which question has the inline reply box open
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
+
+  // Mutation to close the card
+  const closeCardMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) throw new Error('Not authenticated');
+      
+      // 1. Update card status to solved
+      const { error: updateError } = await (supabase.from('development_items') as any)
+        .update({ 
+          status: 'approved',
+          is_solved: true,
+        })
+        .eq('id', cardId);
+      
+      if (updateError) throw updateError;
+
+      // 2. Log the activity
+      const { error: activityError } = await supabase.from('development_card_activity').insert({
+        card_id: cardId,
+        user_id: user.id,
+        activity_type: 'status_change',
+        content: 'Card closed - development complete',
+        metadata: { new_status: 'solved', action: 'closed' },
+      });
+      
+      if (activityError) throw activityError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+      toast({ title: 'Card closed', description: 'Development complete!' });
+      onCloseCard?.();
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to close card', variant: 'destructive' });
+    },
+  });
 
   // Mutation to mark question as resolved
   const resolveQuestionMutation = useMutation({
@@ -631,11 +752,30 @@ export function HistoryTimeline({
     !sampleShippedAfterRequest &&
     currentOwner === 'arc';
 
+  // Find sample_approved activity (for showing "Ready to Close" banner)
+  const sampleApprovedActivity = activities.find(a => 
+    a.activity_type === 'sample_approved'
+  );
+  
+  // Get creator name for display
+  const creatorActivity = activities.find(a => a.activity_type === 'created');
+  const creatorName = creatorActivity?.profile?.full_name || creatorActivity?.profile?.email;
+  
+  // Show sample approved banner if sample was approved, card not closed, no unresolved questions
+  const showSampleApprovedBanner = 
+    sampleApprovedActivity && 
+    !isCardSolved &&
+    !firstUnresolvedQuestion &&
+    !showSampleRequestedBanner &&
+    cardCreatedBy;
+
   // Show next step prompt when commercial data was recently set and no unresolved questions
+  // But NOT if sample has been approved (that takes precedence)
   const showNextStepPrompt = 
     showAttentionBanner && 
     !firstUnresolvedQuestion &&
     !showSampleRequestedBanner &&
+    !showSampleApprovedBanner &&
     (mostRecentCommercialUpdate || commercialTriggeredMove);
   
   // Determine trigger type for prompt messaging
@@ -643,6 +783,19 @@ export function HistoryTimeline({
 
   return (
     <div className="space-y-6 py-4">
+      {/* Sample Approved Banner - for closing the card */}
+      {showSampleApprovedBanner && cardCreatedBy && onOpenMessageSection && (
+        <SampleApprovedBanner
+          cardId={cardId}
+          cardCreatedBy={cardCreatedBy}
+          creatorName={creatorName || undefined}
+          onCloseCard={() => closeCardMutation.mutate()}
+          onAskQuestion={() => onOpenMessageSection('question')}
+          onAddComment={() => onOpenMessageSection('comment')}
+          isClosing={closeCardMutation.isPending}
+        />
+      )}
+
       {/* Sample Requested Banner - for China to add tracking */}
       {showSampleRequestedBanner && sampleRequestedActivity && (
         <SampleRequestedBanner
@@ -671,7 +824,7 @@ export function HistoryTimeline({
       )}
       
       {/* Attention Banner - when there's an unresolved question */}
-      {showAttentionBanner && firstUnresolvedQuestion && !showSampleRequestedBanner && (
+      {showAttentionBanner && firstUnresolvedQuestion && !showSampleRequestedBanner && !showSampleApprovedBanner && (
         <AttentionBanner
           activity={firstUnresolvedQuestion} 
           onReply={handleOpenFirstReply} 
