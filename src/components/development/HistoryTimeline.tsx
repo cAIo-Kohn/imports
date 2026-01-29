@@ -1033,6 +1033,13 @@ export function HistoryTimeline({
                         </p>
                       )}
                       
+                      {/* Show attachments if present */}
+                      {activity.metadata?.attachments && Array.isArray(activity.metadata.attachments) && activity.metadata.attachments.length > 0 && (
+                        <AttachmentDisplay 
+                          attachments={activity.metadata.attachments as UploadedAttachment[]} 
+                        />
+                      )}
+                      
                       {/* Action buttons for unresolved questions */}
                       {isQuestion && !isResolved && (
                         <div className="flex gap-2 mt-2 flex-wrap">
