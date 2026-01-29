@@ -931,6 +931,39 @@ export function HistoryTimeline({
   // State to track if we just acknowledged an answer (for showing post-acknowledgement prompt)
   const [showPostAcknowledgementPrompt, setShowPostAcknowledgementPrompt] = useState(false);
 
+  // New Request banner should remain visible until the user takes an explicit action.
+  // We persist it in sessionStorage so it won't disappear due to background refetches
+  // (or if the drawer is closed/reopened in the same session).
+  const [newCardBannerVisible, setNewCardBannerVisible] = useState(false);
+
+  useEffect(() => {
+    const key = `dev:new-card-banner:${cardId}`;
+    try {
+      const stored = sessionStorage.getItem(key);
+      if (stored === 'dismissed') {
+        setNewCardBannerVisible(false);
+        return;
+      }
+      if (isNewForOtherTeam) {
+        setNewCardBannerVisible(true);
+        sessionStorage.setItem(key, 'visible');
+        return;
+      }
+      setNewCardBannerVisible(stored === 'visible');
+    } catch {
+      setNewCardBannerVisible(isNewForOtherTeam);
+    }
+  }, [cardId, isNewForOtherTeam]);
+
+  const dismissNewCardBanner = () => {
+    setNewCardBannerVisible(false);
+    try {
+      sessionStorage.setItem(`dev:new-card-banner:${cardId}`, 'dismissed');
+    } catch {
+      // ignore
+    }
+  };
+
   // Mutation to close the card
   const closeCardMutation = useMutation({
     mutationFn: async () => {
@@ -1342,7 +1375,7 @@ export function HistoryTimeline({
   // Show new card banner when card is new for receiving team and no other priority banners
   const showNewCardBanner = 
     showAttentionBanner &&
-    isNewForOtherTeam &&
+    newCardBannerVisible &&
     cardTitle &&
     !firstUnresolvedQuestion &&
     !firstUnacknowledgedAnswer &&
@@ -1432,9 +1465,19 @@ export function HistoryTimeline({
           cardImageUrl={cardImageUrl}
           cardId={cardId}
           pendingActionType={pendingActionType}
-          onAddComment={() => onOpenMessageSection('comment')}
-          onAskQuestion={() => onOpenMessageSection('question')}
-          onUpload={() => onOpenUploadSection?.()}
+          onAddComment={() => {
+            dismissNewCardBanner();
+            onOpenMessageSection('comment');
+          }}
+          onAskQuestion={() => {
+            dismissNewCardBanner();
+            onOpenMessageSection('question');
+          }}
+          onUpload={() => {
+            dismissNewCardBanner();
+            onOpenUploadSection?.();
+          }}
+          onSnooze={dismissNewCardBanner}
         />
       )}
       

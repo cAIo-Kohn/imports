@@ -147,6 +147,7 @@ export function NewCardBanner({
           variant="outline"
           size="sm"
           className="bg-white hover:bg-violet-100 border-violet-300 text-violet-700 dark:bg-violet-950 dark:hover:bg-violet-900 dark:border-violet-600 dark:text-violet-200"
+          onSnooze={onSnooze}
         />
         <Button 
           variant="outline" 
