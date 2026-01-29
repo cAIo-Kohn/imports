@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback, useDeferredValue } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -121,9 +121,15 @@ export default function Development() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
-  // Fetch development items
+  // Deferred search for smoother typing
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+
+  // Fetch development items with caching
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['development-items', user?.id],
+    staleTime: 30 * 1000, // Data is fresh for 30 seconds
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+    refetchOnWindowFocus: false, // Don't refetch on tab switch
     queryFn: async () => {
       const { data, error } = await supabase
         .from('development_items')
@@ -302,48 +308,55 @@ export default function Development() {
     },
   });
 
-  // Filter items
-  const filteredItems = items.filter(item => {
-    const matchesSearch = searchTerm === '' || 
-      item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.product_code?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesPriority = priorityFilter === 'all' || item.priority === priorityFilter;
-    const matchesCardType = cardTypeFilter === 'all' || item.card_type === cardTypeFilter;
-    const matchesCreatorRole = creatorRoleFilter === 'all' || 
-      (item as any).created_by_role === creatorRoleFilter;
-    
-    // Map old status to new for solved filtering
-    const mappedStatus = mapOldStatusToNew(item.status);
-    const matchesSolvedFilter = showSolved ? mappedStatus === 'solved' : mappedStatus !== 'solved';
-    
-    // Filter by deleted status - only admins can see deleted items
-    const isDeleted = !!item.deleted_at;
-    const matchesDeletedFilter = showDeleted ? isDeleted : !isDeleted;
-    
-    return matchesSearch && matchesPriority && matchesCardType && matchesCreatorRole && matchesSolvedFilter && matchesDeletedFilter;
-  });
+  // Memoized filtered items using deferred search
+  const filteredItems = useMemo(() => {
+    return items.filter(item => {
+      const matchesSearch = deferredSearchTerm === '' || 
+        item.title.toLowerCase().includes(deferredSearchTerm.toLowerCase()) ||
+        item.product_code?.toLowerCase().includes(deferredSearchTerm.toLowerCase());
+      
+      const matchesPriority = priorityFilter === 'all' || item.priority === priorityFilter;
+      const matchesCardType = cardTypeFilter === 'all' || item.card_type === cardTypeFilter;
+      const matchesCreatorRole = creatorRoleFilter === 'all' || 
+        (item as any).created_by_role === creatorRoleFilter;
+      
+      // Map old status to new for solved filtering
+      const mappedStatus = mapOldStatusToNew(item.status);
+      const matchesSolvedFilter = showSolved ? mappedStatus === 'solved' : mappedStatus !== 'solved';
+      
+      // Filter by deleted status - only admins can see deleted items
+      const isDeleted = !!item.deleted_at;
+      const matchesDeletedFilter = showDeleted ? isDeleted : !isDeleted;
+      
+      return matchesSearch && matchesPriority && matchesCardType && matchesCreatorRole && matchesSolvedFilter && matchesDeletedFilter;
+    });
+  }, [items, deferredSearchTerm, priorityFilter, cardTypeFilter, creatorRoleFilter, showSolved, showDeleted]);
 
-  // Group items by owner (MOR/ARC)
-  const morItems = filteredItems.filter(item => item.current_owner === 'mor');
-  const arcItems = filteredItems.filter(item => item.current_owner === 'arc');
+  // Memoized grouped items by owner (MOR/ARC)
+  const { morItems, arcItems } = useMemo(() => ({
+    morItems: filteredItems.filter(item => item.current_owner === 'mor'),
+    arcItems: filteredItems.filter(item => item.current_owner === 'arc'),
+  }), [filteredItems]);
 
-  const handleCardClick = (itemId: string) => {
+  // Stabilized event handlers
+  const handleCardClick = useCallback((itemId: string) => {
     setSelectedItemId(itemId);
-  };
+  }, []);
 
-  // Handle drag and drop between sections
-  const handleDragStart = (e: React.DragEvent, itemId: string) => {
+  const handleDragStart = useCallback((e: React.DragEvent, itemId: string) => {
     e.dataTransfer.setData('itemId', itemId);
     e.dataTransfer.effectAllowed = 'move';
-  };
+  }, []);
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-  };
+  }, []);
 
-  const handleDropToOwner = async (e: React.DragEvent, targetOwner: DevelopmentCardOwner) => {
+  // Check if user can manage (admin, buyer, or trader)
+  const canManage = canManageOrders || isTrader;
+
+  const handleDropToOwner = useCallback(async (e: React.DragEvent, targetOwner: DevelopmentCardOwner) => {
     e.preventDefault();
     const itemId = e.dataTransfer.getData('itemId');
     if (!itemId || !canManage) return;
@@ -377,12 +390,9 @@ export default function Development() {
 
     queryClient.invalidateQueries({ queryKey: ['development-items'] });
     toast({ title: 'Success', description: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}` });
-  };
+  }, [items, canManage, user?.id, queryClient]);
 
   const selectedItem = items.find(item => item.id === selectedItemId);
-
-  // Check if user can manage (admin, buyer, or trader)
-  const canManage = canManageOrders || isTrader;
 
   // Export to Google Sheets handler
   const handleExportToSheets = async () => {

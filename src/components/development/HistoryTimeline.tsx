@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -721,6 +721,8 @@ export function HistoryTimeline({
 
   const { data: activities = [], isLoading } = useQuery({
     queryKey: ['development-card-activity', cardId],
+    staleTime: 30 * 1000, // Data is fresh for 30 seconds
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
     queryFn: async () => {
       const { data, error } = await supabase
         .from('development_card_activity')
@@ -749,7 +751,9 @@ export function HistoryTimeline({
     },
   });
 
-  // Real-time subscription for activity updates
+  // Debounced realtime subscription for activity updates
+  const invalidateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   useEffect(() => {
     const channel = supabase
       .channel(`activity-${cardId}`)
@@ -762,12 +766,17 @@ export function HistoryTimeline({
           filter: `card_id=eq.${cardId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+          // Debounce: wait 300ms before invalidating
+          if (invalidateTimeoutRef.current) clearTimeout(invalidateTimeoutRef.current);
+          invalidateTimeoutRef.current = setTimeout(() => {
+            queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+          }, 300);
         }
       )
       .subscribe();
 
     return () => {
+      if (invalidateTimeoutRef.current) clearTimeout(invalidateTimeoutRef.current);
       supabase.removeChannel(channel);
     };
   }, [cardId, queryClient]);

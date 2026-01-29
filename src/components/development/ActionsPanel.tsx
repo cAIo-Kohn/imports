@@ -136,9 +136,11 @@ export function ActionsPanel({
     }
   }, [forcedOpenSection, forcedMessageType, onForcedSectionHandled]);
 
-  // Fetch samples
+  // Fetch samples with caching
   const { data: samples = [] } = useQuery({
     queryKey: ['development-item-samples', cardId],
+    staleTime: 30 * 1000, // Data is fresh for 30 seconds
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
     queryFn: async () => {
       const { data, error } = await supabase
         .from('development_item_samples')
@@ -150,7 +152,9 @@ export function ActionsPanel({
     },
   });
 
-  // Real-time subscription for samples
+  // Debounced realtime subscription for samples
+  const invalidateSamplesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   useEffect(() => {
     const channel = supabase
       .channel(`samples-${cardId}`)
@@ -163,12 +167,17 @@ export function ActionsPanel({
           filter: `item_id=eq.${cardId}`,
         },
         () => {
-          queryClient.invalidateQueries({ queryKey: ['development-item-samples', cardId] });
+          // Debounce: wait 300ms before invalidating
+          if (invalidateSamplesTimeoutRef.current) clearTimeout(invalidateSamplesTimeoutRef.current);
+          invalidateSamplesTimeoutRef.current = setTimeout(() => {
+            queryClient.invalidateQueries({ queryKey: ['development-item-samples', cardId] });
+          }, 300);
         }
       )
       .subscribe();
 
     return () => {
+      if (invalidateSamplesTimeoutRef.current) clearTimeout(invalidateSamplesTimeoutRef.current);
       supabase.removeChannel(channel);
     };
   }, [cardId, queryClient]);
