@@ -1,115 +1,108 @@
 
 
-## Plan: Fix Orange/Yellow Unseen Activity Indicator Not Disappearing
-
-### Problem Identified
-
-When the user opens a card drawer to view it:
-1. The `last_viewed_at` timestamp is correctly updated in the database
-2. The `queryClient.invalidateQueries()` is called
-3. **BUT** the card list doesn't immediately refetch, so the orange dot persists
-
-The database shows correct data (`should_hide_dot: true`), confirming the issue is purely a **UI refresh timing problem**.
-
----
+## Plan: Fix Orange/Yellow Unseen Activity Indicator Persistence
 
 ### Root Cause
 
-The current invalidation uses:
-```typescript
-queryClient.invalidateQueries({ queryKey: ['development-items'] });
-```
+The current implementation has a cache key mismatch and timing issue:
 
-This marks the query as stale but doesn't guarantee an immediate refetch. The UI may show stale data until React Query decides to refetch (which might not happen until the drawer closes or on the next interaction).
-
----
+1. **Query key uses `user?.id`** (nullable) in Development.tsx but the drawer uses `user.id` (non-null)
+2. **`setQueryData` requires exact key match** - if keys don't match exactly, the cache isn't updated
+3. **The refetch happens asynchronously**, but the UI might not re-render because React doesn't detect the change
 
 ### Solution
 
-Add `refetchType: 'active'` to force immediate refetch of mounted queries AND ensure the invalidation happens after the database update completes:
+Two-pronged approach to ensure immediate UI update:
 
-```typescript
-await supabase
-  .from('card_user_views')
-  .upsert({...});
+**1. Use `queryClient.setQueriesData` with partial key matching**
 
-// Force immediate refetch of active queries
-queryClient.invalidateQueries({ 
-  queryKey: ['development-items'],
-  refetchType: 'active'
-});
+Instead of `setQueryData` with an exact key, use `setQueriesData` which matches queries by predicate. This ensures we find the correct cache entry regardless of how the key was constructed.
+
+**2. Add `await queryClient.refetchQueries` for guaranteed fresh data**
+
+After optimistic update, force an immediate refetch to ensure the data is fresh from the server.
+
+---
+
+### Technical Implementation
+
+**File: `src/components/development/ItemDetailDrawer.tsx`**
+
+Update the `useEffect` that marks cards as viewed:
+
+```text
+Current (lines 105-123):
+----------------------------------------
+if (!error) {
+  // Optimistically mark as viewed in the cache so the dot clears immediately,
+  // then force an immediate refetch for the *exact* query key.
+  const optimisticSeenAt = new Date().toISOString();
+
+  queryClient.setQueryData<DevelopmentItem[]>(
+    ['development-items', user.id],
+    (prev) => {
+      if (!prev) return prev;
+      return prev.map((it) =>
+        it.id === item.id ? { ...it, last_viewed_at: optimisticSeenAt } : it
+      );
+    }
+  );
+
+  await queryClient.invalidateQueries({
+    queryKey: ['development-items', user.id],
+    refetchType: 'active',
+  });
+}
 ```
 
-Additionally, we should also consider calling `refetchQueries` directly to ensure the data is updated before the drawer fully mounts.
+```text
+Proposed:
+----------------------------------------
+if (!error) {
+  // Optimistically mark as viewed in all matching caches
+  const optimisticSeenAt = new Date().toISOString();
 
----
-
-### Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/components/development/ItemDetailDrawer.tsx` | Update `invalidateQueries` to use `refetchType: 'active'` to force immediate refetch |
-
----
-
-### Code Changes
-
-**ItemDetailDrawer.tsx** - Update the `useEffect` that marks cards as viewed (lines 76-109):
-
-```typescript
-// Mark as seen when opened by the other team AND update last viewed timestamp
-useEffect(() => {
-  const markAsSeenAndUpdateView = async () => {
-    if (!item?.id || !open || !user?.id) return;
-    
-    const itemWithNewFields = item as any;
-    const isNewForMe = itemWithNewFields.is_new_for_other_team && (
-      (isBuyer && itemWithNewFields.created_by_role === 'trader') ||
-      (isTrader && itemWithNewFields.created_by_role === 'buyer')
-    );
-
-    // Update is_new_for_other_team if applicable
-    if (isNewForMe) {
-      await (supabase.from('development_items') as any)
-        .update({ is_new_for_other_team: false })
-        .eq('id', item.id);
+  // Use setQueriesData with a predicate to match any query starting with 'development-items'
+  queryClient.setQueriesData<DevelopmentItem[]>(
+    { queryKey: ['development-items'] },
+    (prev) => {
+      if (!prev) return prev;
+      return prev.map((it) =>
+        it.id === item.id ? { ...it, last_viewed_at: optimisticSeenAt } : it
+      );
     }
+  );
 
-    // Always update last viewed timestamp for current user
-    const { error } = await supabase
-      .from('card_user_views')
-      .upsert({
-        card_id: item.id,
-        user_id: user.id,
-        last_viewed_at: new Date().toISOString(),
-      }, {
-        onConflict: 'card_id,user_id',
-      });
-
-    if (!error) {
-      // Force immediate refetch of active queries to update the card list
-      queryClient.invalidateQueries({ 
-        queryKey: ['development-items'],
-        refetchType: 'active'
-      });
-    }
-  };
-
-  markAsSeenAndUpdateView();
-}, [item?.id, open, user?.id, isBuyer, isTrader, queryClient]);
+  // Force immediate refetch to get server-confirmed data
+  await queryClient.refetchQueries({
+    queryKey: ['development-items'],
+    type: 'active',
+  });
+}
 ```
 
 ---
 
 ### Why This Works
 
-1. **`refetchType: 'active'`** ensures only currently mounted queries refetch (more efficient)
-2. **Awaiting the database update** ensures the `last_viewed_at` is committed before refetch
-3. **Error check** prevents unnecessary refetches if the upsert fails
+| Problem | Solution |
+|---------|----------|
+| `setQueryData` requires exact key match | `setQueriesData` with partial key matches all `['development-items', ...]` queries |
+| Async invalidation doesn't guarantee UI update | `refetchQueries` returns a promise that resolves when data is fresh |
+| Stale closure might reference old data | Refetch ensures React Query updates all subscribers |
+
+---
+
+### Additional Safeguard (Optional)
+
+If the issue persists, we can also add a small delay before closing the drawer, or ensure the parent component re-renders by updating a local state that triggers re-computation of `selectedItem`.
 
 ---
 
 ### Summary
 
-This fix ensures the orange/yellow "unseen activity" dot disappears immediately when a user opens a card drawer, by forcing an immediate refetch of the development items query after the `last_viewed_at` timestamp is updated in the database.
+This fix ensures the yellow "unseen activity" dot disappears immediately by:
+1. **Using partial key matching** (`setQueriesData`) to update all matching caches
+2. **Forcing immediate refetch** (`refetchQueries`) to guarantee fresh data
+3. **Both operations complete before the useEffect exits**, ensuring the UI is updated
 
