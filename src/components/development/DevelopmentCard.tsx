@@ -115,23 +115,24 @@ export function DevelopmentCard({
       draggable={canDrag}
       onDragStart={(e) => onDragStart(e, item.id)}
     >
-      {/* Pending Action Indicator (priority over unseen activity) */}
-      {item.pending_action_type ? (
-        <div className="absolute top-2 right-2">
+      {/* Indicators - both can show independently */}
+      <div className="absolute top-2 right-2 flex items-center gap-1">
+        {/* Unseen activity indicator - always shown when there's unseen activity */}
+        {hasUnseenActivity && (
+          <span className="relative flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
+          </span>
+        )}
+        {/* Pending action indicator - shown independently */}
+        {item.pending_action_type && (
           <PendingActionIndicator
             pendingActionType={item.pending_action_type}
             pendingActionDueAt={item.pending_action_due_at || null}
             snoozedUntil={item.pending_action_snoozed_until || null}
           />
-        </div>
-      ) : hasUnseenActivity && (
-        <div className="absolute top-2 right-2">
-          <span className="relative flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
-          </span>
-        </div>
-      )}
+        )}
+      </div>
       {/* Creator Name Label */}
       {(item as any).creator_name && (
         <div className="flex items-center gap-1.5 mb-1">
