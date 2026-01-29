@@ -143,8 +143,8 @@ export function CardInfoSection({
         </div>
       </div>
 
-      {/* Due date + Supplier inline */}
-      {(item.due_date || item.supplier) && (
+      {/* Due date + Supplier + Image thumbnail inline */}
+      {(item.due_date || item.supplier || item.image_url) && (
         <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
           {item.due_date && (
             <span className="flex items-center gap-1">
@@ -158,26 +158,27 @@ export function CardInfoSection({
               {item.supplier.company_name}
             </span>
           )}
+          {item.image_url && (
+            <a
+              href={item.image_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex-shrink-0"
+              title="View full image"
+            >
+              <div className="relative w-10 h-10 rounded border overflow-hidden hover:ring-2 hover:ring-primary transition-all">
+                <img
+                  src={item.image_url}
+                  alt={item.title}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                  <ExternalLink className="h-3 w-3 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              </div>
+            </a>
+          )}
         </div>
-      )}
-
-      {/* Card Image - if available */}
-      {item.image_url && (
-        <a
-          href={item.image_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group block relative w-full max-w-xs rounded-lg overflow-hidden border hover:ring-2 hover:ring-primary transition-all"
-        >
-          <img
-            src={item.image_url}
-            alt={item.title}
-            className="w-full h-auto object-contain max-h-48"
-          />
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-            <ExternalLink className="h-5 w-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
-        </a>
       )}
 
       {/* Desired Outcome - compact */}
