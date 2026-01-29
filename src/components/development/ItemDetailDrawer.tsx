@@ -343,6 +343,10 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                   pendingActionType={itemWithNewFields.pending_action_type || null}
                   pendingActionDueAt={itemWithNewFields.pending_action_due_at || null}
                   snoozedUntil={itemWithNewFields.pending_action_snoozed_until || null}
+                  fobPriceUsd={itemWithNewFields.fob_price_usd}
+                  moq={itemWithNewFields.moq}
+                  qtyPerContainer={itemWithNewFields.qty_per_container}
+                  containerType={itemWithNewFields.container_type}
                   onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
                   onOpenSampleSection={() => setForcedOpenSection('samples')}
                   onOpenMessageSection={(type) => {
@@ -350,6 +354,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                     setForcedOpenSection('messaging');
                   }}
                   onOpenUploadSection={() => setForcedOpenSection('messaging')}
+                  onOpenCommercialSection={() => setForcedOpenSection('commercial')}
                   onCloseCard={() => onOpenChange(false)}
                 />
               </TabsContent>
