@@ -1,186 +1,199 @@
 
 
-## New Feature: Sample Tracker Dashboard
+## Automate Card Status Based on Actions
 
-### Overview
+### Current State Analysis
 
-Create a dedicated "Samples" view within the Development page that aggregates all samples from all cards into a visual, filterable dashboard. This gives you a bird's-eye view of all sample activities across development cards.
+The system currently has:
 
-### Sample Status Workflow
+| Component | Current Behavior |
+|-----------|-----------------|
+| **Status field** | Manual selection: Pending, In Progress, Waiting, Solved |
+| **pending_action_type** | Automatically set by actions (question, sample_in_transit, sample_review, etc.) |
+| **pending_action_snoozed_until** | Set when user snoozes an action |
+| **is_solved** | Boolean flag for completed cards |
 
-```text
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  Requested  │ -> │  In Transit │ -> │  Delivered  │ -> │  Reviewed   │
-│  (pending)  │    │             │    │             │    │ (approved/  │
-│             │    │             │    │             │    │  rejected)  │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
-     ⚠️                 🚚                📦                ✅ / ❌
- Missing ETD?       Has tracking?     Arrived?          Has report?
-```
+The key insight: **pending_action_type already tracks what the card is waiting for!** We can derive the status automatically from this field instead of requiring manual updates.
 
-### Proposed UI Layout
-
-Add a view toggle to the Development header:
+### Proposed Status Automation Rules
 
 ```text
-┌────────────────────────────────────────────────────────────────────┐
-│  Development Cards                                                  │
-│  Track items, samples, and tasks                                   │
-│                                                                    │
-│  [🗂️ Cards]  [📦 Samples]              [Export] [+ New Card]      │
-│                                                                    │
-│  ┌──────────────────────────────────────────────────────────────┐ │
-│  │ Search...  [Status ▾]  [Courier ▾]  [Has Report ▾]           │ │
-│  └──────────────────────────────────────────────────────────────┘ │
-└────────────────────────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────────────────────┐
-│                        SAMPLE TRACKER                              │
-├─────────────────┬─────────────────┬─────────────────┬─────────────┤
-│  ⚠️ REQUESTED   │  🚚 IN TRANSIT  │  📦 DELIVERED   │  ✅ REVIEWED │
-│     (2)         │      (1)        │      (1)        │     (3)     │
-├─────────────────┼─────────────────┼─────────────────┼─────────────┤
-│                 │                 │                 │             │
-│  ┌───────────┐  │  ┌───────────┐  │  ┌───────────┐  │  ┌────────┐ │
-│  │ Caneta    │  │  │ PE Strap  │  │  │ Master    │  │  │ Item X │ │
-│  │ 2 pcs     │  │  │ FedEx     │  │  │ Arrived   │  │  │ ✓ Appr │ │
-│  │ No ETA ⚠️ │  │  │ ETA: 5/02 │  │  │ 28/01     │  │  │ Report │ │
-│  │ [Open]    │  │  │ [Track]   │  │  │ [Review]  │  │  │ [View] │ │
-│  └───────────┘  │  └───────────┘  │  └───────────┘  │  └────────┘ │
-│                 │                 │                 │             │
-│  ┌───────────┐  │                 │                 │  ┌────────┐ │
-│  │ New Item  │  │                 │                 │  │ Item Y │ │
-│  │ 1 pc      │  │                 │                 │  │ ✗ Rejc │ │
-│  │ ETA: 10/02│  │                 │                 │  │        │ │
-│  └───────────┘  │                 │                 │  └────────┘ │
-│                 │                 │                 │             │
-└─────────────────┴─────────────────┴─────────────────┴─────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                     AUTO-STATUS DERIVATION LOGIC                      │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  is_solved = true                    →  SOLVED                       │
+│                                                                      │
+│  pending_action_snoozed_until > now  →  WAITING (snoozed)            │
+│                                                                      │
+│  pending_action_type = "sample_in_transit"                           │
+│  pending_action_type = "sample_pending"   →  WAITING (for sample)    │
+│                                                                      │
+│  pending_action_type = "question"                                    │
+│  pending_action_type = "answer_pending"   →  PENDING (action needed) │
+│  pending_action_type = "sample_tracking"                             │
+│  pending_action_type = "sample_review"                               │
+│  pending_action_type = "commercial_review"                           │
+│                                                                      │
+│  No pending action + has activity   →  IN PROGRESS                   │
+│                                                                      │
+│  No pending action + no activity    →  PENDING (new card)            │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-### Sample Card Information
+### Status Meaning After Automation
 
-Each sample card in the tracker will show:
+| Status | Meaning | Auto-Triggered By |
+|--------|---------|-------------------|
+| **Pending** | Action required from someone | Unresolved questions, pending reviews, tracking to add |
+| **In Progress** | Actively being worked on | Card has activity but no blocking pending action |
+| **Waiting** | Blocked on external factor | Sample in transit, snoozed action, waiting for sample to arrive |
+| **Solved** | Completed | User marks as solved (or sample approved + commercial complete) |
 
-| Status | Key Info Displayed | Actions |
-|--------|-------------------|---------|
-| **Requested** (pending, no tracking) | Card title, qty, request date, ETA if provided | Open card, Add tracking |
-| **In Transit** | Card title, courier, tracking#, ETA, shipped date | Track shipment, Open card |
-| **Delivered** (awaiting review) | Card title, arrival date, days waiting for review | Review sample, Open card |
-| **Reviewed** (approved/rejected) | Card title, decision, has report badge, decision date | View report, Open card |
+### Implementation Approach
 
-### Visual Indicators
+There are two approaches to implement this:
 
-- **⚠️ Warning badge**: Requested samples with no shipping ETA
-- **🔴 Overdue indicator**: Samples past their ETA but not delivered
-- **📄 Report badge**: Shows if a lab/test report was uploaded
-- **Days counter**: "Waiting 3 days" for delivered samples pending review
+#### Option A: Compute Status on Read (Frontend)
+
+Transform the status in the Development.tsx query to derive it from `pending_action_type`, `snoozed_until`, and `is_solved`.
+
+**Pros**: No database migration, immediate effect, easy to adjust rules
+**Cons**: Status in DB becomes disconnected from display
+
+#### Option B: Database Trigger (Backend)
+
+Create a Postgres trigger that auto-updates the `status` field whenever `pending_action_type`, `pending_action_snoozed_until`, or `is_solved` changes.
+
+**Pros**: Status is always correct in DB, consistent across all queries
+**Cons**: Requires migration, harder to adjust rules
+
+**Recommended: Option A (Frontend Computation)** - This is safer and allows quick iteration on the rules.
 
 ### Technical Implementation
 
-#### 1. New Component: SampleTrackerView
+#### 1. Create Status Derivation Function
 
-Create `src/components/development/SampleTrackerView.tsx`:
+Add a helper function that computes the display status:
 
-```tsx
-// Fetches all samples with card info
-const { data: samples } = useQuery({
-  queryKey: ['all-samples'],
-  queryFn: async () => {
-    const { data } = await supabase
-      .from('development_item_samples')
-      .select(`
-        *,
-        card:development_items!item_id (
-          id, title, current_owner, is_solved, deleted_at, image_url
-        )
-      `)
-      .is('card.deleted_at', null)
-      .order('created_at', { ascending: false });
-    return data;
+```typescript
+const deriveCardStatus = (item: DevelopmentItem): DevelopmentCardStatus => {
+  // Solved takes priority
+  if (item.is_solved) return 'solved';
+  
+  // Check if snoozed (waiting)
+  if (item.pending_action_snoozed_until) {
+    const snoozeDate = new Date(item.pending_action_snoozed_until);
+    if (snoozeDate > new Date()) return 'waiting';
   }
-});
-
-// Group by status category
-const grouped = {
-  requested: samples.filter(s => s.status === 'pending' && !s.tracking_number),
-  inTransit: samples.filter(s => s.status === 'in_transit'),
-  delivered: samples.filter(s => s.status === 'delivered' && !s.decision),
-  reviewed: samples.filter(s => !!s.decision)
+  
+  // Check pending action type
+  const actionType = item.pending_action_type;
+  
+  // These mean "waiting for something external"
+  if (actionType === 'sample_in_transit' || actionType === 'sample_pending') {
+    return 'waiting';
+  }
+  
+  // These mean "action needed" (pending)
+  if (actionType === 'question' || 
+      actionType === 'answer_pending' || 
+      actionType === 'sample_tracking' || 
+      actionType === 'sample_review' || 
+      actionType === 'commercial_review') {
+    return 'pending';
+  }
+  
+  // No blocking action - check if card has any activity (in progress)
+  if (item.latest_activity_at && item.latest_activity_at !== item.created_at) {
+    return 'in_progress';
+  }
+  
+  // Fresh card with no activity
+  return 'pending';
 };
 ```
 
-#### 2. New Component: SampleTrackerCard
+#### 2. Update Development.tsx Query
 
-A compact card component showing sample info with quick actions:
+Modify the items mapping to include derived status:
 
-```tsx
-interface SampleTrackerCardProps {
-  sample: SampleWithCard;
-  onOpenCard: (cardId: string) => void;
-}
-
-// Renders: card title, sample info, status-specific badges, action buttons
+```typescript
+return data.map(item => {
+  // ... existing mapping ...
+  
+  const derivedStatus = deriveCardStatus({
+    ...item,
+    pending_action_type: effectivePendingActionType,
+    is_solved: item.is_solved,
+    pending_action_snoozed_until: item.pending_action_snoozed_until,
+  });
+  
+  return {
+    ...item,
+    derived_status: derivedStatus, // New field for display
+    pending_action_type: effectivePendingActionType,
+  };
+});
 ```
 
-#### 3. Modify Development.tsx
+#### 3. Update Status Display
 
-Add a view toggle state and conditionally render either the team sections or the sample tracker:
+In ItemDetailDrawer.tsx and DevelopmentCard.tsx, use the derived status for display instead of the raw DB status:
 
-```tsx
-const [viewMode, setViewMode] = useState<'cards' | 'samples'>('cards');
+```typescript
+// Before
+const status = mapOldToNewStatus(item.status);
 
-// In header:
-<div className="flex gap-1 p-1 bg-muted rounded-lg">
-  <Button 
-    variant={viewMode === 'cards' ? 'secondary' : 'ghost'}
-    size="sm" 
-    onClick={() => setViewMode('cards')}
-  >
-    <LayoutGrid className="h-4 w-4 mr-1" />
-    Cards
-  </Button>
-  <Button 
-    variant={viewMode === 'samples' ? 'secondary' : 'ghost'}
-    size="sm"
-    onClick={() => setViewMode('samples')}
-  >
-    <Package className="h-4 w-4 mr-1" />
-    Samples
-  </Button>
-</div>
-
-// In main content:
-{viewMode === 'cards' ? (
-  <TeamSections ... />
-) : (
-  <SampleTrackerView onOpenCard={handleCardClick} />
-)}
+// After  
+const status = item.derived_status || mapOldToNewStatus(item.status);
 ```
 
-### Filter Options for Sample View
+#### 4. Make Manual Status Override Optional
 
-| Filter | Options |
-|--------|---------|
-| **Status** | All, Requested, In Transit, Delivered, Reviewed |
-| **Courier** | All, DHL, FedEx, TNT, UPS, SF Express, Other |
-| **Decision** | All, Approved, Rejected, Pending |
-| **Has Report** | All, Yes, No |
-| **Overdue** | All, Yes (past ETA) |
+Keep the status dropdown but show "Auto" as the default option. Users can still override if needed:
 
-### Files to Create/Modify
+```typescript
+<Select value={manualOverride ? item.status : 'auto'}>
+  <SelectItem value="auto">Auto ({derivedStatus})</SelectItem>
+  <SelectItem value="pending">Pending</SelectItem>
+  <SelectItem value="in_progress">In Progress</SelectItem>
+  <SelectItem value="waiting">Waiting</SelectItem>
+  <SelectItem value="solved">Solved</SelectItem>
+</Select>
+```
 
-| File | Action |
-|------|--------|
-| `src/components/development/SampleTrackerView.tsx` | **Create** - Main tracker component with Kanban columns |
-| `src/components/development/SampleTrackerCard.tsx` | **Create** - Individual sample card with quick actions |
-| `src/pages/Development.tsx` | **Modify** - Add view toggle and render SampleTrackerView |
+### Visual Feedback
 
-### Features Summary
+Add visual cues to show why a card has its current status:
 
-1. **Kanban-style columns** grouping samples by lifecycle stage
-2. **Visual warnings** for samples missing ETAs or overdue
-3. **Quick actions** per card (Track, Review, Open Card, View Report)
-4. **Click to open** the parent development card drawer
-5. **Real-time updates** via existing Supabase subscriptions
-6. **Filter by** status, courier, decision, report presence
+| Status | Visual Indicator |
+|--------|-----------------|
+| **Pending** (question) | Purple dot + "Question pending" tooltip |
+| **Pending** (sample_review) | Blue dot + "Review sample" tooltip |
+| **Waiting** (snoozed) | Clock icon + snooze date |
+| **Waiting** (sample_in_transit) | Truck icon + ETA date |
+| **In Progress** | Green activity indicator |
+| **Solved** | Checkmark |
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/pages/Development.tsx` | Add `deriveCardStatus` function, compute derived_status in query |
+| `src/components/development/DevelopmentCard.tsx` | Use derived_status for display |
+| `src/components/development/ItemDetailDrawer.tsx` | Show derived status in header, optional manual override |
+| `src/components/development/PendingActionBadge.tsx` | No changes (already provides visual context) |
+
+### Summary
+
+This approach:
+1. **Removes manual status updates** - Status automatically reflects the card's true state
+2. **Leverages existing pending_action_type** - No new database fields needed
+3. **Provides clear meaning** - Each status has a concrete trigger condition
+4. **Keeps manual override** - Users can still set status manually when needed
+5. **No database migration** - Pure frontend logic change
+
+The end result: Cards will automatically show "Waiting" when a sample is in transit or snoozed, "Pending" when there's an action needed, and "In Progress" when actively being worked on without blocking issues.
 
