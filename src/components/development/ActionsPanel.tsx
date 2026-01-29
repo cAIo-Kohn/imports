@@ -82,6 +82,7 @@ export function ActionsPanel({
   const [messageType, setMessageType] = useState<MessageType>('comment');
   const [messageContent, setMessageContent] = useState('');
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveModalTrigger, setMoveModalTrigger] = useState<'question' | 'commercial'>('question');
 
@@ -339,6 +340,81 @@ export function ActionsPanel({
     }
   };
 
+  // Drag and drop handlers for file upload
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    const ALLOWED_TYPES = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'application/pdf', 'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ];
+
+    const newAttachments: UploadedAttachment[] = [];
+
+    for (const file of Array.from(files)) {
+      if (file.size > MAX_FILE_SIZE) {
+        toast({ title: 'File too large', description: `${file.name} exceeds 10MB limit`, variant: 'destructive' });
+        continue;
+      }
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        toast({ title: 'Unsupported file type', description: `${file.name} is not supported`, variant: 'destructive' });
+        continue;
+      }
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `timeline/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('development-images')
+        .upload(fileName, file);
+
+      if (uploadError) {
+        toast({ title: 'Upload failed', description: `Failed to upload ${file.name}`, variant: 'destructive' });
+        continue;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('development-images')
+        .getPublicUrl(fileName);
+
+      const isImage = file.type.startsWith('image/');
+      newAttachments.push({
+        id: crypto.randomUUID(),
+        name: file.name,
+        url: publicUrl,
+        type: isImage ? 'image' : 'file',
+      });
+    }
+
+    if (newAttachments.length > 0) {
+      setAttachments(prev => [...prev, ...newAttachments]);
+      toast({ title: `${newAttachments.length} file(s) uploaded` });
+    }
+  };
+
   const handleSaveCommercialData = () => {
     saveCommercialDataMutation.mutate();
   };
@@ -395,17 +471,32 @@ export function ActionsPanel({
                 </TabsList>
               </Tabs>
               
-              <Textarea
-                ref={textareaRef}
-                value={messageContent}
-                onChange={(e) => setMessageContent(e.target.value)}
-                placeholder={messageType === 'question' 
-                  ? "Ask a question that requires a response..." 
-                  : "Add a comment or update..."
-                }
-                rows={2}
-                className="text-sm"
-              />
+              <div 
+                className={cn(
+                  "relative rounded-md transition-all",
+                  isDragOver && "ring-2 ring-primary ring-offset-2"
+                )}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <Textarea
+                  ref={textareaRef}
+                  value={messageContent}
+                  onChange={(e) => setMessageContent(e.target.value)}
+                  placeholder={messageType === 'question' 
+                    ? "Ask a question that requires a response..." 
+                    : "Add a comment or update... (drag files here)"
+                  }
+                  rows={2}
+                  className="text-sm"
+                />
+                {isDragOver && (
+                  <div className="absolute inset-0 bg-primary/10 rounded-md flex items-center justify-center pointer-events-none">
+                    <span className="text-sm font-medium text-primary">Drop files here</span>
+                  </div>
+                )}
+              </div>
               
               <div className="flex items-center justify-between">
                 <TimelineUploadButton
