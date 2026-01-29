@@ -58,6 +58,9 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   const [forcedOpenSection, setForcedOpenSection] = useState<string | null>(null);
   const [forcedMessageType, setForcedMessageType] = useState<'comment' | 'question' | null>(null);
   const [targetSampleId, setTargetSampleId] = useState<string | null>(null);
+  
+  // Track if this was initially a new card (persists for drawer session)
+  const [wasNewForOtherTeam, setWasNewForOtherTeam] = useState(false);
 
   const canManage = canManageOrders || isTrader;
   const canDelete = canManage;
@@ -78,6 +81,23 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
     },
     enabled: !!item?.created_by,
   });
+
+  // Capture initial "new for other team" state when drawer opens with a new item
+  useEffect(() => {
+    if (open && item?.id) {
+      const itemWithNewFields = item as any;
+      const isNewForMe = itemWithNewFields.is_new_for_other_team && (
+        (isBuyer && itemWithNewFields.created_by_role === 'trader') ||
+        (isTrader && itemWithNewFields.created_by_role === 'buyer')
+      );
+      setWasNewForOtherTeam(isNewForMe);
+    }
+    
+    // Reset when drawer closes
+    if (!open) {
+      setWasNewForOtherTeam(false);
+    }
+  }, [open, item?.id]); // Intentionally not including item itself to avoid updates from refetch
 
   // Mark as seen when opened by the other team AND update last viewed timestamp
   useEffect(() => {
@@ -370,7 +390,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               cardDescription={item.description}
               cardImageUrl={item.image_url}
               isCardSolved={itemWithNewFields.is_solved || false}
-              isNewForOtherTeam={itemWithNewFields.is_new_for_other_team || false}
+              isNewForOtherTeam={wasNewForOtherTeam}
               showAttentionBanner={shouldShowAttentionBanner}
               currentOwner={itemWithNewFields.current_owner || 'arc'}
               pendingActionType={itemWithNewFields.pending_action_type || null}
