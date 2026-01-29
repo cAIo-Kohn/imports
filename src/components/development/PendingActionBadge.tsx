@@ -14,6 +14,7 @@ interface PendingActionBadgeProps {
 
 const ACTION_TYPE_LABELS: Record<string, string> = {
   question: 'Question pending',
+  answer_pending: 'Answer received',
   commercial_review: 'Review commercial data',
   sample_tracking: 'Add tracking',
   sample_in_transit: 'Awaiting sample',

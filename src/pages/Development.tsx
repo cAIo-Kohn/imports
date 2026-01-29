@@ -146,8 +146,8 @@ export default function Development() {
       // Get unique creator user IDs
       const creatorIds = [...new Set(data.map(item => item.created_by).filter(Boolean))];
 
-      // Fetch sample counts, product counts, latest activity, user views, creator profiles, and unresolved questions in parallel
-      const [sampleCountsRes, productCountsRes, latestActivitiesRes, userViewsRes, creatorProfilesRes, unresolvedQuestionsRes] = await Promise.all([
+      // Fetch sample counts, product counts, latest activity, user views, creator profiles, unresolved questions, and unacknowledged answers in parallel
+      const [sampleCountsRes, productCountsRes, latestActivitiesRes, userViewsRes, creatorProfilesRes, unresolvedQuestionsRes, unacknowledgedAnswersRes] = await Promise.all([
         supabase
           .from('development_item_samples')
           .select('item_id')
@@ -179,6 +179,12 @@ export default function Development() {
           .from('development_card_activity')
           .select('card_id, metadata')
           .eq('activity_type', 'question')
+          .in('card_id', itemIds),
+        // Fetch unacknowledged answers to compute pending action type
+        supabase
+          .from('development_card_activity')
+          .select('card_id, metadata')
+          .eq('activity_type', 'answer')
           .in('card_id', itemIds),
       ]);
 
@@ -221,6 +227,15 @@ export default function Development() {
         }
       }
 
+      // Compute cards with unacknowledged answers
+      const cardsWithUnacknowledgedAnswers = new Set<string>();
+      for (const a of unacknowledgedAnswersRes.data || []) {
+        const metadata = a.metadata as { acknowledged?: boolean } | null;
+        if (!metadata?.acknowledged) {
+          cardsWithUnacknowledgedAnswers.add(a.card_id);
+        }
+      }
+
       return data.map(item => {
         // Compute effective pending action type
         let effectivePendingActionType = item.pending_action_type;
@@ -228,6 +243,11 @@ export default function Development() {
         // If no pending_action_type but has unresolved question, compute it
         if (!effectivePendingActionType && cardsWithUnresolvedQuestions.has(item.id)) {
           effectivePendingActionType = 'question';
+        }
+        
+        // If no pending_action_type but has unacknowledged answer (and no unresolved question), set answer_pending
+        if (!effectivePendingActionType && !cardsWithUnresolvedQuestions.has(item.id) && cardsWithUnacknowledgedAnswers.has(item.id)) {
+          effectivePendingActionType = 'answer_pending';
         }
 
         return {
