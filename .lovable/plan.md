@@ -1,315 +1,207 @@
 
-## Enhanced Timeline Banners for Commercial Data and Sample Tracking
+
+## Enhanced Timeline Activity Display with Inline Ownership Indicators
 
 ### Overview
 
-Replace the generic "What's next?" prompts with **enriched content banners** that prominently display the actual data (commercial info or sample tracking) with contextual action buttons below. This provides immediate visibility of key information without needing to navigate away.
+Improve the timeline history to:
+1. **Remove redundant "moved card" entries** - Instead of separate entries for card movement, embed ownership changes inline using country flags
+2. **Show actual triggering action** - Display "Requested sample" instead of separate "moved card"
+3. **Show date AND time** - Change timestamp format from just "HH:mm" to "dd/MM HH:mm"
+4. **Use country flags** - Compact visual indication of ownership change direction
 
-### Current vs Proposed Layout
+### Current vs Proposed Display
 
-**Current: "What's next?" prompt after commercial data set**
+**Current (Redundant entries):**
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│ 💡 What's next?                                                  │
-│ Commercial data has been set. What would you like to do?        │
-│                                                                 │
-│ [Request Sample] [Ask a Question] [Add Comment] [Upload]        │
-└─────────────────────────────────────────────────────────────────┘
+→ Caio moved card — ARC (China) • 17:19
+→ Caio requested sample — Requested 2 sample(s) • 17:19
 ```
 
-**Proposed: Commercial Data Card with actions**
+**Proposed (Inline flags + full date/time):**
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│ 💰 Commercial Data                                   Updated 2h │
-│ ┌─────────────────────────────────────────────────────────────┐ │
-│ │  FOB $12.50    MOQ 1,000    15,000/40HQ                     │ │
-│ └─────────────────────────────────────────────────────────────┘ │
-│                                                                 │
-│ [Request Sample] [Ask a Question] [Add Comment] [Upload]        │
-└─────────────────────────────────────────────────────────────────┘
+📦 Caio requested sample — 2 pcs 🇧🇷 → 🇨🇳 • 29/01 17:19
 ```
 
-**Proposed: Sample In-Transit Card with tracking and actions**
+**More Examples:**
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│ 🚚 Sample In Transit                                             │
-│ ┌─────────────────────────────────────────────────────────────┐ │
-│ │  DHL • 1234567890              ETA: Feb 5, 2026             │ │
-│ │  2 pcs • Shipped Jan 28                      [Track 🔗]     │ │
-│ └─────────────────────────────────────────────────────────────┘ │
-│                                                                 │
-│ [Mark Arrived] [Ask a Question] [Add Comment]                   │
-└─────────────────────────────────────────────────────────────────┘
+$ Caio updated commercial data — FOB $100, MOQ 1000, 15000/40hq 🇨🇳 → 🇧🇷 • 29/01 17:04
+🚚 Caio shipped sample — FedEX 🇨🇳 → 🇧🇷 • 28/01 16:20
+💬 Caio answered — "The price includes..." 🇨🇳 → 🇧🇷 • 27/01 14:30
 ```
 
-**Proposed: Sample Delivered - Awaiting Review**
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│ 📦 Sample Delivered                              Waiting 3 days │
-│ ┌─────────────────────────────────────────────────────────────┐ │
-│ │  DHL • 1234567890              Arrived: Jan 26, 2026        │ │
-│ │  2 pcs                                                       │ │
-│ └─────────────────────────────────────────────────────────────┘ │
-│                                                                 │
-│ [Review Sample] [Add Report] [Ask a Question]                   │
-└─────────────────────────────────────────────────────────────────┘
-```
+### Key Changes
 
-### New Banner Components
-
-#### 1. CommercialDataBanner
-Displays the commercial data prominently in a highlighted card format with action buttons below.
-
-| Element | Description |
-|---------|-------------|
-| **Header** | "Commercial Data" with timestamp |
-| **Data Display** | Grid showing FOB, MOQ, Qty/Container in a clean format |
-| **Actions** | Request Sample, Ask Question, Add Comment, Upload |
-| **Style** | Emerald/green theme (matching commercial_update activity) |
-
-#### 2. SampleInTransitBanner  
-Displays tracking information for a sample that has been shipped but not yet arrived.
-
-| Element | Description |
-|---------|-------------|
-| **Header** | "Sample In Transit" with courier icon |
-| **Data Display** | Courier, tracking number (with Track link), ETA, shipped date, quantity |
-| **Actions** | Mark Arrived, Ask Question, Add Comment |
-| **Style** | Blue theme with tracking link |
-| **Props** | Takes specific sample object to sync with that sample |
-
-#### 3. SampleDeliveredBanner
-Displays delivered sample info with review prompts.
-
-| Element | Description |
-|---------|-------------|
-| **Header** | "Sample Delivered" with days-waiting counter |
-| **Data Display** | Courier, tracking, arrival date, quantity |
-| **Actions** | Review Sample (opens Samples panel to that specific sample), Add Report, Ask Question |
-| **Style** | Amber/orange theme indicating action needed |
-| **Props** | Takes specific sample object |
-
-### Banner Display Priority
-
-Update the timeline rendering logic to show banners in this priority order:
-
-1. **Unresolved Question** (existing AttentionBanner)
-2. **Unacknowledged Answer** (existing AnswerPendingBanner)
-3. **Sample Delivered - Awaiting Review** (new SampleDeliveredBanner)
-4. **Sample In Transit** (new SampleInTransitBanner)
-5. **Sample Requested - Awaiting Tracking** (existing SampleRequestedBanner)
-6. **Commercial Data Set** (new CommercialDataBanner - replaces NextStepPrompt)
-7. **Sample Approved - Ready to Close** (existing SampleApprovedBanner)
-
-### Sample Panel Synchronization
-
-When clicking "Review Sample" or "Manage Sample" from a banner:
-1. Open the Samples action panel
-2. Auto-scroll to or highlight the specific sample
-3. This is achieved by passing a `targetSampleId` prop through the existing `onOpenSampleSection` callback
-
-The Samples section in ActionsPanel will receive a new optional prop:
-```typescript
-interface ActionsPanelProps {
-  // ... existing props
-  targetSampleId?: string | null;  // NEW: scroll to / highlight this sample
-}
-```
+| Current | Proposed |
+|---------|----------|
+| Separate "moved card" activity entry | No separate entry - inline flag indicator |
+| Time only: `17:19` | Date + time: `29/01 17:19` |
+| "moved card — ARC (China)" | 🇧🇷 → 🇨🇳 (or 🇨🇳 → 🇧🇷) inline |
+| Action + Move as two entries | Single entry with embedded movement |
 
 ### Technical Implementation
 
-#### 1. Create CommercialDataBanner Component
+#### 1. Add Flag Icons/Emoji Component
 
-Located in `HistoryTimeline.tsx` or extracted to a separate file:
-
-```tsx
-interface CommercialDataBannerProps {
-  fobPriceUsd: number;
-  moq: number;
-  qtyPerContainer: number;
-  containerType: string;
-  updatedAt?: string;
-  updatedBy?: string;
-  onRequestSample: () => void;
-  onAskQuestion: () => void;
-  onAddComment: () => void;
-  onUpload: () => void;
-}
-
-function CommercialDataBanner({ ... }: CommercialDataBannerProps) {
-  return (
-    <div className="rounded-lg p-4 mb-4 border-2 bg-emerald-50 border-emerald-300">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <DollarSign className="h-5 w-5 text-emerald-600" />
-          <span className="font-medium text-sm text-emerald-800">Commercial Data</span>
-        </div>
-        {updatedAt && (
-          <span className="text-xs text-emerald-600">{updatedAt}</span>
-        )}
-      </div>
-      
-      {/* Data Display Card */}
-      <div className="bg-white rounded-lg p-3 border mb-3">
-        <div className="grid grid-cols-3 gap-4 text-sm">
-          <div>
-            <span className="text-muted-foreground text-xs block">FOB</span>
-            <span className="font-semibold">${fobPriceUsd}</span>
-          </div>
-          <div>
-            <span className="text-muted-foreground text-xs block">MOQ</span>
-            <span className="font-semibold">{moq.toLocaleString()}</span>
-          </div>
-          <div>
-            <span className="text-muted-foreground text-xs block">Qty/Container</span>
-            <span className="font-semibold">{qtyPerContainer.toLocaleString()}/{containerType}</span>
-          </div>
-        </div>
-      </div>
-      
-      {/* Action Buttons */}
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={onRequestSample}>
-          <Package className="h-3 w-3 mr-1" />
-          Request Sample
-        </Button>
-        {/* ... other buttons */}
-      </div>
-    </div>
-  );
-}
-```
-
-#### 2. Create SampleInTransitBanner Component
+Create a helper function to render ownership direction:
 
 ```tsx
-interface SampleInTransitBannerProps {
-  sample: Sample;
-  onMarkArrived: () => void;
-  onAskQuestion: () => void;
-  onAddComment: () => void;
-}
-
-function SampleInTransitBanner({ sample, ... }: SampleInTransitBannerProps) {
-  const trackingUrl = getTrackingUrl(sample.courier_name, sample.tracking_number);
+function OwnershipDirection({ from, to }: { from: 'mor' | 'arc'; to: 'mor' | 'arc' }) {
+  if (from === to) return null;
+  
+  const fromFlag = from === 'mor' ? '🇧🇷' : '🇨🇳';
+  const toFlag = to === 'mor' ? '🇧🇷' : '🇨🇳';
   
   return (
-    <div className="rounded-lg p-4 mb-4 border-2 bg-blue-50 border-blue-300">
-      <div className="flex items-center gap-2 mb-3">
-        <Truck className="h-5 w-5 text-blue-600" />
-        <span className="font-medium text-sm text-blue-800">Sample In Transit</span>
-      </div>
-      
-      <div className="bg-white rounded-lg p-3 border mb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{sample.courier_name}</span>
-            <code className="text-xs bg-muted px-2 py-1 rounded">
-              {sample.tracking_number}
-            </code>
-          </div>
-          {trackingUrl && (
-            <Button variant="ghost" size="sm" asChild>
-              <a href={trackingUrl} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-3 w-3 mr-1" />
-                Track
-              </a>
-            </Button>
-          )}
-        </div>
-        <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-          <span>Shipped: {format(...)}</span>
-          {sample.estimated_arrival && <span>ETA: {format(...)}</span>}
-          <span>{sample.quantity} pcs</span>
-        </div>
-      </div>
-      
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={onMarkArrived}>
-          <PackageCheck className="h-3 w-3 mr-1" />
-          Mark Arrived
-        </Button>
-        {/* ... */}
-      </div>
-    </div>
+    <span className="inline-flex items-center gap-0.5 text-xs opacity-80">
+      <span>{fromFlag}</span>
+      <span className="text-[10px]">→</span>
+      <span>{toFlag}</span>
+    </span>
   );
 }
 ```
 
-#### 3. Create SampleDeliveredBanner Component
+#### 2. Modify Activity Logging to Embed Move in Triggering Action
 
-Similar structure with amber styling and days-waiting counter:
+Instead of logging a separate `ownership_change` activity after the triggering action, we'll include the ownership change info in the triggering action's metadata:
 
-```tsx
-// Calculate days waiting
-const daysWaiting = differenceInDays(new Date(), new Date(sample.actual_arrival));
+**Before:**
+```typescript
+// Log sample_requested
+await supabase.from('development_card_activity').insert({
+  activity_type: 'sample_requested',
+  content: 'Sample requested',
+});
+
+// Log separate ownership_change
+await supabase.from('development_card_activity').insert({
+  activity_type: 'ownership_change',
+  content: 'Card moved to ARC (China)',
+  metadata: { new_owner: 'arc', trigger: 'sample_request' },
+});
 ```
 
-#### 4. Update HistoryTimeline.tsx
-
-Add queries to fetch the most relevant sample for banner display:
-
-```tsx
-// Add sample query or receive samples as prop
-const { data: samples = [] } = useQuery({
-  queryKey: ['development-item-samples', cardId],
-  queryFn: async () => {
-    const { data } = await supabase
-      .from('development_item_samples')
-      .select('*')
-      .eq('item_id', cardId)
-      .order('created_at', { ascending: false });
-    return data || [];
+**After:**
+```typescript
+// Log sample_requested with embedded move info
+await supabase.from('development_card_activity').insert({
+  activity_type: 'sample_requested',
+  content: 'Sample requested',
+  metadata: { 
+    quantity: 2,
+    moved_from: 'mor',  // NEW: track where card was
+    moved_to: 'arc',    // NEW: track where card went
   },
 });
 
-// Find most relevant sample for banner
-const inTransitSample = samples.find(s => s.status === 'in_transit');
-const deliveredSample = samples.find(s => s.status === 'delivered' && !s.decision);
+// NO SEPARATE ownership_change entry
 ```
 
-Update banner priority logic and replace `NextStepPrompt` with `CommercialDataBanner` when appropriate.
+#### 3. Filter Out Redundant ownership_change Entries
 
-#### 5. Update ActionsPanel for Sample Targeting
+For backward compatibility with existing data, filter out `ownership_change` activities that have a `trigger` metadata field (indicating they were triggered by another action):
 
-Add `targetSampleId` prop handling to scroll to and highlight specific sample:
+```typescript
+// In HistoryTimeline.tsx when rendering
+const displayActivities = activities.filter(a => {
+  // Hide ownership_change if it has a trigger (was caused by another action)
+  if (a.activity_type === 'ownership_change' && a.metadata?.trigger) {
+    return false;
+  }
+  return true;
+});
+```
+
+#### 4. Update CompactActivityRow for Date/Time and Flags
 
 ```tsx
-// In ActionsPanel
-useEffect(() => {
-  if (targetSampleId && activeAction === 'samples') {
-    const element = document.getElementById(`sample-${targetSampleId}`);
-    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    element?.classList.add('ring-2', 'ring-primary');
-    setTimeout(() => element?.classList.remove('ring-2', 'ring-primary'), 2000);
-  }
-}, [targetSampleId, activeAction]);
+function CompactActivityRow({ activity }: { activity: Activity }) {
+  const firstName = activity.profile?.full_name?.split(' ')[0] || 'Someone';
+  const label = ACTIVITY_LABELS[activity.activity_type] || ...;
+  
+  // ... existing inline content logic ...
+  
+  // Check if this activity caused an ownership change
+  const movedFrom = activity.metadata?.moved_from as 'mor' | 'arc' | undefined;
+  const movedTo = activity.metadata?.moved_to as 'mor' | 'arc' | undefined;
+  const showOwnershipChange = movedFrom && movedTo && movedFrom !== movedTo;
+
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground py-1 px-1">
+      <span className="flex-shrink-0 opacity-70">
+        {ACTIVITY_ICONS[activity.activity_type]}
+      </span>
+      <span className="font-medium">{firstName}</span>
+      <span>{label}</span>
+      {inlineContent && (
+        <>
+          <span className="opacity-50">—</span>
+          <span className="truncate max-w-[200px]">{inlineContent}</span>
+        </>
+      )}
+      {/* NEW: Inline ownership change flags */}
+      {showOwnershipChange && (
+        <OwnershipDirection from={movedFrom} to={movedTo} />
+      )}
+      {/* UPDATED: Date + Time instead of just time */}
+      <span className="opacity-50 flex-shrink-0">
+        • {format(parseISO(activity.created_at), 'dd/MM HH:mm')}
+      </span>
+    </div>
+  );
+}
 ```
+
+#### 5. Update All Activity Logging Locations
+
+Files that need to log ownership change inline instead of separately:
+
+| File | Action | Current → Proposed |
+|------|--------|-------------------|
+| `HistoryTimeline.tsx` | `useRequestSample` | Include `moved_from`/`moved_to` in sample_requested metadata |
+| `InlineSampleShipForm.tsx` | Ship sample | Include flags in sample_shipped metadata |
+| `InlineReplyBox.tsx` | Answer/follow-up | Include flags in answer metadata |
+| `CommercialDataSection.tsx` | Commercial update | Include flags in commercial_update metadata |
+| `ActionsPanel.tsx` | Commercial save | Include flags in metadata |
+| `AddSampleForm.tsx` | Sample request | Include flags in metadata |
 
 ### Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/development/HistoryTimeline.tsx` | Add 3 new banner components (CommercialDataBanner, SampleInTransitBanner, SampleDeliveredBanner), update banner display priority logic, add samples query |
-| `src/components/development/ItemDetailDrawer.tsx` | Pass sample data to HistoryTimeline, add `targetSampleId` state and pass to ActionsPanel |
-| `src/components/development/ActionsPanel.tsx` | Add `targetSampleId` prop, implement scroll-to and highlight for specific sample |
-| `src/components/development/SampleTrackingCard.tsx` | Add `id` attribute for targeting: `id={\`sample-${sample.id}\`}` |
+| `src/components/development/HistoryTimeline.tsx` | Add `OwnershipDirection` component, update `CompactActivityRow` for date/time + flags, filter redundant `ownership_change` entries, update `useRequestSample` to embed move info |
+| `src/components/development/InlineSampleShipForm.tsx` | Remove separate ownership_change insert, add moved_from/moved_to to sample_shipped metadata |
+| `src/components/development/InlineReplyBox.tsx` | Remove separate ownership_change insert, embed flags in answer metadata |
+| `src/components/development/CommercialDataSection.tsx` | Embed flags in commercial_update metadata instead of separate entry |
+| `src/components/development/ActionsPanel.tsx` | Embed flags in activity metadata |
+| `src/components/development/AddSampleForm.tsx` | Embed flags in sample_requested metadata |
 
-### Visual Style Summary
+### Visual Examples After Changes
 
-| Banner Type | Background | Border | Icon Color |
-|-------------|------------|--------|------------|
-| Commercial Data | emerald-50 | emerald-300 | emerald-600 |
-| Sample In Transit | blue-50 | blue-300 | blue-600 |
-| Sample Delivered | amber-50 | amber-400 | amber-600 |
-| Sample Requested | cyan-50 | cyan-300 | cyan-600 |
-| Question Pending | purple-50 | purple-300 | purple-600 |
-| Answer Received | green-50 | green-400 | green-600 |
+```text
+YESTERDAY
+
+📦 Caio requested sample — 2 pcs 🇧🇷 → 🇨🇳 • 28/01 15:54
+$ Caio updated commercial data — FOB $100, MOQ 1000, 15000/40hq 🇨🇳 → 🇧🇷 • 28/01 17:04
+🚚 Caio shipped sample — FedEX 🇨🇳 → 🇧🇷 • 28/01 16:20
+📦 Caio sample arrived • 28/01 16:21
+✗ Caio rejected sample — Sample rejected • 28/01 16:22
+
+TODAY
+
+✓ Caio created this card • 29/01 09:00
+```
 
 ### Benefits
 
-1. **Immediate visibility** - Key data shown prominently without extra clicks
-2. **Contextual actions** - Buttons are relevant to the displayed data
-3. **Sample sync** - Clicking "Review Sample" opens the correct sample in the panel
-4. **Visual hierarchy** - Different colors help distinguish banner types at a glance
-5. **Reduced cognitive load** - No need to remember what "What's next?" refers to
+1. **Space saving** - No redundant "moved card" entries cluttering the timeline
+2. **Clear context** - Flags show direction immediately without reading text
+3. **Full timestamp** - Date + time helps when reviewing longer histories
+4. **Visual scanning** - Flag emojis are easy to spot at a glance
+5. **Backward compatible** - Existing data still renders (old ownership_change entries filtered by trigger)
+
+### Migration Consideration
+
+Existing `ownership_change` entries without a `trigger` in metadata (manual moves) will still be shown. Only those created automatically by actions (with `trigger` field) will be hidden.
+
