@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
-import { Trash2, RotateCcw } from 'lucide-react';
+import { Trash2, RotateCcw, FolderOpen } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -14,12 +14,14 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
 import { DevelopmentItem, DevelopmentCardStatus } from '@/pages/Development';
 import { CardInfoSection } from './CardInfoSection';
 import { HistoryTimeline } from './HistoryTimeline';
 import { ActionsPanel } from './ActionsPanel';
 import { DeleteCardDialog } from './DeleteCardDialog';
+import { CardFilesTab } from './CardFilesTab';
 
 interface ItemDetailDrawerProps {
   item: DevelopmentItem | null;
@@ -318,31 +320,44 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
           />
         </div>
 
-        {/* Middle Section - Scrollable Timeline */}
+        {/* Middle Section - Scrollable Tabs (Timeline / Files) */}
         <ScrollArea className="flex-1 min-h-0">
           <div className="px-6">
-            <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide pt-4 pb-2 sticky top-0 bg-background">
-              Timeline
-            </h4>
-            <HistoryTimeline
-              cardId={item.id}
-              cardType={cardType}
-              cardCreatedBy={item.created_by}
-              isCardSolved={itemWithNewFields.is_solved || false}
-              showAttentionBanner={shouldShowAttentionBanner}
-              currentOwner={itemWithNewFields.current_owner || 'arc'}
-              pendingActionType={itemWithNewFields.pending_action_type || null}
-              pendingActionDueAt={itemWithNewFields.pending_action_due_at || null}
-              snoozedUntil={itemWithNewFields.pending_action_snoozed_until || null}
-              onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
-              onOpenSampleSection={() => setForcedOpenSection('samples')}
-              onOpenMessageSection={(type) => {
-                setForcedMessageType(type);
-                setForcedOpenSection('messaging');
-              }}
-              onOpenUploadSection={() => setForcedOpenSection('messaging')}
-              onCloseCard={() => onOpenChange(false)}
-            />
+            <Tabs defaultValue="timeline" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mt-4 mb-2">
+                <TabsTrigger value="timeline">Timeline</TabsTrigger>
+                <TabsTrigger value="files" className="gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5" />
+                  Files
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="timeline" className="mt-0">
+                <HistoryTimeline
+                  cardId={item.id}
+                  cardType={cardType}
+                  cardCreatedBy={item.created_by}
+                  isCardSolved={itemWithNewFields.is_solved || false}
+                  showAttentionBanner={shouldShowAttentionBanner}
+                  currentOwner={itemWithNewFields.current_owner || 'arc'}
+                  pendingActionType={itemWithNewFields.pending_action_type || null}
+                  pendingActionDueAt={itemWithNewFields.pending_action_due_at || null}
+                  snoozedUntil={itemWithNewFields.pending_action_snoozed_until || null}
+                  onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
+                  onOpenSampleSection={() => setForcedOpenSection('samples')}
+                  onOpenMessageSection={(type) => {
+                    setForcedMessageType(type);
+                    setForcedOpenSection('messaging');
+                  }}
+                  onOpenUploadSection={() => setForcedOpenSection('messaging')}
+                  onCloseCard={() => onOpenChange(false)}
+                />
+              </TabsContent>
+              
+              <TabsContent value="files" className="mt-0 pb-4">
+                <CardFilesTab cardId={item.id} />
+              </TabsContent>
+            </Tabs>
           </div>
         </ScrollArea>
 
