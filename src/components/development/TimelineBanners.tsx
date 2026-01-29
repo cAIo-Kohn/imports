@@ -11,11 +11,14 @@ import {
   MessageCircle, 
   Upload,
   CheckCircle,
+  Sparkles,
+  Clock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { SnoozeButton } from './SnoozeButton';
 
 // Generate tracking URL based on courier name
 function getTrackingUrl(courier: string | null, trackingNumber: string | null): string | null {
@@ -59,6 +62,104 @@ export interface Sample {
   status: string | null;
   decision: string | null;
   created_at: string;
+}
+
+// New Card Banner - shown when receiving team first opens a new card
+interface NewCardBannerProps {
+  cardTitle: string;
+  cardDescription?: string | null;
+  cardImageUrl?: string | null;
+  cardId: string;
+  pendingActionType?: string | null;
+  onAddComment: () => void;
+  onAskQuestion: () => void;
+  onSnooze?: () => void;
+  onUpload: () => void;
+}
+
+export function NewCardBanner({ 
+  cardTitle,
+  cardDescription,
+  cardImageUrl,
+  cardId,
+  pendingActionType,
+  onAddComment,
+  onAskQuestion,
+  onSnooze,
+  onUpload,
+}: NewCardBannerProps) {
+  return (
+    <div className="rounded-lg p-4 mb-4 border-2 bg-violet-50 border-violet-300 dark:bg-violet-950/30 dark:border-violet-700">
+      <div className="flex items-center gap-2 mb-3">
+        <Sparkles className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+        <span className="font-medium text-sm text-violet-800 dark:text-violet-200">New Request</span>
+      </div>
+      
+      {/* Card Content Display */}
+      <div className="bg-white dark:bg-background rounded-lg p-3 border mb-3">
+        <div className="flex gap-3">
+          {/* Image thumbnail */}
+          {cardImageUrl && (
+            <div className="flex-shrink-0 w-16 h-16 rounded overflow-hidden border">
+              <img 
+                src={cardImageUrl} 
+                alt={cardTitle}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
+          
+          {/* Title and description */}
+          <div className="flex-1 min-w-0">
+            <h4 className="font-semibold text-sm truncate">{cardTitle}</h4>
+            {cardDescription && (
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                {cardDescription}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Action Buttons */}
+      <div className="flex flex-wrap gap-2">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={onAddComment}
+          className="bg-white hover:bg-violet-100 border-violet-300 text-violet-700 dark:bg-violet-950 dark:hover:bg-violet-900 dark:border-violet-600 dark:text-violet-200"
+        >
+          <MessageCircle className="h-3 w-3 mr-1" />
+          Comment
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={onAskQuestion}
+          className="bg-white hover:bg-violet-100 border-violet-300 text-violet-700 dark:bg-violet-950 dark:hover:bg-violet-900 dark:border-violet-600 dark:text-violet-200"
+        >
+          <HelpCircle className="h-3 w-3 mr-1" />
+          Ask a Question
+        </Button>
+        <SnoozeButton
+          cardId={cardId}
+          currentActionType={pendingActionType}
+          variant="outline"
+          size="sm"
+          className="bg-white hover:bg-violet-100 border-violet-300 text-violet-700 dark:bg-violet-950 dark:hover:bg-violet-900 dark:border-violet-600 dark:text-violet-200"
+        />
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={onUpload}
+          className="bg-white hover:bg-violet-100 border-violet-300 text-violet-700 dark:bg-violet-950 dark:hover:bg-violet-900 dark:border-violet-600 dark:text-violet-200"
+        >
+          <Upload className="h-3 w-3 mr-1" />
+          Upload
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 // Commercial Data Banner
