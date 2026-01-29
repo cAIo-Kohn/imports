@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowRight, Clock } from 'lucide-react';
+import { ArrowRight, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
@@ -10,7 +10,8 @@ import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton
 import { SnoozeButton } from './SnoozeButton';
 
 interface InlineReplyBoxProps {
-  questionId: string;
+  replyToId: string;
+  replyToType: 'question' | 'answer';
   cardId: string;
   currentOwner: 'mor' | 'arc';
   pendingActionType?: string | null;
@@ -19,7 +20,8 @@ interface InlineReplyBoxProps {
 }
 
 export function InlineReplyBox({ 
-  questionId, 
+  replyToId, 
+  replyToType,
   cardId, 
   currentOwner, 
   pendingActionType,
@@ -37,13 +39,16 @@ export function InlineReplyBox({
     textareaRef.current?.focus();
   }, []);
 
-  // Build metadata with attachments
-  const buildMetadata = () => {
-    const metadata: Record<string, any> = { reply_to_question: questionId };
+  // Build metadata with attachments and reply reference
+  const buildMetadata = (includeReplyRef = true) => {
+    const metadata: Record<string, any> = {};
+    if (includeReplyRef) {
+      metadata[replyToType === 'question' ? 'reply_to_question' : 'reply_to_answer'] = replyToId;
+    }
     if (attachments.length > 0) {
       metadata.attachments = attachments;
     }
-    return metadata;
+    return Object.keys(metadata).length > 0 ? metadata : null;
   };
 
   // Reply as comment (no move)
@@ -72,7 +77,7 @@ export function InlineReplyBox({
     },
   });
 
-  // Reply as answer (moves card + resolves question)
+  // Reply as answer (moves card + resolves question) - only for questions
   const answerReplyMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id || (!replyContent.trim() && attachments.length === 0)) return;
@@ -97,15 +102,19 @@ export function InlineReplyBox({
             resolved_by: user.id,
           },
         })
-        .eq('id', questionId);
+        .eq('id', replyToId);
       if (resolveError) throw resolveError;
 
-      // 3. Move card to other team
+      // 3. Move card to other team and set answer_pending
       const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
       const { error: moveError } = await (supabase.from('development_items') as any)
         .update({ 
           current_owner: targetOwner,
           is_new_for_other_team: true,
+          pending_action_type: 'answer_pending',
+          pending_action_due_at: null,
+          pending_action_snoozed_until: null,
+          pending_action_snoozed_by: null,
         })
         .eq('id', cardId);
       if (moveError) throw moveError;
@@ -134,6 +143,62 @@ export function InlineReplyBox({
     },
   });
 
+  // Ask follow-up question (for replying to answers) - moves card
+  const followUpQuestionMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id || (!replyContent.trim() && attachments.length === 0)) return;
+      
+      // 1. Insert question activity with reference to the answer
+      const { error: insertError } = await supabase.from('development_card_activity').insert({
+        card_id: cardId,
+        user_id: user.id,
+        activity_type: 'question',
+        content: replyContent.trim() || null,
+        metadata: {
+          ...buildMetadata(false),
+          reply_to_answer: replyToId,
+        },
+      });
+      if (insertError) throw insertError;
+
+      // 2. Move card to other team and set question pending
+      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
+      const { error: moveError } = await (supabase.from('development_items') as any)
+        .update({ 
+          current_owner: targetOwner,
+          is_new_for_other_team: true,
+          pending_action_type: 'question',
+          pending_action_due_at: null,
+          pending_action_snoozed_until: null,
+          pending_action_snoozed_by: null,
+        })
+        .eq('id', cardId);
+      if (moveError) throw moveError;
+
+      // 3. Log ownership change
+      await supabase.from('development_card_activity').insert({
+        card_id: cardId,
+        user_id: user.id,
+        activity_type: 'ownership_change',
+        content: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}`,
+        metadata: { new_owner: targetOwner, trigger: 'follow_up_question' },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
+      toast({ title: `Follow-up question posted. Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}` });
+      setReplyContent('');
+      setAttachments([]);
+      onClose();
+      onCardMove?.();
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to post follow-up question', variant: 'destructive' });
+    },
+  });
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Escape to close
     if (e.key === 'Escape') {
@@ -141,7 +206,7 @@ export function InlineReplyBox({
     }
   };
 
-  const isPending = commentReplyMutation.isPending || answerReplyMutation.isPending;
+  const isPending = commentReplyMutation.isPending || answerReplyMutation.isPending || followUpQuestionMutation.isPending;
   const targetTeam = currentOwner === 'arc' ? 'MOR' : 'ARC';
   const canSubmit = replyContent.trim() || attachments.length > 0;
 
@@ -152,7 +217,7 @@ export function InlineReplyBox({
         value={replyContent}
         onChange={(e) => setReplyContent(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Type your reply..."
+        placeholder={replyToType === 'answer' ? "Type your reply or follow-up question..." : "Type your reply..."}
         rows={2}
         className="text-sm bg-background"
         disabled={isPending}
@@ -194,14 +259,28 @@ export function InlineReplyBox({
         >
           {commentReplyMutation.isPending ? 'Sending...' : 'Just Comment'}
         </Button>
-        <Button 
-          size="sm" 
-          onClick={() => answerReplyMutation.mutate()}
-          disabled={!canSubmit || isPending}
-        >
-          {answerReplyMutation.isPending ? 'Sending...' : `Answer & Move to ${targetTeam}`}
-          <ArrowRight className="h-3 w-3 ml-1" />
-        </Button>
+        
+        {replyToType === 'question' ? (
+          // Replying to a question: Answer & Move
+          <Button 
+            size="sm" 
+            onClick={() => answerReplyMutation.mutate()}
+            disabled={!canSubmit || isPending}
+          >
+            {answerReplyMutation.isPending ? 'Sending...' : `Answer & Move to ${targetTeam}`}
+            <ArrowRight className="h-3 w-3 ml-1" />
+          </Button>
+        ) : (
+          // Replying to an answer: Ask Follow-up & Move
+          <Button 
+            size="sm" 
+            onClick={() => followUpQuestionMutation.mutate()}
+            disabled={!canSubmit || isPending}
+          >
+            {followUpQuestionMutation.isPending ? 'Sending...' : `Ask Follow-up & Move to ${targetTeam}`}
+            <HelpCircle className="h-3 w-3 ml-1" />
+          </Button>
+        )}
       </div>
     </div>
   );

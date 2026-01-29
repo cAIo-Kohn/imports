@@ -309,7 +309,8 @@ function AttentionBanner({
       {showReplyBox && (
         <div className="mt-3">
           <InlineReplyBox
-            questionId={activity.id}
+            replyToId={activity.id}
+            replyToType="question"
             cardId={cardId}
             currentOwner={currentOwner}
             pendingActionType={pendingActionType}
@@ -392,6 +393,122 @@ function SampleRequestedBanner({
             onSuccess();
           }}
         />
+      )}
+    </div>
+  );
+}
+
+// Answer Pending Banner - for acknowledging an answer or asking follow-up
+interface AnswerPendingBannerProps {
+  activity: Activity;
+  cardId: string;
+  currentOwner: 'mor' | 'arc';
+  cardData?: {
+    fob_price_usd?: number | null;
+    moq?: number | null;
+    qty_per_container?: number | null;
+  };
+  onAcknowledge: (activityId: string) => void;
+  onOwnerChange?: () => void;
+  isAcknowledging?: boolean;
+}
+
+function AnswerPendingBanner({ 
+  activity, 
+  cardId,
+  currentOwner,
+  cardData,
+  onAcknowledge,
+  onOwnerChange,
+  isAcknowledging,
+}: AnswerPendingBannerProps) {
+  const [showReplyBox, setShowReplyBox] = useState(false);
+  
+  const getInitials = (profile: Activity['profile']) => {
+    if (profile?.full_name) {
+      return profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    }
+    if (profile?.email) {
+      return profile.email[0].toUpperCase();
+    }
+    return '?';
+  };
+
+  return (
+    <div className="rounded-lg p-4 mb-4 border-2 animate-pulse bg-green-50 border-green-400 dark:bg-green-950/30 dark:border-green-600">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 font-medium">
+          <Reply className="h-5 w-5 text-green-600 dark:text-green-400" />
+          <span className="text-sm text-green-800 dark:text-green-200">
+            Answer received
+          </span>
+        </div>
+      </div>
+      <div className="bg-white dark:bg-background rounded-lg p-3 border">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+          <Avatar className="h-5 w-5">
+            <AvatarFallback className="text-[10px]">{getInitials(activity.profile)}</AvatarFallback>
+          </Avatar>
+          <span>{activity.profile?.full_name || activity.profile?.email || 'Unknown'}</span>
+          <span className="opacity-70">• {format(parseISO(activity.created_at), 'HH:mm')}</span>
+        </div>
+        {activity.content && (
+          <p className="text-sm font-medium">
+            {activity.content}
+          </p>
+        )}
+        {/* Show attachments if present */}
+        {activity.metadata?.attachments && Array.isArray(activity.metadata.attachments) && activity.metadata.attachments.length > 0 && (
+          <AttachmentDisplay 
+            attachments={activity.metadata.attachments as UploadedAttachment[]} 
+          />
+        )}
+      </div>
+      
+      {/* Action buttons */}
+      {!showReplyBox && (
+        <div className="flex gap-2 mt-3 flex-wrap">
+          <Button 
+            size="sm" 
+            onClick={() => onAcknowledge(activity.id)}
+            disabled={isAcknowledging}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            <Check className="h-3 w-3 mr-1" />
+            {isAcknowledging ? 'Acknowledging...' : 'Got it'}
+          </Button>
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => setShowReplyBox(true)}
+            className="bg-white hover:bg-green-100 border-green-400 text-green-700 dark:bg-green-950 dark:hover:bg-green-900 dark:border-green-600 dark:text-green-200"
+          >
+            <Reply className="h-3 w-3 mr-1" />
+            Reply
+          </Button>
+          <SnoozeButton
+            cardId={cardId}
+            currentActionType="answer_pending"
+            variant="outline"
+            size="sm"
+            className="bg-white hover:bg-green-100 border-green-400 text-green-700 dark:bg-green-950 dark:hover:bg-green-900 dark:border-green-600 dark:text-green-200"
+          />
+        </div>
+      )}
+      
+      {/* Inline reply box inside banner */}
+      {showReplyBox && (
+        <div className="mt-3">
+          <InlineReplyBox
+            replyToId={activity.id}
+            replyToType="answer"
+            cardId={cardId}
+            currentOwner={currentOwner}
+            pendingActionType="answer_pending"
+            onClose={() => setShowReplyBox(false)}
+            onCardMove={onOwnerChange}
+          />
+        </div>
       )}
     </div>
   );
@@ -719,6 +836,57 @@ export function HistoryTimeline({
     },
   });
 
+  // Mutation to acknowledge an answer
+  const acknowledgeAnswerMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      if (!user?.id) throw new Error('Not authenticated');
+      
+      // 1. Fetch current metadata and merge with acknowledged fields
+      const { data: currentActivity, error: fetchError } = await supabase
+        .from('development_card_activity')
+        .select('metadata')
+        .eq('id', activityId)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      
+      const existingMetadata = (currentActivity?.metadata as Record<string, any>) || {};
+      
+      // 2. Update the activity metadata to mark as acknowledged
+      const { error } = await supabase
+        .from('development_card_activity')
+        .update({
+          metadata: {
+            ...existingMetadata,
+            acknowledged: true,
+            acknowledged_at: new Date().toISOString(),
+            acknowledged_by: user.id,
+          },
+        })
+        .eq('id', activityId);
+      
+      if (error) throw error;
+
+      // 3. Clear pending action on the card
+      await (supabase.from('development_items') as any)
+        .update({
+          pending_action_type: null,
+          pending_action_due_at: null,
+          pending_action_snoozed_until: null,
+          pending_action_snoozed_by: null,
+        })
+        .eq('id', cardId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      toast({ title: 'Answer acknowledged' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to acknowledge answer', variant: 'destructive' });
+    },
+  });
+
   const { data: activities = [], isLoading } = useQuery({
     queryKey: ['development-card-activity', cardId],
     staleTime: 30 * 1000, // Data is fresh for 30 seconds
@@ -789,6 +957,11 @@ export function HistoryTimeline({
     a.activity_type === 'question' && !a.metadata?.resolved
   );
 
+  // Find the first unacknowledged answer (for AnswerPendingBanner)
+  const firstUnacknowledgedAnswer = allActivities.find(a => 
+    a.activity_type === 'answer' && !a.metadata?.acknowledged
+  );
+
   // Find sample_requested activity (for China to show "Add Tracking" banner)
   const sampleRequestedActivity = allActivities.find(a => 
     a.activity_type === 'sample_requested'
@@ -807,11 +980,22 @@ export function HistoryTimeline({
     !sampleShippedAfterRequest &&
     currentOwner === 'arc';
 
+  // Show answer pending banner when there's an unacknowledged answer and no unresolved question
+  const showAnswerPendingBanner = 
+    showAttentionBanner && 
+    firstUnacknowledgedAnswer && 
+    !firstUnresolvedQuestion &&
+    !showSampleRequestedBanner;
+
   // Collect IDs of activities shown in banners (to exclude from timeline)
   const bannerActivityIds = new Set<string>();
   
-  if (showAttentionBanner && firstUnresolvedQuestion && !showSampleRequestedBanner) {
+  if (showAttentionBanner && firstUnresolvedQuestion && !showSampleRequestedBanner && !showAnswerPendingBanner) {
     bannerActivityIds.add(firstUnresolvedQuestion.id);
+  }
+  
+  if (showAnswerPendingBanner && firstUnacknowledgedAnswer) {
+    bannerActivityIds.add(firstUnacknowledgedAnswer.id);
   }
   
   if (showSampleRequestedBanner && sampleRequestedActivity) {
@@ -898,10 +1082,11 @@ export function HistoryTimeline({
     cardCreatedBy;
 
   // Show next step prompt when commercial data was recently set and no unresolved questions
-  // But NOT if sample has been approved (that takes precedence)
+  // But NOT if sample has been approved (that takes precedence) or answer is pending
   const showNextStepPrompt = 
     showAttentionBanner && 
     !firstUnresolvedQuestion &&
+    !firstUnacknowledgedAnswer &&
     !showSampleRequestedBanner &&
     !showSampleApprovedBanner &&
     (mostRecentCommercialUpdate || commercialTriggeredMove);
@@ -954,7 +1139,7 @@ export function HistoryTimeline({
       )}
       
       {/* Attention Banner - when there's an unresolved question */}
-      {showAttentionBanner && firstUnresolvedQuestion && !showSampleRequestedBanner && !showSampleApprovedBanner && (
+      {showAttentionBanner && firstUnresolvedQuestion && !showSampleRequestedBanner && !showSampleApprovedBanner && !showAnswerPendingBanner && (
         <AttentionBanner
           activity={firstUnresolvedQuestion}
           cardId={cardId}
@@ -963,6 +1148,18 @@ export function HistoryTimeline({
           onResolve={(id) => resolveQuestionMutation.mutate(id)}
           onOwnerChange={onOwnerChange}
           isResolving={resolveQuestionMutation.isPending}
+        />
+      )}
+
+      {/* Answer Pending Banner - when there's an unacknowledged answer */}
+      {showAnswerPendingBanner && firstUnacknowledgedAnswer && (
+        <AnswerPendingBanner
+          activity={firstUnacknowledgedAnswer}
+          cardId={cardId}
+          currentOwner={currentOwner}
+          onAcknowledge={(id) => acknowledgeAnswerMutation.mutate(id)}
+          onOwnerChange={onOwnerChange}
+          isAcknowledging={acknowledgeAnswerMutation.isPending}
         />
       )}
       
@@ -1072,6 +1269,46 @@ export function HistoryTimeline({
                         </div>
                       )}
                       
+                      {/* Action buttons for unacknowledged answers */}
+                      {isAnswer && !activity.metadata?.acknowledged && (
+                        <div className="flex gap-2 mt-2 flex-wrap">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900"
+                            onClick={() => acknowledgeAnswerMutation.mutate(activity.id)}
+                            disabled={acknowledgeAnswerMutation.isPending}
+                          >
+                            <Check className="h-3 w-3 mr-1" />
+                            {acknowledgeAnswerMutation.isPending ? 'Acknowledging...' : 'Got it'}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900"
+                            onClick={() => setReplyingToId(activity.id)}
+                          >
+                            <Reply className="h-3 w-3 mr-1" />
+                            Reply
+                          </Button>
+                          <SnoozeButton
+                            cardId={cardId}
+                            currentActionType="answer_pending"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900"
+                          />
+                        </div>
+                      )}
+                      
+                      {/* Show acknowledged badge */}
+                      {isAnswer && activity.metadata?.acknowledged && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 mt-2 bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200">
+                          <Check className="h-3 w-3 mr-1" />
+                          Acknowledged
+                        </Badge>
+                      )}
+                      
                       {/* Metadata display for certain types */}
                       {activity.activity_type === 'commercial_update' && activity.metadata && (
                         <p className="text-xs mt-1 opacity-80">
@@ -1079,10 +1316,20 @@ export function HistoryTimeline({
                         </p>
                       )}
                       
-                      {/* Show which question this is a reply to */}
+                      {/* Show which question/answer this is a reply to */}
                       {(isAnswer || (activity.activity_type === 'comment' && activity.metadata?.reply_to_question)) && (
                         <p className="text-xs mt-1 opacity-70 italic">
                           ↳ Reply to question
+                        </p>
+                      )}
+                      {activity.activity_type === 'comment' && activity.metadata?.reply_to_answer && (
+                        <p className="text-xs mt-1 opacity-70 italic">
+                          ↳ Reply to answer
+                        </p>
+                      )}
+                      {activity.activity_type === 'question' && activity.metadata?.reply_to_answer && (
+                        <p className="text-xs mt-1 opacity-70 italic">
+                          ↳ Follow-up question
                         </p>
                       )}
                     </div>
@@ -1091,7 +1338,8 @@ export function HistoryTimeline({
                   {/* Inline Reply Box */}
                   {replyingToId === activity.id && (
                     <InlineReplyBox
-                      questionId={activity.id}
+                      replyToId={activity.id}
+                      replyToType={isAnswer ? 'answer' : 'question'}
                       cardId={cardId}
                       currentOwner={currentOwner}
                       pendingActionType={pendingActionType}
