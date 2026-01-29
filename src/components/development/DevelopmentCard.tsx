@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { format, parseISO, isAfter } from 'date-fns';
+import { memo, useMemo } from 'react';
+import { format } from 'date-fns';
 import { Calendar, Package, Layers, ListTodo, Box, Leaf, Sparkles, Trash2, Clock } from 'lucide-react';
 import { DevelopmentItem, DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
 import { Badge } from '@/components/ui/badge';
@@ -46,7 +46,7 @@ const PRODUCT_CATEGORY_CONFIG: Record<DevelopmentProductCategory, { label: strin
   raw_material: { label: 'Raw', icon: <Leaf className="h-3 w-3" />, className: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
 };
 
-export function DevelopmentCard({
+function DevelopmentCardComponent({
   item,
   onClick,
   onDragStart,
@@ -236,3 +236,16 @@ export function DevelopmentCard({
     </div>
   );
 }
+
+// Memoized DevelopmentCard to prevent unnecessary re-renders
+export const DevelopmentCard = memo(DevelopmentCardComponent, (prev, next) => {
+  return (
+    prev.item.id === next.item.id &&
+    prev.item.updated_at === next.item.updated_at &&
+    prev.item.latest_activity_at === next.item.latest_activity_at &&
+    prev.item.last_viewed_at === next.item.last_viewed_at &&
+    prev.item.pending_action_type === next.item.pending_action_type &&
+    prev.item.pending_action_snoozed_until === next.item.pending_action_snoozed_until &&
+    prev.canDrag === next.canDrag
+  );
+});

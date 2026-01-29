@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { DevelopmentItem } from '@/pages/Development';
 import { DevelopmentCard } from './DevelopmentCard';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -17,7 +18,7 @@ interface TeamSectionProps {
   canManage: boolean;
 }
 
-export function TeamSection({
+function TeamSectionComponent({
   title,
   subtitle,
   items,
@@ -73,3 +74,6 @@ export function TeamSection({
     </div>
   );
 }
+
+// Memoized TeamSection to prevent unnecessary re-renders
+export const TeamSection = memo(TeamSectionComponent);
