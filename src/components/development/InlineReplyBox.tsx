@@ -92,11 +92,23 @@ export function InlineReplyBox({
       });
       if (insertError) throw insertError;
 
-      // 2. Mark question as resolved
+      // 2. Fetch existing metadata from the question to preserve attachments
+      const { data: questionActivity, error: fetchError } = await supabase
+        .from('development_card_activity')
+        .select('metadata')
+        .eq('id', replyToId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const existingQuestionMetadata = (questionActivity?.metadata as Record<string, any>) || {};
+
+      // 3. Mark question as resolved while preserving existing metadata
       const { error: resolveError } = await supabase
         .from('development_card_activity')
         .update({
           metadata: {
+            ...existingQuestionMetadata,
             resolved: true,
             resolved_at: new Date().toISOString(),
             resolved_by: user.id,
