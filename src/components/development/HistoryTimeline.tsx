@@ -802,11 +802,23 @@ export function HistoryTimeline({
     mutationFn: async (activityId: string) => {
       if (!user?.id) throw new Error('Not authenticated');
       
-      // Update the activity metadata
+      // 1. Fetch existing metadata to preserve attachments
+      const { data: currentActivity, error: fetchError } = await supabase
+        .from('development_card_activity')
+        .select('metadata')
+        .eq('id', activityId)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      
+      const existingMetadata = (currentActivity?.metadata as Record<string, any>) || {};
+      
+      // 2. Merge existing metadata with resolved fields
       const { error } = await supabase
         .from('development_card_activity')
         .update({
           metadata: {
+            ...existingMetadata,
             resolved: true,
             resolved_at: new Date().toISOString(),
             resolved_by: user.id,
@@ -816,7 +828,7 @@ export function HistoryTimeline({
       
       if (error) throw error;
 
-      // Clear pending action on the card if it was a question
+      // 3. Clear pending action on the card if it was a question
       await (supabase.from('development_items') as any)
         .update({
           pending_action_type: null,
