@@ -58,10 +58,16 @@ interface HistoryTimelineProps {
   pendingActionType?: string | null;
   pendingActionDueAt?: string | null;
   snoozedUntil?: string | null;
+  // Commercial data for "What's next?" prompts
+  fobPriceUsd?: number | null;
+  moq?: number | null;
+  qtyPerContainer?: number | null;
+  containerType?: string | null;
   onOwnerChange?: () => void;
   onOpenSampleSection?: () => void;
   onOpenMessageSection?: (type: 'comment' | 'question') => void;
   onOpenUploadSection?: () => void;
+  onOpenCommercialSection?: () => void;
   onCloseCard?: () => void;
 }
 
@@ -737,6 +743,128 @@ function NextStepPrompt({
   );
 }
 
+// Post-Acknowledgement Prompt - shows after acknowledging an answer to guide next steps
+interface PostAcknowledgementPromptProps {
+  cardId: string;
+  cardType: 'item' | 'item_group' | 'task';
+  currentOwner: 'mor' | 'arc';
+  fobPriceUsd?: number | null;
+  moq?: number | null;
+  qtyPerContainer?: number | null;
+  containerType?: string | null;
+  hasPendingSamples?: boolean;
+  onOpenCommercialSection?: () => void;
+  onOpenSampleSection?: () => void;
+  onAskQuestion: () => void;
+  onAddComment: () => void;
+  onDismiss: () => void;
+}
+
+function PostAcknowledgementPrompt({
+  cardId,
+  cardType,
+  currentOwner,
+  fobPriceUsd,
+  moq,
+  qtyPerContainer,
+  containerType,
+  hasPendingSamples,
+  onOpenCommercialSection,
+  onOpenSampleSection,
+  onAskQuestion,
+  onAddComment,
+  onDismiss,
+}: PostAcknowledgementPromptProps) {
+  // Check for missing commercial data
+  const hasAllCommercialData = fobPriceUsd && moq && qtyPerContainer && containerType;
+  const missingCommercialFields: string[] = [];
+  if (!fobPriceUsd) missingCommercialFields.push('FOB Price');
+  if (!moq) missingCommercialFields.push('MOQ');
+  if (!qtyPerContainer) missingCommercialFields.push('Qty/Container');
+  if (!containerType) missingCommercialFields.push('Container Type');
+  
+  // Determine what to highlight
+  const showCommercialPrompt = !hasAllCommercialData && cardType !== 'task';
+  const showSamplePrompt = hasPendingSamples && cardType !== 'task';
+  
+  // If nothing specific to highlight, show generic prompt
+  const showGenericPrompt = !showCommercialPrompt && !showSamplePrompt;
+
+  return (
+    <div className="rounded-lg p-4 mb-4 border-2 bg-sky-50 border-sky-300 dark:bg-sky-950/30 dark:border-sky-700">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Lightbulb className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+          <span className="font-medium text-sm text-sky-800 dark:text-sky-200">What's next?</span>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onDismiss}
+          className="h-6 px-2 text-xs text-sky-600 hover:text-sky-800 hover:bg-sky-100 dark:text-sky-400 dark:hover:text-sky-200 dark:hover:bg-sky-900"
+        >
+          Dismiss
+        </Button>
+      </div>
+      
+      <p className="text-sm text-sky-700 dark:text-sky-300 mb-3">
+        {showCommercialPrompt && (
+          <>Missing commercial data: <span className="font-medium">{missingCommercialFields.join(', ')}</span></>
+        )}
+        {showSamplePrompt && !showCommercialPrompt && (
+          <>You have pending samples to review or request.</>
+        )}
+        {showGenericPrompt && (
+          <>Answer acknowledged! What would you like to do next?</>
+        )}
+      </p>
+      
+      <div className="flex flex-wrap gap-2">
+        {showCommercialPrompt && onOpenCommercialSection && (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={onOpenCommercialSection}
+            className="bg-white hover:bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-950 dark:hover:bg-sky-900 dark:border-sky-600 dark:text-sky-200"
+          >
+            <DollarSign className="h-3 w-3 mr-1" />
+            Add Commercial Data
+          </Button>
+        )}
+        {showSamplePrompt && onOpenSampleSection && (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={onOpenSampleSection}
+            className="bg-white hover:bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-950 dark:hover:bg-sky-900 dark:border-sky-600 dark:text-sky-200"
+          >
+            <Package className="h-3 w-3 mr-1" />
+            Review Samples
+          </Button>
+        )}
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={onAskQuestion}
+          className="bg-white hover:bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-950 dark:hover:bg-sky-900 dark:border-sky-600 dark:text-sky-200"
+        >
+          <HelpCircle className="h-3 w-3 mr-1" />
+          Ask a Question
+        </Button>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={onAddComment}
+          className="bg-white hover:bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-950 dark:hover:bg-sky-900 dark:border-sky-600 dark:text-sky-200"
+        >
+          <MessageCircle className="h-3 w-3 mr-1" />
+          Add Comment
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 
 export function HistoryTimeline({ 
   cardId, 
@@ -748,10 +876,15 @@ export function HistoryTimeline({
   pendingActionType,
   pendingActionDueAt,
   snoozedUntil,
+  fobPriceUsd,
+  moq,
+  qtyPerContainer,
+  containerType,
   onOwnerChange,
   onOpenSampleSection,
   onOpenMessageSection,
   onOpenUploadSection,
+  onOpenCommercialSection,
   onCloseCard,
 }: HistoryTimelineProps) {
   const { user } = useAuth();
@@ -759,6 +892,9 @@ export function HistoryTimeline({
   
   // State for which question has the inline reply box open
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
+  
+  // State to track if we just acknowledged an answer (for showing post-acknowledgement prompt)
+  const [showPostAcknowledgementPrompt, setShowPostAcknowledgementPrompt] = useState(false);
 
   // Mutation to close the card
   const closeCardMutation = useMutation({
@@ -893,6 +1029,8 @@ export function HistoryTimeline({
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
       queryClient.invalidateQueries({ queryKey: ['development-items'] });
       toast({ title: 'Answer acknowledged' });
+      // Show the post-acknowledgement prompt
+      setShowPostAcknowledgementPrompt(true);
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to acknowledge answer', variant: 'destructive' });
@@ -998,6 +1136,15 @@ export function HistoryTimeline({
     firstUnacknowledgedAnswer && 
     !firstUnresolvedQuestion &&
     !showSampleRequestedBanner;
+
+  // Check for pending samples (requested but not yet approved/arrived)
+  const hasPendingSamples = Boolean(
+    sampleRequestedActivity && 
+    !allActivities.find(a => 
+      ['sample_approved', 'sample_rejected'].includes(a.activity_type) &&
+      new Date(a.created_at) > new Date(sampleRequestedActivity.created_at)
+    )
+  );
 
   // Collect IDs of activities shown in banners (to exclude from timeline)
   const bannerActivityIds = new Set<string>();
@@ -1172,6 +1319,25 @@ export function HistoryTimeline({
           onAcknowledge={(id) => acknowledgeAnswerMutation.mutate(id)}
           onOwnerChange={onOwnerChange}
           isAcknowledging={acknowledgeAnswerMutation.isPending}
+        />
+      )}
+
+      {/* Post-Acknowledgement Prompt - after acknowledging an answer, highlight next steps */}
+      {showPostAcknowledgementPrompt && !showAnswerPendingBanner && !firstUnresolvedQuestion && onOpenMessageSection && (
+        <PostAcknowledgementPrompt
+          cardId={cardId}
+          cardType={cardType}
+          currentOwner={currentOwner}
+          fobPriceUsd={fobPriceUsd}
+          moq={moq}
+          qtyPerContainer={qtyPerContainer}
+          containerType={containerType}
+          hasPendingSamples={hasPendingSamples}
+          onOpenCommercialSection={onOpenCommercialSection}
+          onOpenSampleSection={onOpenSampleSection}
+          onAskQuestion={() => onOpenMessageSection('question')}
+          onAddComment={() => onOpenMessageSection('comment')}
+          onDismiss={() => setShowPostAcknowledgementPrompt(false)}
         />
       )}
       
