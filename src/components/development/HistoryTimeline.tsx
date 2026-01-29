@@ -161,6 +161,22 @@ function groupByDate(activities: Activity[]): Record<string, Activity[]> {
   }, {} as Record<string, Activity[]>);
 }
 
+// Ownership direction indicator with country flags
+function OwnershipDirection({ from, to }: { from: 'mor' | 'arc'; to: 'mor' | 'arc' }) {
+  if (from === to) return null;
+  
+  const fromFlag = from === 'mor' ? '🇧🇷' : '🇨🇳';
+  const toFlag = to === 'mor' ? '🇧🇷' : '🇨🇳';
+  
+  return (
+    <span className="inline-flex items-center gap-0.5 text-xs opacity-80 flex-shrink-0">
+      <span>{fromFlag}</span>
+      <span className="text-[10px]">→</span>
+      <span>{toFlag}</span>
+    </span>
+  );
+}
+
 // Compact single-line row for system activities
 function CompactActivityRow({ activity }: { activity: Activity }) {
   const firstName = activity.profile?.full_name?.split(' ')[0] || 'Someone';
@@ -181,9 +197,18 @@ function CompactActivityRow({ activity }: { activity: Activity }) {
     // Extract target from content like "Card moved to ARC (China)"
     const match = activity.content.match(/to (.*)/);
     inlineContent = match ? match[1] : '';
+  } else if (activity.activity_type === 'sample_requested' && activity.metadata?.quantity) {
+    inlineContent = `${activity.metadata.quantity} pcs`;
+  } else if (activity.activity_type === 'sample_shipped' && activity.metadata?.courier) {
+    inlineContent = activity.metadata.courier;
   } else if (activity.content) {
     inlineContent = activity.content;
   }
+
+  // Check if this activity caused an ownership change
+  const movedFrom = activity.metadata?.moved_from as 'mor' | 'arc' | undefined;
+  const movedTo = activity.metadata?.moved_to as 'mor' | 'arc' | undefined;
+  const showOwnershipChange = movedFrom && movedTo && movedFrom !== movedTo;
 
   return (
     <div className="flex items-center gap-1.5 text-xs text-muted-foreground py-1 px-1">
@@ -198,8 +223,13 @@ function CompactActivityRow({ activity }: { activity: Activity }) {
           <span className="truncate max-w-[200px]">{inlineContent}</span>
         </>
       )}
+      {/* Inline ownership change flags */}
+      {showOwnershipChange && (
+        <OwnershipDirection from={movedFrom} to={movedTo} />
+      )}
+      {/* Date + Time format */}
       <span className="opacity-50 flex-shrink-0">
-        • {format(parseISO(activity.created_at), 'HH:mm')}
+        • {format(parseISO(activity.created_at), 'dd/MM HH:mm')}
       </span>
     </div>
   );
@@ -685,7 +715,7 @@ function SampleApprovedBanner({
 }
 
 // Request Sample Handler - extracted for reuse
-function useRequestSample(cardId: string, onOwnerChange?: () => void) {
+function useRequestSample(cardId: string, currentOwner: 'mor' | 'arc', onOwnerChange?: () => void) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [isRequesting, setIsRequesting] = useState(false);
@@ -695,7 +725,9 @@ function useRequestSample(cardId: string, onOwnerChange?: () => void) {
     setIsRequesting(true);
     
     try {
-      // 1. Log sample_requested activity
+      const targetOwner = 'arc';
+      
+      // 1. Log sample_requested activity with embedded move info
       const { error: activityError } = await supabase
         .from('development_card_activity')
         .insert({
@@ -703,6 +735,10 @@ function useRequestSample(cardId: string, onOwnerChange?: () => void) {
           user_id: user.id,
           activity_type: 'sample_requested',
           content: 'Sample requested',
+          metadata: {
+            moved_from: currentOwner,
+            moved_to: targetOwner,
+          },
         });
       
       if (activityError) throw activityError;
@@ -710,7 +746,7 @@ function useRequestSample(cardId: string, onOwnerChange?: () => void) {
       // 2. Move card to ARC (China) and set pending action for sample tracking
       const { error: moveError } = await (supabase.from('development_items') as any)
         .update({ 
-          current_owner: 'arc',
+          current_owner: targetOwner,
           is_new_for_other_team: true,
           pending_action_type: 'sample_tracking',
           pending_action_due_at: null,
@@ -721,14 +757,7 @@ function useRequestSample(cardId: string, onOwnerChange?: () => void) {
       
       if (moveError) throw moveError;
 
-      // 3. Log ownership change
-      await supabase.from('development_card_activity').insert({
-        card_id: cardId,
-        user_id: user.id,
-        activity_type: 'ownership_change',
-        content: 'Card moved to ARC (China)',
-        metadata: { new_owner: 'arc', trigger: 'sample_request' },
-      });
+      // NO separate ownership_change entry - move is embedded in sample_requested
 
       queryClient.invalidateQueries({ queryKey: ['development-items'] });
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
@@ -1042,7 +1071,7 @@ export function HistoryTimeline({
   });
 
   // Use request sample hook
-  const { handleRequestSample, isRequesting: isRequestingSample } = useRequestSample(cardId, onOwnerChange);
+  const { handleRequestSample, isRequesting: isRequestingSample } = useRequestSample(cardId, currentOwner, onOwnerChange);
 
   const { data: activities = [], isLoading } = useQuery({
     queryKey: ['development-card-activity', cardId],
@@ -1122,8 +1151,17 @@ export function HistoryTimeline({
     };
   }, [cardId, queryClient]);
 
-  // Use activities from database directly (no synthetic creation activity)
-  const allActivities: Activity[] = activities;
+  // Filter out redundant ownership_change entries that have a trigger (were caused by another action)
+  // The move info is now embedded in the triggering action's metadata
+  const filteredActivities = activities.filter(a => {
+    if (a.activity_type === 'ownership_change' && a.metadata?.trigger) {
+      return false; // Hide ownership_change if it has a trigger field
+    }
+    return true;
+  });
+
+  // Use filtered activities for display
+  const allActivities: Activity[] = filteredActivities;
 
   // Find the first unresolved question for keyboard shortcut / attention banner
   const firstUnresolvedQuestion = allActivities.find(a => 

@@ -82,13 +82,19 @@ export function InlineReplyBox({
     mutationFn: async () => {
       if (!user?.id || (!replyContent.trim() && attachments.length === 0)) return;
       
-      // 1. Insert answer activity
+      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
+      
+      // 1. Insert answer activity with embedded move info
       const { error: insertError } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
         activity_type: 'answer',
         content: replyContent.trim() || null,
-        metadata: buildMetadata(),
+        metadata: {
+          ...buildMetadata(),
+          moved_from: currentOwner,
+          moved_to: targetOwner,
+        },
       });
       if (insertError) throw insertError;
 
@@ -117,8 +123,7 @@ export function InlineReplyBox({
         .eq('id', replyToId);
       if (resolveError) throw resolveError;
 
-      // 3. Move card to other team and set answer_pending
-      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
+      // 4. Move card to other team and set answer_pending
       const { error: moveError } = await (supabase.from('development_items') as any)
         .update({ 
           current_owner: targetOwner,
@@ -131,14 +136,7 @@ export function InlineReplyBox({
         .eq('id', cardId);
       if (moveError) throw moveError;
 
-      // 4. Log ownership change
-      await supabase.from('development_card_activity').insert({
-        card_id: cardId,
-        user_id: user.id,
-        activity_type: 'ownership_change',
-        content: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}`,
-        metadata: { new_owner: targetOwner, trigger: 'answer' },
-      });
+      // NO separate ownership_change entry - move is embedded in answer activity
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
@@ -160,7 +158,9 @@ export function InlineReplyBox({
     mutationFn: async () => {
       if (!user?.id || (!replyContent.trim() && attachments.length === 0)) return;
       
-      // 1. Insert question activity with reference to the answer
+      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
+      
+      // 1. Insert question activity with reference to the answer and embedded move info
       const { error: insertError } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
@@ -169,12 +169,13 @@ export function InlineReplyBox({
         metadata: {
           ...buildMetadata(false),
           reply_to_answer: replyToId,
+          moved_from: currentOwner,
+          moved_to: targetOwner,
         },
       });
       if (insertError) throw insertError;
 
       // 2. Move card to other team and set question pending
-      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
       const { error: moveError } = await (supabase.from('development_items') as any)
         .update({ 
           current_owner: targetOwner,
@@ -187,14 +188,7 @@ export function InlineReplyBox({
         .eq('id', cardId);
       if (moveError) throw moveError;
 
-      // 3. Log ownership change
-      await supabase.from('development_card_activity').insert({
-        card_id: cardId,
-        user_id: user.id,
-        activity_type: 'ownership_change',
-        content: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}`,
-        metadata: { new_owner: targetOwner, trigger: 'follow_up_question' },
-      });
+      // NO separate ownership_change entry - move is embedded in question activity
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });

@@ -65,6 +65,9 @@ export function AddSampleForm({ itemId, currentOwner, onSampleRequested }: AddSa
     mutationFn: async () => {
       if (!user?.id) throw new Error('Not authenticated');
 
+      const targetOwner = 'arc';
+      const fromOwner = currentOwner || 'mor';
+
       // Create a sample entry with "pending" status (waiting for China to ship)
       const { error: sampleError } = await supabase.from('development_item_samples').insert({
         item_id: itemId,
@@ -74,13 +77,18 @@ export function AddSampleForm({ itemId, currentOwner, onSampleRequested }: AddSa
       });
       if (sampleError) throw sampleError;
 
-      // Log the request activity
+      // Log the request activity with embedded move info
       await supabase.from('development_card_activity').insert({
         card_id: itemId,
         user_id: user.id,
         activity_type: 'sample_requested',
         content: `Requested ${requestQuantity} sample(s)${requestNotes ? `: ${requestNotes}` : ''}`,
-        metadata: { quantity: parseInt(requestQuantity) || 1, notes: requestNotes || null },
+        metadata: { 
+          quantity: parseInt(requestQuantity) || 1, 
+          notes: requestNotes || null,
+          moved_from: fromOwner,
+          moved_to: targetOwner,
+        },
       });
 
       // Update pending action and move card to ARC (China)
@@ -90,19 +98,12 @@ export function AddSampleForm({ itemId, currentOwner, onSampleRequested }: AddSa
           pending_action_due_at: null,
           pending_action_snoozed_until: null,
           pending_action_snoozed_by: null,
-          current_owner: 'arc',
+          current_owner: targetOwner,
           is_new_for_other_team: true,
         })
         .eq('id', itemId);
 
-      // Log ownership change
-      await supabase.from('development_card_activity').insert({
-        card_id: itemId,
-        user_id: user.id,
-        activity_type: 'ownership_change',
-        content: 'Card moved to ARC (China)',
-        metadata: { new_owner: 'arc', trigger: 'sample_request' },
-      });
+      // NO separate ownership_change entry - move is embedded in sample_requested activity
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-item-samples', itemId] });

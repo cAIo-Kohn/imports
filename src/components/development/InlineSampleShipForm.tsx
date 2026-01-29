@@ -37,6 +37,8 @@ export function InlineSampleShipForm({
       if (!user?.id) throw new Error('Not authenticated');
       if (!courier || !trackingNumber) throw new Error('Courier and tracking number are required');
 
+      const targetOwner = 'mor';
+
       // 1. Create sample record
       const { data: sampleData, error: sampleError } = await supabase
         .from('development_item_samples')
@@ -55,7 +57,7 @@ export function InlineSampleShipForm({
 
       if (sampleError) throw sampleError;
 
-      // 2. Log sample_shipped activity
+      // 2. Log sample_shipped activity with embedded move info
       const { error: activityError } = await supabase
         .from('development_card_activity')
         .insert({
@@ -68,13 +70,14 @@ export function InlineSampleShipForm({
             courier, 
             tracking_number: trackingNumber,
             estimated_arrival: estimatedArrival,
+            moved_from: currentOwner,
+            moved_to: targetOwner,
           },
         });
 
       if (activityError) throw activityError;
 
       // 3. Move card to MOR (Brazil) and set pending action for sample in transit
-      const targetOwner = 'mor';
       const updateData: Record<string, any> = { 
         current_owner: targetOwner,
         is_new_for_other_team: true,
@@ -92,14 +95,7 @@ export function InlineSampleShipForm({
 
       if (moveError) throw moveError;
 
-      // 4. Log ownership change
-      await supabase.from('development_card_activity').insert({
-        card_id: cardId,
-        user_id: user.id,
-        activity_type: 'ownership_change',
-        content: 'Card moved to MOR (Brazil)',
-        metadata: { new_owner: targetOwner, trigger: 'sample_shipped' },
-      });
+      // NO separate ownership_change entry - move is embedded in sample_shipped activity
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-items'] });
