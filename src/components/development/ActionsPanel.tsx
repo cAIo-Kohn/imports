@@ -27,6 +27,7 @@ import { cn, formatBrazilianNumber, parseBrazilianNumber } from '@/lib/utils';
 import { MoveCardModal } from './MoveCardModal';
 import { AddSampleForm } from './AddSampleForm';
 import { SampleTrackingCard } from './SampleTrackingCard';
+import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton';
 
 // Ref for scrolling to review section after marking sample as arrived
 const SAMPLE_REVIEW_SCROLL_DELAY = 300;
@@ -80,6 +81,7 @@ export function ActionsPanel({
   // Message state
   const [messageType, setMessageType] = useState<MessageType>('comment');
   const [messageContent, setMessageContent] = useState('');
+  const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveModalTrigger, setMoveModalTrigger] = useState<'question' | 'commercial'>('question');
 
@@ -185,13 +187,19 @@ export function ActionsPanel({
   // Add message mutation
   const addMessageMutation = useMutation({
     mutationFn: async () => {
-      if (!user?.id || !messageContent.trim()) return;
+      if (!user?.id || (!messageContent.trim() && attachments.length === 0)) return;
+      
+      // Build metadata with attachments if any
+      const activityMetadata = attachments.length > 0 
+        ? { attachments: attachments.map(a => ({ id: a.id, name: a.name, url: a.url, type: a.type })) }
+        : null;
       
       const { error } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
         activity_type: messageType,
-        content: messageContent.trim(),
+        content: messageContent.trim() || null,
+        metadata: activityMetadata,
       });
       if (error) throw error;
 
@@ -215,6 +223,7 @@ export function ActionsPanel({
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
       queryClient.invalidateQueries({ queryKey: ['development-items'] });
       setMessageContent('');
+      setAttachments([]);
       toast({ title: messageType === 'question' ? 'Question posted' : 'Comment added' });
     },
     onError: () => {
@@ -325,7 +334,7 @@ export function ActionsPanel({
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (messageContent.trim()) {
+    if (messageContent.trim() || attachments.length > 0) {
       addMessageMutation.mutate();
     }
   };
@@ -398,11 +407,18 @@ export function ActionsPanel({
                 className="text-sm"
               />
               
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between">
+                <TimelineUploadButton
+                  attachments={attachments}
+                  onAttachmentsChange={setAttachments}
+                  variant="icon"
+                  disabled={addMessageMutation.isPending}
+                />
+                
                 <Button 
                   type="submit" 
                   size="sm"
-                  disabled={!messageContent.trim() || addMessageMutation.isPending}
+                  disabled={(!messageContent.trim() && attachments.length === 0) || addMessageMutation.isPending}
                 >
                   <Send className="h-3 w-3 mr-1" />
                   {addMessageMutation.isPending ? 'Sending...' : 'Send'}
