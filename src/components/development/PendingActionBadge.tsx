@@ -108,43 +108,56 @@ export function PendingActionIndicator({
   snoozedUntil,
   className,
 }: PendingActionIndicatorProps) {
-  const isUrgent = useMemo(() => {
-    if (!pendingActionType) return false;
+  const { isUrgent, isSnoozed } = useMemo(() => {
+    if (!pendingActionType) return { isUrgent: false, isSnoozed: false };
     
     const now = new Date();
     
-    // Check if snoozed
+    // Check if snoozed (snooze date is in the future)
     if (snoozedUntil) {
       const snoozeDate = parseISO(snoozedUntil);
-      if (isAfter(snoozeDate, now)) return false;
+      if (isAfter(snoozeDate, now)) {
+        return { isUrgent: false, isSnoozed: true };
+      }
     }
     
     // Check if has due date that hasn't passed
     if (pendingActionDueAt) {
       const dueDate = parseISO(pendingActionDueAt);
-      if (isAfter(dueDate, now)) return false;
+      if (isAfter(dueDate, now)) {
+        return { isUrgent: false, isSnoozed: false };
+      }
     }
     
     // Urgent if no snooze/due or they've passed
-    return true;
+    return { isUrgent: true, isSnoozed: false };
   }, [pendingActionType, pendingActionDueAt, snoozedUntil]);
 
-  const isPending = Boolean(pendingActionType);
+  if (!pendingActionType) return null;
 
-  if (!isPending) return null;
+  // Snoozed: show Clock icon
+  if (isSnoozed) {
+    return (
+      <span className={cn("flex items-center justify-center h-4 w-4 text-muted-foreground", className)}>
+        <Clock className="h-3 w-3" />
+      </span>
+    );
+  }
 
+  // Urgent: red blinking dot
+  if (isUrgent) {
+    return (
+      <span className={cn("relative flex h-3 w-3", className)}>
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
+      </span>
+    );
+  }
+
+  // Waiting (not snoozed, not urgent): static amber dot
   return (
     <span className={cn("relative flex h-3 w-3", className)}>
-      {isUrgent ? (
-        // Blinking red indicator for urgent actions
-        <>
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
-        </>
-      ) : (
-        // Static yellow indicator for pending but not urgent
-        <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-400" />
-      )}
+      <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-400" />
     </span>
   );
 }
