@@ -5,9 +5,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search, Filter, Eye, EyeOff, Trash2, Users, FileSpreadsheet } from 'lucide-react';
+import { Plus, Search, Filter, Eye, EyeOff, Trash2, Users, FileSpreadsheet, LayoutGrid, Package } from 'lucide-react';
 import { TeamSection } from '@/components/development/TeamSection';
 import { CreateCardModal } from '@/components/development/CreateCardModal';
+import { SampleTrackerView } from '@/components/development/SampleTrackerView';
 import { ItemDetailDrawer } from '@/components/development/ItemDetailDrawer';
 import {
   Select,
@@ -121,6 +122,7 @@ export default function Development() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [viewMode, setViewMode] = useState<'cards' | 'samples'>('cards');
 
   // Deferred search for smoother typing
   const deferredSearchTerm = useDeferredValue(searchTerm);
@@ -488,7 +490,29 @@ export default function Development() {
               Track items, samples, and tasks
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            {/* View Toggle */}
+            <div className="flex gap-1 p-1 bg-muted rounded-lg">
+              <Button
+                variant={viewMode === 'cards' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 gap-1"
+                onClick={() => setViewMode('cards')}
+              >
+                <LayoutGrid className="h-4 w-4" />
+                <span className="hidden sm:inline">Cards</span>
+              </Button>
+              <Button
+                variant={viewMode === 'samples' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 gap-1"
+                onClick={() => setViewMode('samples')}
+              >
+                <Package className="h-4 w-4" />
+                <span className="hidden sm:inline">Samples</span>
+              </Button>
+            </div>
+
             {canManage && (
               <Button 
                 variant="outline" 
@@ -508,116 +532,124 @@ export default function Development() {
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap gap-3 mt-4">
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by title or product code..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          
-          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-            <SelectTrigger className="w-[140px]">
-              <Filter className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Priority" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Priorities</SelectItem>
-              <SelectItem value="urgent">Urgent</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="low">Low</SelectItem>
-            </SelectContent>
-          </Select>
+        {/* Filters - only show for cards view */}
+        {viewMode === 'cards' && (
+          <div className="flex flex-wrap gap-3 mt-4">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by title or product code..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            
+            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+              <SelectTrigger className="w-[140px]">
+                <Filter className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Priority" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Priorities</SelectItem>
+                <SelectItem value="urgent">Urgent</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+              </SelectContent>
+            </Select>
 
-          <Select value={cardTypeFilter} onValueChange={setCardTypeFilter}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="item">Single Item</SelectItem>
-              <SelectItem value="item_group">Item Group</SelectItem>
-              <SelectItem value="task">Task</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select value={cardTypeFilter} onValueChange={setCardTypeFilter}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="item">Single Item</SelectItem>
+                <SelectItem value="item_group">Item Group</SelectItem>
+                <SelectItem value="task">Task</SelectItem>
+              </SelectContent>
+            </Select>
 
-          <Select value={creatorRoleFilter} onValueChange={setCreatorRoleFilter}>
-            <SelectTrigger className="w-[160px]">
-              <Users className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Department" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="buyer">Buyer</SelectItem>
-              <SelectItem value="quality">Quality</SelectItem>
-              <SelectItem value="marketing">Marketing</SelectItem>
-              <SelectItem value="trader">Trader</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select value={creatorRoleFilter} onValueChange={setCreatorRoleFilter}>
+              <SelectTrigger className="w-[160px]">
+                <Users className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Department" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="buyer">Buyer</SelectItem>
+                <SelectItem value="quality">Quality</SelectItem>
+                <SelectItem value="marketing">Marketing</SelectItem>
+                <SelectItem value="trader">Trader</SelectItem>
+              </SelectContent>
+            </Select>
 
-          <Toggle
-            pressed={showSolved}
-            onPressedChange={setShowSolved}
-            variant="outline"
-            className="gap-2"
-          >
-            {showSolved ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-            {showSolved ? 'Showing Solved' : 'Show Solved'}
-          </Toggle>
-
-          {/* Show Deleted toggle - Admin only */}
-          {isAdmin && (
             <Toggle
-              pressed={showDeleted}
-              onPressedChange={setShowDeleted}
+              pressed={showSolved}
+              onPressedChange={setShowSolved}
               variant="outline"
               className="gap-2"
             >
-              <Trash2 className="h-4 w-4" />
-              {showDeleted ? 'Showing Deleted' : 'Show Deleted'}
+              {showSolved ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+              {showSolved ? 'Showing Solved' : 'Show Solved'}
             </Toggle>
-          )}
-        </div>
+
+            {/* Show Deleted toggle - Admin only */}
+            {isAdmin && (
+              <Toggle
+                pressed={showDeleted}
+                onPressedChange={setShowDeleted}
+                variant="outline"
+                className="gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                {showDeleted ? 'Showing Deleted' : 'Show Deleted'}
+              </Toggle>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Two-Section Layout: MOR / ARC */}
-      <div className="flex-1 min-w-0 overflow-hidden p-4 md:p-6">
-        <div className="flex gap-4 md:gap-6 h-full">
-          {/* MOR (Brazil) Section */}
-          <TeamSection
-            title="MOR (Brazil)"
-            subtitle="Cards waiting for Brazil's input"
-            items={morItems}
-            colorClass="border-blue-300 bg-blue-50/30"
-            flagEmoji="🇧🇷"
-            onCardClick={handleCardClick}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDropToOwner(e, 'mor')}
-            canManage={canManage}
-          />
+      {/* Main Content - conditionally render based on view mode */}
+      {viewMode === 'cards' ? (
+        /* Two-Section Layout: MOR / ARC */
+        <div className="flex-1 min-w-0 overflow-hidden p-4 md:p-6">
+          <div className="flex gap-4 md:gap-6 h-full">
+            {/* MOR (Brazil) Section */}
+            <TeamSection
+              title="MOR (Brazil)"
+              subtitle="Cards waiting for Brazil's input"
+              items={morItems}
+              colorClass="border-blue-300 bg-blue-50/30"
+              flagEmoji="🇧🇷"
+              onCardClick={handleCardClick}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDropToOwner(e, 'mor')}
+              canManage={canManage}
+            />
 
-          {/* ARC (China) Section */}
-          <TeamSection
-            title="ARC (China)"
-            subtitle="Cards waiting for China's action"
-            items={arcItems}
-            colorClass="border-emerald-300 bg-emerald-50/30"
-            flagEmoji="🇨🇳"
-            onCardClick={handleCardClick}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDropToOwner(e, 'arc')}
-            canManage={canManage}
-          />
+            {/* ARC (China) Section */}
+            <TeamSection
+              title="ARC (China)"
+              subtitle="Cards waiting for China's action"
+              items={arcItems}
+              colorClass="border-emerald-300 bg-emerald-50/30"
+              flagEmoji="🇨🇳"
+              onCardClick={handleCardClick}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDropToOwner(e, 'arc')}
+              canManage={canManage}
+            />
+          </div>
         </div>
-      </div>
+      ) : (
+        /* Sample Tracker View */
+        <SampleTrackerView onOpenCard={handleCardClick} />
+      )}
 
       {/* Create Modal */}
       <CreateCardModal
