@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Paperclip, X, Upload, FileText, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Paperclip, X, Upload, FileText, Image as ImageIcon, Loader2, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -41,6 +41,7 @@ export function TimelineUploadButton({
 }: TimelineUploadButtonProps) {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -95,9 +96,12 @@ export function TimelineUploadButton({
       console.error('Upload failed:', error);
     } finally {
       setIsUploading(false);
-      // Reset input
+      // Reset inputs
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
+      }
+      if (cameraInputRef.current) {
+        cameraInputRef.current.value = '';
       }
     }
   };
@@ -132,39 +136,77 @@ export function TimelineUploadButton({
         multiple
         disabled={disabled || isUploading}
       />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleFileChange}
+        className="hidden"
+        disabled={disabled || isUploading}
+      />
 
-      {variant === 'button' ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || isUploading}
-          className="gap-1"
-        >
-          {isUploading ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Upload className="h-3 w-3" />
-          )}
-          {isUploading ? 'Uploading...' : 'Upload'}
-        </Button>
-      ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || isUploading}
-        >
-          {isUploading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Paperclip className="h-4 w-4" />
-          )}
-        </Button>
-      )}
+      <div className="flex items-center gap-1">
+        {variant === 'button' ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled || isUploading}
+              className="gap-1"
+            >
+              {isUploading ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Upload className="h-3 w-3" />
+              )}
+              {isUploading ? 'Uploading...' : 'Upload'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={disabled || isUploading}
+              className="gap-1 md:hidden"
+            >
+              <Camera className="h-3 w-3" />
+              Camera
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled || isUploading}
+              title="Attach files"
+            >
+              {isUploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Paperclip className="h-4 w-4" />
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 md:hidden"
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={disabled || isUploading}
+              title="Take photo"
+            >
+              <Camera className="h-4 w-4" />
+            </Button>
+          </>
+        )}
+      </div>
 
       {/* Attachments Preview */}
       {attachments.length > 0 && (
