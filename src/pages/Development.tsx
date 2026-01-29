@@ -62,6 +62,7 @@ export interface DevelopmentItem {
   deleted_at: string | null;
   deleted_by: string | null;
   current_owner: DevelopmentCardOwner;
+  image_url: string | null;
   supplier?: { id: string; company_name: string } | null;
   assigned_profile?: { id: string; full_name: string | null; email: string | null } | null;
   samples_count?: number;
