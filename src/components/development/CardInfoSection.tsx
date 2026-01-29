@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
-import { Factory, Calendar, Layers } from 'lucide-react';
+import { Factory, Calendar, Layers, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -159,6 +159,25 @@ export function CardInfoSection({
             </span>
           )}
         </div>
+      )}
+
+      {/* Card Image - if available */}
+      {item.image_url && (
+        <a
+          href={item.image_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group block relative w-full max-w-xs rounded-lg overflow-hidden border hover:ring-2 hover:ring-primary transition-all"
+        >
+          <img
+            src={item.image_url}
+            alt={item.title}
+            className="w-full h-auto object-contain max-h-48"
+          />
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+            <ExternalLink className="h-5 w-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+        </a>
       )}
 
       {/* Desired Outcome - compact */}

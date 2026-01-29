@@ -24,10 +24,11 @@ interface CardFilesTabProps {
 }
 
 export function CardFilesTab({ cardId }: CardFilesTabProps) {
-  // Fetch all activities that have attachments
+  // Fetch all activities that have attachments + card's initial image
   const { data: files = [], isLoading } = useQuery({
     queryKey: ['card-files', cardId],
     queryFn: async () => {
+      // Fetch activities with attachments
       const { data: activities, error } = await supabase
         .from('development_card_activity')
         .select('*')
@@ -36,8 +37,18 @@ export function CardFilesTab({ cardId }: CardFilesTabProps) {
 
       if (error) throw error;
 
-      // Get user IDs for profile lookup
-      const userIds = [...new Set(activities.map(a => a.user_id))];
+      // Also fetch the card's main image
+      const { data: card } = await supabase
+        .from('development_items')
+        .select('image_url, created_at, created_by')
+        .eq('id', cardId)
+        .single();
+
+      // Get user IDs for profile lookup (include card creator)
+      const userIds = [...new Set([
+        ...activities.map(a => a.user_id),
+        ...(card?.created_by ? [card.created_by] : [])
+      ])];
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, full_name, email')
@@ -50,6 +61,24 @@ export function CardFilesTab({ cardId }: CardFilesTabProps) {
 
       // Extract files from activity metadata
       const allFiles: FileItem[] = [];
+
+      // Add the card's initial image if it exists
+      if (card?.image_url) {
+        const creatorProfile = card.created_by ? profileMap[card.created_by] : null;
+        allFiles.push({
+          id: `card-image-${cardId}`,
+          name: 'Initial card image',
+          url: card.image_url,
+          type: 'image',
+          uploadedAt: card.created_at,
+          uploadedBy: {
+            name: creatorProfile?.full_name || null,
+            email: creatorProfile?.email || null,
+          },
+          activityType: 'created',
+          activityContent: 'Card created with image',
+        });
+      }
       
       for (const activity of activities) {
         const metadata = activity.metadata as Record<string, any> | null;
