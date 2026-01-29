@@ -1,247 +1,186 @@
 
-## Redesign: Optimize Card Details Drawer for Timeline Focus
 
-### Current Issues (From Screenshot Analysis)
+## New Feature: Sample Tracker Dashboard
 
-| Problem | Impact |
-|---------|--------|
-| "Card Details" header takes vertical space | Wastes ~50px |
-| Card info section (title, badges, description) is separated from actions | Creates visual disconnect |
-| Tab bar (Timeline/Files) adds another navigation layer | Extra 48px of chrome |
-| Actions panel at bottom has 3 separate accordions | Cluttered, takes focus away |
-| Description box uses full paragraph styling | Could be more compact |
+### Overview
 
-### Redesign Goals
+Create a dedicated "Samples" view within the Development page that aggregates all samples from all cards into a visual, filterable dashboard. This gives you a bird's-eye view of all sample activities across development cards.
 
-1. **Maximize timeline visibility** - Timeline should dominate the view
-2. **Reduce header to essential info only** - Title + status inline
-3. **Collapse secondary info** - Image, description, metadata in expandable area
-4. **Streamline actions** - Single quick-action bar instead of 3 accordions
-5. **Remove redundant UI elements** - Merge tabs into timeline context
-
-### Proposed Layout
+### Sample Status Workflow
 
 ```text
-┌────────────────────────────────────────────────┐
-│ ✕  Caneta             [Pending ▾]  [🗑️]        │  ← Minimal header: title + status + delete
-│ [Item][Final Product][medium] 📅 29/01  🖼️     │  ← Badges + metadata inline (collapsible)
-├────────────────────────────────────────────────┤
-│ ▸ Show details                                 │  ← Collapsible: description + image
-├────────────────────────────────────────────────┤
-│                                                │
-│  ┌──────────────────────────────────────────┐  │
-│  │ 📎 Timeline / Files                   [+]│  │  ← Single header with add button
-│  ├──────────────────────────────────────────┤  │
-│  │                                          │  │
-│  │  TODAY                                   │  │
-│  │  ○ Vitória created this card • 14:53    │  │
-│  │                                          │  │
-│  │  (timeline takes 70%+ of drawer height) │  │
-│  │                                          │  │
-│  └──────────────────────────────────────────┘  │
-│                                                │
-├────────────────────────────────────────────────┤
-│ [💬 Comment] [❓ Question] [$$ Commercial] [📦]│  ← Icon-only quick action bar
-└────────────────────────────────────────────────┘
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  Requested  │ -> │  In Transit │ -> │  Delivered  │ -> │  Reviewed   │
+│  (pending)  │    │             │    │             │    │ (approved/  │
+│             │    │             │    │             │    │  rejected)  │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+     ⚠️                 🚚                📦                ✅ / ❌
+ Missing ETD?       Has tracking?     Arrived?          Has report?
 ```
 
-### Technical Changes
+### Proposed UI Layout
 
-#### 1. Compact Header (ItemDetailDrawer.tsx)
+Add a view toggle to the Development header:
 
-Remove the separate "Card Details" title, merge title into header row:
+```text
+┌────────────────────────────────────────────────────────────────────┐
+│  Development Cards                                                  │
+│  Track items, samples, and tasks                                   │
+│                                                                    │
+│  [🗂️ Cards]  [📦 Samples]              [Export] [+ New Card]      │
+│                                                                    │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │ Search...  [Status ▾]  [Courier ▾]  [Has Report ▾]           │ │
+│  └──────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────────┘
 
-```tsx
-<SheetHeader className="flex-shrink-0 px-4 py-3 border-b">
-  <div className="flex items-center justify-between gap-2">
-    {/* Title + Status inline */}
-    <div className="flex items-center gap-2 min-w-0 flex-1">
-      <h2 className="font-semibold text-sm truncate">{item.title}</h2>
-      <StatusSelect value={status} onChange={...} />
-    </div>
-    {/* Actions */}
-    <div className="flex items-center gap-1">
-      <Button variant="ghost" size="icon" className="h-7 w-7">
-        <Trash2 className="h-4 w-4" />
-      </Button>
-    </div>
-  </div>
-</SheetHeader>
+┌────────────────────────────────────────────────────────────────────┐
+│                        SAMPLE TRACKER                              │
+├─────────────────┬─────────────────┬─────────────────┬─────────────┤
+│  ⚠️ REQUESTED   │  🚚 IN TRANSIT  │  📦 DELIVERED   │  ✅ REVIEWED │
+│     (2)         │      (1)        │      (1)        │     (3)     │
+├─────────────────┼─────────────────┼─────────────────┼─────────────┤
+│                 │                 │                 │             │
+│  ┌───────────┐  │  ┌───────────┐  │  ┌───────────┐  │  ┌────────┐ │
+│  │ Caneta    │  │  │ PE Strap  │  │  │ Master    │  │  │ Item X │ │
+│  │ 2 pcs     │  │  │ FedEx     │  │  │ Arrived   │  │  │ ✓ Appr │ │
+│  │ No ETA ⚠️ │  │  │ ETA: 5/02 │  │  │ 28/01     │  │  │ Report │ │
+│  │ [Open]    │  │  │ [Track]   │  │  │ [Review]  │  │  │ [View] │ │
+│  └───────────┘  │  └───────────┘  │  └───────────┘  │  └────────┘ │
+│                 │                 │                 │             │
+│  ┌───────────┐  │                 │                 │  ┌────────┐ │
+│  │ New Item  │  │                 │                 │  │ Item Y │ │
+│  │ 1 pc      │  │                 │                 │  │ ✗ Rejc │ │
+│  │ ETA: 10/02│  │                 │                 │  │        │ │
+│  └───────────┘  │                 │                 │  └────────┘ │
+│                 │                 │                 │             │
+└─────────────────┴─────────────────┴─────────────────┴─────────────┘
 ```
 
-**Savings: ~40px vertical space**
+### Sample Card Information
 
-#### 2. Collapsible Details Section (CardInfoSection.tsx)
+Each sample card in the tracker will show:
 
-Make metadata + description collapsible (collapsed by default):
+| Status | Key Info Displayed | Actions |
+|--------|-------------------|---------|
+| **Requested** (pending, no tracking) | Card title, qty, request date, ETA if provided | Open card, Add tracking |
+| **In Transit** | Card title, courier, tracking#, ETA, shipped date | Track shipment, Open card |
+| **Delivered** (awaiting review) | Card title, arrival date, days waiting for review | Review sample, Open card |
+| **Reviewed** (approved/rejected) | Card title, decision, has report badge, decision date | View report, Open card |
+
+### Visual Indicators
+
+- **⚠️ Warning badge**: Requested samples with no shipping ETA
+- **🔴 Overdue indicator**: Samples past their ETA but not delivered
+- **📄 Report badge**: Shows if a lab/test report was uploaded
+- **Days counter**: "Waiting 3 days" for delivered samples pending review
+
+### Technical Implementation
+
+#### 1. New Component: SampleTrackerView
+
+Create `src/components/development/SampleTrackerView.tsx`:
 
 ```tsx
-<Collapsible defaultOpen={false}>
-  {/* Always visible: Badges + quick metadata */}
-  <div className="flex items-center justify-between py-2 px-4 bg-muted/30">
-    <div className="flex items-center gap-1.5 flex-wrap">
-      <Badge variant="outline" className="text-[9px] h-4">Item</Badge>
-      <Badge variant="secondary" className="text-[9px] h-4">Final Product</Badge>
-      <Badge className="text-[9px] h-4 bg-yellow-500">medium</Badge>
-      {item.due_date && (
-        <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-          <Calendar className="h-2.5 w-2.5" />
-          {format(new Date(item.due_date), 'dd/MM')}
-        </span>
-      )}
-      {item.image_url && (
-        <a href={item.image_url} target="_blank" className="w-5 h-5 rounded overflow-hidden">
-          <img src={item.image_url} className="w-full h-full object-cover" />
-        </a>
-      )}
-    </div>
-    <CollapsibleTrigger asChild>
-      <Button variant="ghost" size="sm" className="h-6 text-[10px]">
-        Details <ChevronDown className="h-3 w-3 ml-1" />
-      </Button>
-    </CollapsibleTrigger>
-  </div>
-  
-  <CollapsibleContent>
-    {/* Description, supplier, larger image, etc */}
-    <div className="px-4 py-2 space-y-2 border-t bg-muted/20">
-      {item.description && (
-        <p className="text-xs text-muted-foreground">{item.description}</p>
-      )}
-      {/* ... other details ... */}
-    </div>
-  </CollapsibleContent>
-</Collapsible>
+// Fetches all samples with card info
+const { data: samples } = useQuery({
+  queryKey: ['all-samples'],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from('development_item_samples')
+      .select(`
+        *,
+        card:development_items!item_id (
+          id, title, current_owner, is_solved, deleted_at, image_url
+        )
+      `)
+      .is('card.deleted_at', null)
+      .order('created_at', { ascending: false });
+    return data;
+  }
+});
+
+// Group by status category
+const grouped = {
+  requested: samples.filter(s => s.status === 'pending' && !s.tracking_number),
+  inTransit: samples.filter(s => s.status === 'in_transit'),
+  delivered: samples.filter(s => s.status === 'delivered' && !s.decision),
+  reviewed: samples.filter(s => !!s.decision)
+};
 ```
 
-**Savings: ~60-100px when collapsed**
+#### 2. New Component: SampleTrackerCard
 
-#### 3. Remove Tab Chrome, Integrate Files into Timeline
-
-Instead of separate tabs, add a filter/toggle in the timeline header:
+A compact card component showing sample info with quick actions:
 
 ```tsx
-{/* Timeline header with integrated files toggle */}
-<div className="flex items-center justify-between py-2 px-4 border-b">
-  <div className="flex items-center gap-2">
-    <span className="text-xs font-medium text-muted-foreground">Activity</span>
-    <Button 
-      variant={showFilesOnly ? "secondary" : "ghost"} 
-      size="sm" 
-      className="h-5 text-[10px]"
-      onClick={() => setShowFilesOnly(!showFilesOnly)}
-    >
-      <FolderOpen className="h-3 w-3 mr-1" />
-      Files ({fileCount})
-    </Button>
-  </div>
-</div>
+interface SampleTrackerCardProps {
+  sample: SampleWithCard;
+  onOpenCard: (cardId: string) => void;
+}
+
+// Renders: card title, sample info, status-specific badges, action buttons
 ```
 
-**Savings: ~48px (no more TabsList)**
+#### 3. Modify Development.tsx
 
-#### 4. Quick Action Bar (ActionsPanel.tsx)
-
-Replace 3 accordions with a horizontal icon bar that expands inline:
+Add a view toggle state and conditionally render either the team sections or the sample tracker:
 
 ```tsx
-<div className="flex items-center gap-1 p-2 border-t bg-background">
+const [viewMode, setViewMode] = useState<'cards' | 'samples'>('cards');
+
+// In header:
+<div className="flex gap-1 p-1 bg-muted rounded-lg">
   <Button 
-    variant={activeAction === 'comment' ? 'secondary' : 'ghost'} 
+    variant={viewMode === 'cards' ? 'secondary' : 'ghost'}
     size="sm" 
-    className="h-8 flex-1"
-    onClick={() => setActiveAction('comment')}
+    onClick={() => setViewMode('cards')}
   >
-    <MessageCircle className="h-4 w-4" />
-    <span className="sr-only sm:not-sr-only sm:ml-1 text-xs">Comment</span>
+    <LayoutGrid className="h-4 w-4 mr-1" />
+    Cards
   </Button>
   <Button 
-    variant={activeAction === 'question' ? 'secondary' : 'ghost'} 
-    size="sm" 
-    className="h-8 flex-1"
-    onClick={() => setActiveAction('question')}
+    variant={viewMode === 'samples' ? 'secondary' : 'ghost'}
+    size="sm"
+    onClick={() => setViewMode('samples')}
   >
-    <HelpCircle className="h-4 w-4" />
-  </Button>
-  <Button 
-    variant={activeAction === 'commercial' ? 'secondary' : 'ghost'} 
-    size="sm" 
-    className="h-8 flex-1 relative"
-    onClick={() => setActiveAction('commercial')}
-  >
-    <DollarSign className="h-4 w-4" />
-    {isCommercialPending && (
-      <span className="absolute -top-1 -right-1 w-2 h-2 bg-orange-500 rounded-full" />
-    )}
-  </Button>
-  <Button 
-    variant={activeAction === 'sample' ? 'secondary' : 'ghost'} 
-    size="sm" 
-    className="h-8 flex-1"
-    onClick={() => setActiveAction('sample')}
-  >
-    <Package className="h-4 w-4" />
+    <Package className="h-4 w-4 mr-1" />
+    Samples
   </Button>
 </div>
 
-{/* Expanded action panel - only shows when one is selected */}
-{activeAction && (
-  <div className="p-3 border-t bg-muted/20">
-    {activeAction === 'comment' && <CommentForm ... />}
-    {activeAction === 'question' && <QuestionForm ... />}
-    {activeAction === 'commercial' && <CommercialForm ... />}
-    {activeAction === 'sample' && <SampleForm ... />}
-  </div>
+// In main content:
+{viewMode === 'cards' ? (
+  <TeamSections ... />
+) : (
+  <SampleTrackerView onOpenCard={handleCardClick} />
 )}
 ```
 
-**Result: Cleaner bottom bar, actions expand only when needed**
+### Filter Options for Sample View
 
-### Files to Modify
+| Filter | Options |
+|--------|---------|
+| **Status** | All, Requested, In Transit, Delivered, Reviewed |
+| **Courier** | All, DHL, FedEx, TNT, UPS, SF Express, Other |
+| **Decision** | All, Approved, Rejected, Pending |
+| **Has Report** | All, Yes, No |
+| **Overdue** | All, Yes (past ETA) |
 
-| File | Changes |
-|------|---------|
-| `src/components/development/ItemDetailDrawer.tsx` | Remove "Card Details" title, merge header with CardInfoSection, remove Tabs wrapper |
-| `src/components/development/CardInfoSection.tsx` | Add Collapsible wrapper, make badges smaller, move description inside collapsible |
-| `src/components/development/ActionsPanel.tsx` | Replace Accordion with horizontal button bar + expandable panels |
-| `src/components/development/HistoryTimeline.tsx` | Add optional "files only" filter mode |
+### Files to Create/Modify
 
-### Visual Comparison
+| File | Action |
+|------|--------|
+| `src/components/development/SampleTrackerView.tsx` | **Create** - Main tracker component with Kanban columns |
+| `src/components/development/SampleTrackerCard.tsx` | **Create** - Individual sample card with quick actions |
+| `src/pages/Development.tsx` | **Modify** - Add view toggle and render SampleTrackerView |
 
-**Before (Current)**:
-```text
-Height breakdown:
-- Sheet header "Card Details"      = 56px
-- CardInfoSection (with desc)     = 120px  
-- Tab bar                         = 48px
-- Timeline content                = remaining
-- Actions panel (3 accordions)    = 120-180px collapsed
-─────────────────────────────────────────────
-Total chrome/navigation           = ~350px
-```
+### Features Summary
 
-**After (Redesigned)**:
-```text
-Height breakdown:
-- Compact header (title+status)   = 44px
-- Badges row (collapsed details)  = 32px
-- Timeline header                 = 28px
-- Timeline content                = remaining
-- Quick action bar                = 40px
-- Expanded action (when open)     = 80-120px
-─────────────────────────────────────────────
-Total chrome/navigation           = ~144px (collapsed)
-```
+1. **Kanban-style columns** grouping samples by lifecycle stage
+2. **Visual warnings** for samples missing ETAs or overdue
+3. **Quick actions** per card (Track, Review, Open Card, View Report)
+4. **Click to open** the parent development card drawer
+5. **Real-time updates** via existing Supabase subscriptions
+6. **Filter by** status, courier, decision, report presence
 
-**Net gain: ~200px more space for timeline content!**
-
-### Summary
-
-This redesign transforms the card detail drawer from a form-heavy view to a conversation-centric timeline view by:
-
-1. **Removing redundant headers** - Title goes in the sheet header
-2. **Collapsing secondary info** - Details available on demand
-3. **Eliminating tab navigation** - Files integrated into timeline
-4. **Streamlining actions** - Icon bar replaces accordions
-
-The result gives the timeline 70%+ of the drawer height instead of the current ~50%.
