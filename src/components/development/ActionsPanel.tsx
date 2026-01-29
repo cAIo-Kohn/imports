@@ -253,6 +253,9 @@ export function ActionsPanel({
         .eq('id', cardId);
       if (error) throw error;
 
+      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
+
+      // Log commercial_update activity with embedded move info
       await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
@@ -263,10 +266,12 @@ export function ActionsPanel({
           moq: moqValue,
           qty_per_container: qtyValue,
           container_type: localContainerType,
+          moved_from: currentOwner,
+          moved_to: targetOwner,
         },
       });
 
-      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
+      // Move card to other team
       const { error: moveError } = await (supabase.from('development_items') as any)
         .update({ 
           current_owner: targetOwner,
@@ -275,13 +280,7 @@ export function ActionsPanel({
         .eq('id', cardId);
       if (moveError) throw moveError;
 
-      await supabase.from('development_card_activity').insert({
-        card_id: cardId,
-        user_id: user.id,
-        activity_type: 'ownership_change',
-        content: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}`,
-        metadata: { new_owner: targetOwner, trigger: 'commercial' },
-      });
+      // NO separate ownership_change entry - move is embedded in commercial_update activity
 
       return targetOwner;
     },

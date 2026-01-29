@@ -77,25 +77,32 @@ export function CommercialDataSection({
     mutationFn: async () => {
       if (!user?.id) return;
       
+      const targetOwner = 'mor';
+      
       const { error } = await (supabase.from('development_items') as any)
         .update({ 
-          current_owner: 'mor',
+          current_owner: targetOwner,
           is_new_for_other_team: true,
         })
         .eq('id', cardId);
       if (error) throw error;
 
-      // Log the movement
+      // Log commercial update activity with embedded move info (NO separate ownership_change)
       await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
-        activity_type: 'ownership_change',
-        content: 'Card moved to MOR (Brazil)',
-        metadata: { new_owner: 'mor', trigger: 'commercial_data' },
+        activity_type: 'commercial_update',
+        content: 'Commercial data updated',
+        metadata: { 
+          trigger: 'commercial_data',
+          moved_from: currentOwner,
+          moved_to: targetOwner,
+        },
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
       onOwnerChange?.('mor');
       toast({ title: 'Card moved to MOR (Brazil)' });
     },
