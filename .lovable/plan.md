@@ -1,99 +1,124 @@
 
+## Plan: Fix Snoozed Indicator to Show Clock Icon Instead of Yellow Dot
 
-## Plan: Fix Yellow Unseen Activity Dot Being Hidden by Pending Action Indicator
+### Problem Summary
 
-### Problem Identified
+Currently when a card has a pending action that is **snoozed**, the `PendingActionIndicator` shows a **static yellow dot** (line 146 in `PendingActionBadge.tsx`). This is visually identical to the "unseen activity" pulsing amber dot, causing confusion.
 
-In `DevelopmentCard.tsx`, the yellow "unseen activity" dot and the pending action indicator use **mutually exclusive** conditional rendering:
-
-```tsx
-{item.pending_action_type ? (
-  <PendingActionIndicator ... />
-) : hasUnseenActivity && (
-  <div>yellow dot</div>
-)}
-```
-
-When a card has any `pending_action_type` (including snoozed cards), the yellow dot is never shown - even if there IS unseen activity.
-
-### Expected Behavior
-
-| Scenario | Yellow Dot (Unseen) | Pending Action Indicator |
-|----------|---------------------|--------------------------|
-| No pending action, no unseen activity | Hidden | Hidden |
-| No pending action, HAS unseen activity | **Shown (pulsing amber)** | Hidden |
-| Has pending action, no unseen activity | Hidden | Shown (red/amber) |
-| Has pending action, HAS unseen activity | **Shown (pulsing amber)** | Shown (red/amber) |
-
-The yellow dot should ALWAYS appear when `hasUnseenActivity` is true, regardless of pending action state. It clears when the card is opened.
+Additionally, the unseen activity logic works correctly - opening the card updates `last_viewed_at`, which should clear the yellow dot. But since both indicators look the same (amber/yellow circles), users can't tell them apart.
 
 ### Solution
 
-Show **both** indicators when appropriate by repositioning them:
-- Pending action indicator: top-right corner (existing position)
-- Unseen activity dot: position NEXT TO the pending action indicator (or in a secondary position)
+Per user preference, change the snoozed indicator from a solid yellow dot to a **Clock icon** with muted styling. This provides clear visual distinction:
+
+- **Unseen activity**: Pulsing amber dot (clears when opened)
+- **Urgent pending action**: Blinking red dot  
+- **Snoozed pending action**: Static gray Clock icon (not a dot at all)
 
 ### Technical Implementation
 
-**File: `src/components/development/DevelopmentCard.tsx`**
+**File: `src/components/development/PendingActionBadge.tsx`**
 
-Change the indicator rendering from mutually exclusive to independent:
+Update the `PendingActionIndicator` component to:
+1. Add a new `isSnoozed` check  
+2. Return a Clock icon when snoozed instead of a yellow dot
+3. Keep the red blinking dot for urgent (overdue) actions
+4. Show nothing in between (or the Clock for waiting states)
 
-```tsx
-// BEFORE (lines 118-134):
-{item.pending_action_type ? (
-  <div className="absolute top-2 right-2">
-    <PendingActionIndicator ... />
-  </div>
-) : hasUnseenActivity && (
-  <div className="absolute top-2 right-2">
-    <span className="relative flex h-3 w-3">
-      <span className="animate-ping ..." />
-      <span className="relative inline-flex ..." />
-    </span>
-  </div>
-)}
+```text
+Current logic (lines 105-150):
+  - If pending action exists AND is urgent → red blinking dot
+  - If pending action exists AND not urgent → static yellow dot
+
+New logic:
+  - If pending action exists AND is snoozed → Clock icon (muted gray)
+  - If pending action exists AND is urgent → red blinking dot  
+  - If pending action exists AND not urgent (waiting but not snoozed) → static amber dot
 ```
 
+### Code Changes
+
 ```tsx
-// AFTER - Both indicators can show independently:
-<div className="absolute top-2 right-2 flex items-center gap-1">
-  {/* Unseen activity indicator - always shown when there's unseen activity */}
-  {hasUnseenActivity && (
-    <span className="relative flex h-3 w-3">
-      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-      <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
+// In PendingActionIndicator component
+export function PendingActionIndicator({
+  pendingActionType,
+  pendingActionDueAt,
+  snoozedUntil,
+  className,
+}: PendingActionIndicatorProps) {
+  const { isUrgent, isSnoozed } = useMemo(() => {
+    if (!pendingActionType) return { isUrgent: false, isSnoozed: false };
+    
+    const now = new Date();
+    
+    // Check if snoozed (snooze date is in the future)
+    if (snoozedUntil) {
+      const snoozeDate = parseISO(snoozedUntil);
+      if (isAfter(snoozeDate, now)) {
+        return { isUrgent: false, isSnoozed: true };
+      }
+    }
+    
+    // Check if has due date that hasn't passed
+    if (pendingActionDueAt) {
+      const dueDate = parseISO(pendingActionDueAt);
+      if (isAfter(dueDate, now)) {
+        return { isUrgent: false, isSnoozed: false };
+      }
+    }
+    
+    // Urgent if no snooze/due or they've passed
+    return { isUrgent: true, isSnoozed: false };
+  }, [pendingActionType, pendingActionDueAt, snoozedUntil]);
+
+  if (!pendingActionType) return null;
+
+  // Snoozed: show Clock icon
+  if (isSnoozed) {
+    return (
+      <span className={cn("flex items-center justify-center h-4 w-4 text-muted-foreground", className)}>
+        <Clock className="h-3 w-3" />
+      </span>
+    );
+  }
+
+  // Urgent: red blinking dot
+  if (isUrgent) {
+    return (
+      <span className={cn("relative flex h-3 w-3", className)}>
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
+      </span>
+    );
+  }
+
+  // Waiting (not snoozed, not urgent): static amber dot
+  return (
+    <span className={cn("relative flex h-3 w-3", className)}>
+      <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-400" />
     </span>
-  )}
-  {/* Pending action indicator - shown independently */}
-  {item.pending_action_type && (
-    <PendingActionIndicator
-      pendingActionType={item.pending_action_type}
-      pendingActionDueAt={item.pending_action_due_at || null}
-      snoozedUntil={item.pending_action_snoozed_until || null}
-    />
-  )}
-</div>
+  );
+}
 ```
 
-### Visual Result
+### Visual States Summary
 
-When both indicators are present, they appear side by side:
-- Amber pulsing dot (unseen activity) + Red blinking dot (urgent pending action)
-- Amber pulsing dot (unseen activity) + Static amber dot (snoozed/waiting)
-
-Once the user opens the card, the amber unseen dot disappears, but the pending action indicator remains based on its own state.
+| State | Indicator |
+|-------|-----------|
+| Unseen activity (new comments/changes) | Pulsing amber dot (clears on open) |
+| Pending action - Snoozed | Clock icon (muted gray) |
+| Pending action - Urgent/Overdue | Blinking red dot |
+| Pending action - Waiting (not snoozed) | Static amber dot |
 
 ### Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/development/DevelopmentCard.tsx` | Change from mutually exclusive to independent indicator rendering |
+| `src/components/development/PendingActionBadge.tsx` | Update `PendingActionIndicator` to show Clock icon when snoozed |
 
 ### Summary
 
-This fix separates the "unseen activity" indicator from the "pending action" indicator, allowing both to be shown when appropriate. The yellow dot will now:
-1. Always appear when there's unseen activity (regardless of pending action state)
-2. Always disappear when the card is opened
-3. Not interfere with the pending action indicator (red blinking or static amber)
-
+This change ensures clear visual distinction between:
+1. **Unseen activity** (pulsing amber dot) - independent indicator that clears when you open the card
+2. **Snoozed action** (Clock icon) - shows the action is paused until a date
+3. **Urgent action** (blinking red dot) - needs immediate attention
