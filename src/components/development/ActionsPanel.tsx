@@ -35,6 +35,7 @@ interface ActionsPanelProps {
   onOwnerChange?: (newOwner: 'mor' | 'arc') => void;
   forcedOpenSection?: string | null;
   forcedMessageType?: 'comment' | 'question' | null;
+  targetSampleId?: string | null;
   onForcedSectionHandled?: () => void;
 }
 
@@ -58,6 +59,7 @@ export function ActionsPanel({
   onOwnerChange,
   forcedOpenSection,
   forcedMessageType,
+  targetSampleId,
   onForcedSectionHandled,
 }: ActionsPanelProps) {
   const { user } = useAuth();
@@ -122,6 +124,20 @@ export function ActionsPanel({
       onForcedSectionHandled?.();
     }
   }, [forcedOpenSection, forcedMessageType, onForcedSectionHandled]);
+
+  // Scroll to and highlight target sample when samples section opens
+  useEffect(() => {
+    if (targetSampleId && activeAction === 'samples') {
+      setTimeout(() => {
+        const element = document.getElementById(`sample-${targetSampleId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-2', 'ring-primary');
+          setTimeout(() => element.classList.remove('ring-2', 'ring-primary'), 2000);
+        }
+      }, 150);
+    }
+  }, [targetSampleId, activeAction]);
 
   // Fetch samples
   const { data: samples = [] } = useQuery({

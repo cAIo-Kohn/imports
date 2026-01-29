@@ -57,6 +57,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   // State for forcing ActionsPanel sections open from timeline hints
   const [forcedOpenSection, setForcedOpenSection] = useState<string | null>(null);
   const [forcedMessageType, setForcedMessageType] = useState<'comment' | 'question' | null>(null);
+  const [targetSampleId, setTargetSampleId] = useState<string | null>(null);
 
   const canManage = canManageOrders || isTrader;
   const canDelete = canManage;
@@ -379,7 +380,10 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               qtyPerContainer={itemWithNewFields.qty_per_container}
               containerType={itemWithNewFields.container_type}
               onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
-              onOpenSampleSection={() => setForcedOpenSection('samples')}
+              onOpenSampleSection={(sampleId) => {
+                setForcedOpenSection('samples');
+                if (sampleId) setTargetSampleId(sampleId);
+              }}
               onOpenMessageSection={(type) => {
                 setForcedMessageType(type);
                 setForcedOpenSection('messaging');
@@ -404,9 +408,11 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
             canEdit={canManage}
             forcedOpenSection={forcedOpenSection}
             forcedMessageType={forcedMessageType}
+            targetSampleId={targetSampleId}
             onForcedSectionHandled={() => {
               setForcedOpenSection(null);
               setForcedMessageType(null);
+              setTargetSampleId(null);
             }}
             onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
           />

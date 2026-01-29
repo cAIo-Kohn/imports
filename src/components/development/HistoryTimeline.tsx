@@ -3,7 +3,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
-import { format, isToday, isYesterday, parseISO } from 'date-fns';
+import { format, isToday, isYesterday, parseISO, formatDistanceToNow } from 'date-fns';
 import { 
   MessageCircle, 
   HelpCircle, 
@@ -33,6 +33,7 @@ import { InlineReplyBox } from './InlineReplyBox';
 import { InlineSampleShipForm } from './InlineSampleShipForm';
 import { TimelineUploadButton, AttachmentDisplay, UploadedAttachment } from './TimelineUploadButton';
 import { SnoozeButton } from './SnoozeButton';
+import { CommercialDataBanner, SampleInTransitBanner, SampleDeliveredBanner, Sample } from './TimelineBanners';
 
 interface Activity {
   id: string;
@@ -61,13 +62,13 @@ interface HistoryTimelineProps {
   pendingActionType?: string | null;
   pendingActionDueAt?: string | null;
   snoozedUntil?: string | null;
-  // Commercial data for "What's next?" prompts
+  // Commercial data for banners
   fobPriceUsd?: number | null;
   moq?: number | null;
   qtyPerContainer?: number | null;
   containerType?: string | null;
   onOwnerChange?: () => void;
-  onOpenSampleSection?: () => void;
+  onOpenSampleSection?: (sampleId?: string) => void;
   onOpenMessageSection?: (type: 'comment' | 'question') => void;
   onOpenUploadSection?: () => void;
   onOpenCommercialSection?: () => void;
@@ -683,30 +684,8 @@ function SampleApprovedBanner({
   );
 }
 
-// Next Step Prompt Component
-interface NextStepPromptProps {
-  cardId: string;
-  cardType: 'item' | 'item_group' | 'task';
-  triggerType?: 'commercial' | 'ownership';
-  currentOwner: 'mor' | 'arc';
-  onRequestSample: () => void;
-  onAskQuestion: () => void;
-  onAddComment: () => void;
-  onUpload: () => void;
-  onOwnerChange?: () => void;
-}
-
-function NextStepPrompt({ 
-  cardId,
-  cardType,
-  triggerType,
-  currentOwner,
-  onRequestSample, 
-  onAskQuestion, 
-  onAddComment,
-  onUpload,
-  onOwnerChange,
-}: NextStepPromptProps) {
+// Request Sample Handler - extracted for reuse
+function useRequestSample(cardId: string, onOwnerChange?: () => void) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [isRequesting, setIsRequesting] = useState(false);
@@ -762,60 +741,7 @@ function NextStepPrompt({
     }
   };
 
-  return (
-    <div className="rounded-lg p-4 mb-4 border-2 bg-sky-50 border-sky-300 dark:bg-sky-950/30 dark:border-sky-700">
-      <div className="flex items-center gap-2 mb-3">
-        <Lightbulb className="h-5 w-5 text-sky-600 dark:text-sky-400" />
-        <span className="font-medium text-sm text-sky-800 dark:text-sky-200">What's next?</span>
-      </div>
-      <p className="text-sm text-sky-700 dark:text-sky-300 mb-3">
-        {triggerType === 'commercial' 
-          ? "Commercial data has been set. What would you like to do?"
-          : "The card is now with you. What's your next step?"}
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {cardType !== 'task' && (
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleRequestSample}
-            disabled={isRequesting}
-            className="bg-white hover:bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-950 dark:hover:bg-sky-900 dark:border-sky-600 dark:text-sky-200"
-          >
-            <Package className="h-3 w-3 mr-1" />
-            {isRequesting ? 'Requesting...' : 'Request Sample'}
-          </Button>
-        )}
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onAskQuestion}
-          className="bg-white hover:bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-950 dark:hover:bg-sky-900 dark:border-sky-600 dark:text-sky-200"
-        >
-          <HelpCircle className="h-3 w-3 mr-1" />
-          Ask a Question
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onAddComment}
-          className="bg-white hover:bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-950 dark:hover:bg-sky-900 dark:border-sky-600 dark:text-sky-200"
-        >
-          <MessageCircle className="h-3 w-3 mr-1" />
-          Add Comment
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onUpload}
-          className="bg-white hover:bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-950 dark:hover:bg-sky-900 dark:border-sky-600 dark:text-sky-200"
-        >
-          <Upload className="h-3 w-3 mr-1" />
-          Upload
-        </Button>
-      </div>
-    </div>
-  );
+  return { handleRequestSample, isRequesting };
 }
 
 // Post-Acknowledgement Prompt - shows after acknowledging an answer to guide next steps
@@ -1115,6 +1041,9 @@ export function HistoryTimeline({
     },
   });
 
+  // Use request sample hook
+  const { handleRequestSample, isRequesting: isRequestingSample } = useRequestSample(cardId, onOwnerChange);
+
   const { data: activities = [], isLoading } = useQuery({
     queryKey: ['development-card-activity', cardId],
     staleTime: 30 * 1000, // Data is fresh for 30 seconds
@@ -1144,6 +1073,22 @@ export function HistoryTimeline({
         ...activity,
         profile: profileMap[activity.user_id] || null,
       })) as Activity[];
+    },
+  });
+
+  // Fetch samples for banner display
+  const { data: samples = [] } = useQuery({
+    queryKey: ['development-item-samples-timeline', cardId],
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('development_item_samples')
+        .select('*')
+        .eq('item_id', cardId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []) as Sample[];
     },
   });
 
@@ -1318,18 +1263,46 @@ export function HistoryTimeline({
     !showSampleRequestedBanner &&
     cardCreatedBy;
 
-  // Show next step prompt when commercial data was recently set and no unresolved questions
-  // But NOT if sample has been approved (that takes precedence) or answer is pending
-  const showNextStepPrompt = 
-    showAttentionBanner && 
+  // Find in-transit sample for banner
+  const inTransitSample = samples.find(s => s.status === 'in_transit');
+  
+  // Find delivered sample awaiting review (no decision yet)
+  const deliveredSampleAwaitingReview = samples.find(s => 
+    s.status === 'delivered' && !s.decision
+  );
+
+  // Show commercial data banner when commercial data is set, no blocking actions
+  const showCommercialDataBanner = 
+    showAttentionBanner &&
     !firstUnresolvedQuestion &&
     !firstUnacknowledgedAnswer &&
     !showSampleRequestedBanner &&
     !showSampleApprovedBanner &&
-    (mostRecentCommercialUpdate || commercialTriggeredMove);
-  
-  // Determine trigger type for prompt messaging
-  const promptTriggerType = mostRecentCommercialUpdate ? 'commercial' : 'ownership';
+    !inTransitSample &&
+    !deliveredSampleAwaitingReview &&
+    fobPriceUsd && moq && qtyPerContainer && containerType;
+
+  // Show sample in transit banner
+  const showSampleInTransitBanner = 
+    showAttentionBanner &&
+    !firstUnresolvedQuestion &&
+    !firstUnacknowledgedAnswer &&
+    !showSampleRequestedBanner &&
+    !deliveredSampleAwaitingReview &&
+    inTransitSample;
+
+  // Show sample delivered banner
+  const showSampleDeliveredBanner = 
+    showAttentionBanner &&
+    !firstUnresolvedQuestion &&
+    !firstUnacknowledgedAnswer &&
+    !showSampleRequestedBanner &&
+    deliveredSampleAwaitingReview;
+
+  // Get commercial update timestamp for display
+  const commercialUpdatedAt = mostRecentCommercialUpdate 
+    ? formatDistanceToNow(parseISO(mostRecentCommercialUpdate.created_at), { addSuffix: true })
+    : undefined;
 
   return (
     <div className="space-y-6 py-4">
@@ -1355,23 +1328,47 @@ export function HistoryTimeline({
           currentOwner={currentOwner}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['development-items'] });
+            queryClient.invalidateQueries({ queryKey: ['development-item-samples-timeline', cardId] });
             onOwnerChange?.();
           }}
         />
       )}
-      
-      {/* Next Step Prompt - when commercial data was set and no unresolved questions */}
-      {showNextStepPrompt && onOpenMessageSection && (
-        <NextStepPrompt
+
+      {/* Sample Delivered Banner - awaiting review */}
+      {showSampleDeliveredBanner && deliveredSampleAwaitingReview && onOpenMessageSection && (
+        <SampleDeliveredBanner
+          sample={deliveredSampleAwaitingReview}
           cardId={cardId}
-          cardType={cardType}
-          currentOwner={currentOwner}
-          triggerType={promptTriggerType}
-          onRequestSample={() => onOpenSampleSection?.()}
+          onReviewSample={(sampleId) => onOpenSampleSection?.(sampleId)}
+          onAskQuestion={() => onOpenMessageSection('question')}
+        />
+      )}
+
+      {/* Sample In Transit Banner */}
+      {showSampleInTransitBanner && inTransitSample && onOpenMessageSection && (
+        <SampleInTransitBanner
+          sample={inTransitSample}
+          cardId={cardId}
+          onMarkArrived={() => {
+            queryClient.invalidateQueries({ queryKey: ['development-item-samples-timeline', cardId] });
+          }}
+          onAskQuestion={() => onOpenMessageSection('question')}
+          onAddComment={() => onOpenMessageSection('comment')}
+        />
+      )}
+      
+      {/* Commercial Data Banner - when commercial data is set */}
+      {showCommercialDataBanner && fobPriceUsd && moq && qtyPerContainer && containerType && onOpenMessageSection && (
+        <CommercialDataBanner
+          fobPriceUsd={fobPriceUsd}
+          moq={moq}
+          qtyPerContainer={qtyPerContainer}
+          containerType={containerType}
+          updatedAt={commercialUpdatedAt}
+          onRequestSample={handleRequestSample}
           onAskQuestion={() => onOpenMessageSection('question')}
           onAddComment={() => onOpenMessageSection('comment')}
           onUpload={() => onOpenUploadSection?.()}
-          onOwnerChange={onOwnerChange}
         />
       )}
       
@@ -1412,7 +1409,7 @@ export function HistoryTimeline({
           containerType={containerType}
           hasPendingSamples={hasPendingSamples}
           onOpenCommercialSection={onOpenCommercialSection}
-          onOpenSampleSection={onOpenSampleSection}
+          onOpenSampleSection={() => onOpenSampleSection?.()}
           onAskQuestion={() => onOpenMessageSection('question')}
           onAddComment={() => onOpenMessageSection('comment')}
           onDismiss={() => setShowPostAcknowledgementPrompt(false)}

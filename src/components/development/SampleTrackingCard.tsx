@@ -143,11 +143,14 @@ export function SampleTrackingCard({ sample, canEdit, onSampleArrived }: SampleT
   };
 
   return (
-    <div className={cn(
-      "border rounded-lg p-4 bg-card",
-      sample.decision === 'approved' && "border-green-300 bg-green-50/50",
-      sample.decision === 'rejected' && "border-red-300 bg-red-50/50"
-    )}>
+    <div 
+      id={`sample-${sample.id}`}
+      className={cn(
+        "border rounded-lg p-4 bg-card",
+        sample.decision === 'approved' && "border-green-300 bg-green-50/50",
+        sample.decision === 'rejected' && "border-red-300 bg-red-50/50"
+      )}
+    >
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
