@@ -4,24 +4,27 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
-import { Trash2, RotateCcw, FolderOpen } from 'lucide-react';
+import { Trash2, RotateCcw } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
-  SheetHeader,
-  SheetTitle,
 } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { DevelopmentItem, DevelopmentCardStatus } from '@/pages/Development';
 import { CardInfoSection } from './CardInfoSection';
 import { HistoryTimeline } from './HistoryTimeline';
 import { ActionsPanel } from './ActionsPanel';
 import { DeleteCardDialog } from './DeleteCardDialog';
-import { CardFilesTab } from './CardFilesTab';
 
 interface ItemDetailDrawerProps {
   item: DevelopmentItem | null;
@@ -262,6 +265,34 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   const cardType = item.card_type || 'item';
   const isDeleted = !!(itemWithNewFields.deleted_at);
 
+  // Map old status to new simplified status for display
+  const mapOldToNewStatus = (oldStatus: string): DevelopmentCardStatus => {
+    switch (oldStatus) {
+      case 'backlog':
+        return 'pending';
+      case 'in_progress':
+        return 'in_progress';
+      case 'waiting_supplier':
+      case 'sample_requested':
+      case 'sample_in_transit':
+      case 'sample_received':
+      case 'under_review':
+        return 'waiting';
+      case 'approved':
+      case 'rejected':
+        return 'solved';
+      default:
+        return 'pending';
+    }
+  };
+
+  const STATUS_OPTIONS: { value: DevelopmentCardStatus; label: string }[] = [
+    { value: 'pending', label: 'Pending' },
+    { value: 'in_progress', label: 'In Progress' },
+    { value: 'waiting', label: 'Waiting' },
+    { value: 'solved', label: 'Solved' },
+  ];
+
   // Determine user's team affiliation
   const userTeam: 'mor' | 'arc' = isTrader ? 'arc' : 'mor';
 
@@ -273,120 +304,121 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-2xl flex flex-col h-full p-0">
-        {/* Fixed Header */}
-        <SheetHeader className="flex-shrink-0 p-6 pb-4 border-b">
-          <div className="flex items-start justify-between">
-            <SheetTitle className="text-lg">Card Details</SheetTitle>
-            
-            <div className="flex gap-2">
+        {/* Compact Header: Title + Status inline */}
+        <div className="flex-shrink-0 px-4 py-3 border-b">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <h2 className="font-semibold text-sm truncate">{item.title}</h2>
+              {canManage && !isDeleted ? (
+                <Select
+                  value={mapOldToNewStatus(item.status)}
+                  onValueChange={(v) => updateStatusMutation.mutate(v as DevelopmentCardStatus)}
+                >
+                  <SelectTrigger className="h-6 text-[10px] w-24 flex-shrink-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUS_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <span className="text-[10px] capitalize text-muted-foreground flex-shrink-0">
+                  {mapOldToNewStatus(item.status).replace('_', ' ')}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
               {isDeleted && canRestore && (
                 <Button
                   variant="outline"
                   size="icon"
+                  className="h-7 w-7"
                   onClick={() => restoreMutation.mutate()}
                   disabled={restoreMutation.isPending}
                   title="Restore card"
                 >
-                  <RotateCcw className="h-4 w-4" />
+                  <RotateCcw className="h-3.5 w-3.5" />
                 </Button>
               )}
               {!isDeleted && canDelete && (
                 <Button
                   variant="ghost"
                   size="icon"
+                  className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
                   onClick={() => setShowDeleteDialog(true)}
-                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
                   title="Delete card"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               )}
             </div>
           </div>
-
           {isDeleted && (
-            <Badge variant="destructive" className="w-fit">
-              Deleted on {format(new Date(itemWithNewFields.deleted_at), 'dd/MM/yyyy')}
+            <Badge variant="destructive" className="w-fit mt-1 text-[10px]">
+              Deleted {format(new Date(itemWithNewFields.deleted_at), 'dd/MM/yyyy')}
             </Badge>
           )}
-        </SheetHeader>
-
-        {/* Top Section - Card Info */}
-        <div className="flex-shrink-0 p-6 border-b bg-muted/20">
-          <CardInfoSection
-            item={item}
-            canEdit={canManage && !isDeleted}
-            onUpdateStatus={(status) => updateStatusMutation.mutate(status)}
-          />
         </div>
 
-        {/* Middle Section - Scrollable Tabs (Timeline / Files) */}
-        <ScrollArea className="flex-1 min-h-0">
-          <div className="px-6">
-            <Tabs defaultValue="timeline" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mt-4 mb-2">
-                <TabsTrigger value="timeline">Timeline</TabsTrigger>
-                <TabsTrigger value="files" className="gap-1.5">
-                  <FolderOpen className="h-3.5 w-3.5" />
-                  Files
-                </TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="timeline" className="mt-0">
-                <HistoryTimeline
-                  cardId={item.id}
-                  cardType={cardType}
-                  cardCreatedBy={item.created_by}
-                  isCardSolved={itemWithNewFields.is_solved || false}
-                  showAttentionBanner={shouldShowAttentionBanner}
-                  currentOwner={itemWithNewFields.current_owner || 'arc'}
-                  pendingActionType={itemWithNewFields.pending_action_type || null}
-                  pendingActionDueAt={itemWithNewFields.pending_action_due_at || null}
-                  snoozedUntil={itemWithNewFields.pending_action_snoozed_until || null}
-                  fobPriceUsd={itemWithNewFields.fob_price_usd}
-                  moq={itemWithNewFields.moq}
-                  qtyPerContainer={itemWithNewFields.qty_per_container}
-                  containerType={itemWithNewFields.container_type}
-                  onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
-                  onOpenSampleSection={() => setForcedOpenSection('samples')}
-                  onOpenMessageSection={(type) => {
-                    setForcedMessageType(type);
-                    setForcedOpenSection('messaging');
-                  }}
-                  onOpenUploadSection={() => setForcedOpenSection('messaging')}
-                  onOpenCommercialSection={() => setForcedOpenSection('commercial')}
-                  onCloseCard={() => onOpenChange(false)}
-                />
-              </TabsContent>
-              
-              <TabsContent value="files" className="mt-0 pb-4">
-                <CardFilesTab cardId={item.id} />
-              </TabsContent>
-            </Tabs>
-          </div>
-        </ScrollArea>
+        {/* Collapsible Card Info Section */}
+        <CardInfoSection
+          item={item}
+          canEdit={canManage && !isDeleted}
+        />
 
-        {/* Bottom Section - Sticky Actions */}
-        {canManage && !isDeleted && (
-          <div className="flex-shrink-0 border-t bg-background p-4 max-h-[60vh] overflow-y-auto overscroll-contain">
-            <ActionsPanel
+        {/* Timeline Section - Takes most of the space */}
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="px-4 py-2">
+            <HistoryTimeline
               cardId={item.id}
               cardType={cardType}
+              cardCreatedBy={item.created_by}
+              isCardSolved={itemWithNewFields.is_solved || false}
+              showAttentionBanner={shouldShowAttentionBanner}
+              currentOwner={itemWithNewFields.current_owner || 'arc'}
+              pendingActionType={itemWithNewFields.pending_action_type || null}
+              pendingActionDueAt={itemWithNewFields.pending_action_due_at || null}
+              snoozedUntil={itemWithNewFields.pending_action_snoozed_until || null}
               fobPriceUsd={itemWithNewFields.fob_price_usd}
               moq={itemWithNewFields.moq}
               qtyPerContainer={itemWithNewFields.qty_per_container}
               containerType={itemWithNewFields.container_type}
-              currentOwner={itemWithNewFields.current_owner || 'arc'}
-              canEdit={canManage}
-              forcedOpenSection={forcedOpenSection}
-              forcedMessageType={forcedMessageType}
-              onForcedSectionHandled={() => {
-                setForcedOpenSection(null);
-                setForcedMessageType(null);
-              }}
               onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
+              onOpenSampleSection={() => setForcedOpenSection('samples')}
+              onOpenMessageSection={(type) => {
+                setForcedMessageType(type);
+                setForcedOpenSection('messaging');
+              }}
+              onOpenUploadSection={() => setForcedOpenSection('messaging')}
+              onOpenCommercialSection={() => setForcedOpenSection('commercial')}
+              onCloseCard={() => onOpenChange(false)}
             />
           </div>
+        </ScrollArea>
+
+        {/* Quick Action Bar at Bottom */}
+        {canManage && !isDeleted && (
+          <ActionsPanel
+            cardId={item.id}
+            cardType={cardType}
+            fobPriceUsd={itemWithNewFields.fob_price_usd}
+            moq={itemWithNewFields.moq}
+            qtyPerContainer={itemWithNewFields.qty_per_container}
+            containerType={itemWithNewFields.container_type}
+            currentOwner={itemWithNewFields.current_owner || 'arc'}
+            canEdit={canManage}
+            forcedOpenSection={forcedOpenSection}
+            forcedMessageType={forcedMessageType}
+            onForcedSectionHandled={() => {
+              setForcedOpenSection(null);
+              setForcedMessageType(null);
+            }}
+            onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
+          />
         )}
 
         {/* Delete Confirmation Dialog */}
