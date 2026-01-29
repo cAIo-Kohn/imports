@@ -107,9 +107,9 @@ const AppRoutes = () => (
     {/* Rota inicial com redirecionamento para traders */}
     <Route path="/" element={<HomeRedirect><Dashboard /></HomeRedirect>} />
     
-    {/* Development / New Items & Samples */}
+    {/* Development / New Items & Samples - accessible by all roles including traders */}
     <Route path="/development" element={
-      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'viewer']}>
+      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'viewer', 'trader']}>
         <Development />
       </RoleProtectedRoute>
     } />
