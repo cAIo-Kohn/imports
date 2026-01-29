@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useDeferredValue } from 'react';
+import { useState, useMemo, useCallback, useDeferredValue, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -393,6 +393,39 @@ export default function Development() {
   }, [items, canManage, user?.id, queryClient]);
 
   const selectedItem = items.find(item => item.id === selectedItemId);
+
+  // Real-time subscription for development items
+  const invalidateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('development-items-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'development_items',
+        },
+        () => {
+          // Debounce: wait 300ms before refetching to batch rapid changes
+          if (invalidateTimeoutRef.current) {
+            clearTimeout(invalidateTimeoutRef.current);
+          }
+          invalidateTimeoutRef.current = setTimeout(() => {
+            queryClient.invalidateQueries({ queryKey: ['development-items'] });
+          }, 300);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (invalidateTimeoutRef.current) {
+        clearTimeout(invalidateTimeoutRef.current);
+      }
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   // Export to Google Sheets handler
   const handleExportToSheets = async () => {
