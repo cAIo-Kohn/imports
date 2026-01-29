@@ -305,10 +305,10 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   // Determine user's team affiliation
   const userTeam: 'mor' | 'arc' = isTrader ? 'arc' : 'mor';
 
-  // Show prompt when card is new AND belongs to user's team (or user is admin)
-  const shouldShowAttentionBanner = 
-    itemWithNewFields.is_new_for_other_team && 
-    (isAdmin || itemWithNewFields.current_owner === userTeam);
+  // Show attention banners only to the team that currently owns the card (admins see all)
+  // NOTE: this must NOT depend on `is_new_for_other_team`, otherwise banners can disappear
+  // immediately after we clear the flag in the background.
+  const shouldShowAttentionBanner = isAdmin || itemWithNewFields.current_owner === userTeam;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
