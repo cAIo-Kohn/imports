@@ -33,7 +33,7 @@ import { InlineReplyBox } from './InlineReplyBox';
 import { InlineSampleShipForm } from './InlineSampleShipForm';
 import { TimelineUploadButton, AttachmentDisplay, UploadedAttachment } from './TimelineUploadButton';
 import { SnoozeButton } from './SnoozeButton';
-import { CommercialDataBanner, SampleInTransitBanner, SampleDeliveredBanner, Sample } from './TimelineBanners';
+import { CommercialDataBanner, SampleInTransitBanner, SampleDeliveredBanner, NewCardBanner, Sample } from './TimelineBanners';
 
 interface Activity {
   id: string;
@@ -57,6 +57,7 @@ interface HistoryTimelineProps {
   cardDescription?: string | null;
   cardImageUrl?: string | null;
   isCardSolved?: boolean;
+  isNewForOtherTeam?: boolean;
   showAttentionBanner?: boolean;
   currentOwner?: 'mor' | 'arc';
   pendingActionType?: string | null;
@@ -904,6 +905,7 @@ export function HistoryTimeline({
   cardDescription,
   cardImageUrl,
   isCardSolved = false,
+  isNewForOtherTeam = false,
   showAttentionBanner,
   currentOwner = 'arc',
   pendingActionType,
@@ -1337,6 +1339,18 @@ export function HistoryTimeline({
     !showSampleRequestedBanner &&
     deliveredSampleAwaitingReview;
 
+  // Show new card banner when card is new for receiving team and no other priority banners
+  const showNewCardBanner = 
+    showAttentionBanner &&
+    isNewForOtherTeam &&
+    cardTitle &&
+    !firstUnresolvedQuestion &&
+    !firstUnacknowledgedAnswer &&
+    !showSampleRequestedBanner &&
+    !showSampleApprovedBanner &&
+    !inTransitSample &&
+    !deliveredSampleAwaitingReview;
+
   // Get commercial update timestamp for display
   const commercialUpdatedAt = mostRecentCommercialUpdate 
     ? formatDistanceToNow(parseISO(mostRecentCommercialUpdate.created_at), { addSuffix: true })
@@ -1396,7 +1410,7 @@ export function HistoryTimeline({
       )}
       
       {/* Commercial Data Banner - when commercial data is set */}
-      {showCommercialDataBanner && fobPriceUsd && moq && qtyPerContainer && containerType && onOpenMessageSection && (
+      {showCommercialDataBanner && !showNewCardBanner && fobPriceUsd && moq && qtyPerContainer && containerType && onOpenMessageSection && (
         <CommercialDataBanner
           fobPriceUsd={fobPriceUsd}
           moq={moq}
@@ -1406,6 +1420,20 @@ export function HistoryTimeline({
           onRequestSample={handleRequestSample}
           onAskQuestion={() => onOpenMessageSection('question')}
           onAddComment={() => onOpenMessageSection('comment')}
+          onUpload={() => onOpenUploadSection?.()}
+        />
+      )}
+
+      {/* New Card Banner - when card is new for receiving team */}
+      {showNewCardBanner && cardTitle && onOpenMessageSection && (
+        <NewCardBanner
+          cardTitle={cardTitle}
+          cardDescription={cardDescription}
+          cardImageUrl={cardImageUrl}
+          cardId={cardId}
+          pendingActionType={pendingActionType}
+          onAddComment={() => onOpenMessageSection('comment')}
+          onAskQuestion={() => onOpenMessageSection('question')}
           onUpload={() => onOpenUploadSection?.()}
         />
       )}

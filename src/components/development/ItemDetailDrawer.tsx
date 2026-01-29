@@ -370,6 +370,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               cardDescription={item.description}
               cardImageUrl={item.image_url}
               isCardSolved={itemWithNewFields.is_solved || false}
+              isNewForOtherTeam={itemWithNewFields.is_new_for_other_team || false}
               showAttentionBanner={shouldShowAttentionBanner}
               currentOwner={itemWithNewFields.current_owner || 'arc'}
               pendingActionType={itemWithNewFields.pending_action_type || null}
