@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { DevelopmentItem, DevelopmentCardStatus } from '@/pages/Development';
+import { DevelopmentItem, DevelopmentCardStatus, deriveCardStatus } from '@/pages/Development';
 import { CardInfoSection } from './CardInfoSection';
 import { HistoryTimeline } from './HistoryTimeline';
 import { ActionsPanel } from './ActionsPanel';
@@ -265,26 +265,14 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   const cardType = item.card_type || 'item';
   const isDeleted = !!(itemWithNewFields.deleted_at);
 
-  // Map old status to new simplified status for display
-  const mapOldToNewStatus = (oldStatus: string): DevelopmentCardStatus => {
-    switch (oldStatus) {
-      case 'backlog':
-        return 'pending';
-      case 'in_progress':
-        return 'in_progress';
-      case 'waiting_supplier':
-      case 'sample_requested':
-      case 'sample_in_transit':
-      case 'sample_received':
-      case 'under_review':
-        return 'waiting';
-      case 'approved':
-      case 'rejected':
-        return 'solved';
-      default:
-        return 'pending';
-    }
-  };
+  // Use derived status - either pre-computed or compute it now
+  const currentStatus: DevelopmentCardStatus = item.derived_status || deriveCardStatus({
+    is_solved: item.is_solved,
+    pending_action_snoozed_until: itemWithNewFields.pending_action_snoozed_until,
+    pending_action_type: itemWithNewFields.pending_action_type,
+    latest_activity_at: item.latest_activity_at,
+    created_at: item.created_at,
+  });
 
   const STATUS_OPTIONS: { value: DevelopmentCardStatus; label: string }[] = [
     { value: 'pending', label: 'Pending' },
@@ -311,7 +299,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               <h2 className="font-semibold text-sm truncate">{item.title}</h2>
               {canManage && !isDeleted ? (
                 <Select
-                  value={mapOldToNewStatus(item.status)}
+                  value={currentStatus}
                   onValueChange={(v) => updateStatusMutation.mutate(v as DevelopmentCardStatus)}
                 >
                   <SelectTrigger className="h-6 text-[10px] w-24 flex-shrink-0">
@@ -327,7 +315,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                 </Select>
               ) : (
                 <span className="text-[10px] capitalize text-muted-foreground flex-shrink-0">
-                  {mapOldToNewStatus(item.status).replace('_', ' ')}
+                  {currentStatus.replace('_', ' ')}
                 </span>
               )}
             </div>

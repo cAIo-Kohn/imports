@@ -78,7 +78,52 @@ export interface DevelopmentItem {
   pending_action_due_at?: string | null;
   pending_action_snoozed_until?: string | null;
   pending_action_snoozed_by?: string | null;
+  // Derived status (computed from pending_action_type, is_solved, etc.)
+  derived_status?: DevelopmentCardStatus;
 }
+
+// Derive card status automatically from pending_action_type, snooze, and is_solved
+export const deriveCardStatus = (item: {
+  is_solved?: boolean;
+  pending_action_snoozed_until?: string | null;
+  pending_action_type?: string | null;
+  latest_activity_at?: string;
+  created_at?: string;
+}): DevelopmentCardStatus => {
+  // Solved takes priority
+  if (item.is_solved) return 'solved';
+  
+  // Check if snoozed (waiting)
+  if (item.pending_action_snoozed_until) {
+    const snoozeDate = new Date(item.pending_action_snoozed_until);
+    if (snoozeDate > new Date()) return 'waiting';
+  }
+  
+  // Check pending action type
+  const actionType = item.pending_action_type;
+  
+  // These mean "waiting for something external"
+  if (actionType === 'sample_in_transit' || actionType === 'sample_pending') {
+    return 'waiting';
+  }
+  
+  // These mean "action needed" (pending)
+  if (actionType === 'question' || 
+      actionType === 'answer_pending' || 
+      actionType === 'sample_tracking' || 
+      actionType === 'sample_review' || 
+      actionType === 'commercial_review') {
+    return 'pending';
+  }
+  
+  // No blocking action - check if card has any activity (in progress)
+  if (item.latest_activity_at && item.created_at && item.latest_activity_at !== item.created_at) {
+    return 'in_progress';
+  }
+  
+  // Fresh card with no activity
+  return 'pending';
+};
 
 // New simplified status order (3 active + 1 solved)
 const STATUS_ORDER: DevelopmentCardStatus[] = [
@@ -253,6 +298,17 @@ export default function Development() {
           effectivePendingActionType = 'answer_pending';
         }
 
+        const latestActivity = latestActivityMap[item.id] || item.created_at;
+
+        // Derive status automatically from actions
+        const derivedStatus = deriveCardStatus({
+          is_solved: item.is_solved || false,
+          pending_action_snoozed_until: item.pending_action_snoozed_until,
+          pending_action_type: effectivePendingActionType,
+          latest_activity_at: latestActivity,
+          created_at: item.created_at,
+        });
+
         return {
           ...item,
           card_type: item.card_type || 'item',
@@ -262,10 +318,11 @@ export default function Development() {
           current_owner: item.current_owner || 'arc',
           samples_count: sampleCountMap[item.id] || 0,
           products_count: productCountMap[item.id] || 0,
-          latest_activity_at: latestActivityMap[item.id] || item.created_at,
+          latest_activity_at: latestActivity,
           last_viewed_at: userViewMap[item.id] || null,
           creator_name: creatorNameMap[item.created_by] || null,
           pending_action_type: effectivePendingActionType,
+          derived_status: derivedStatus,
         };
       }) as DevelopmentItem[];
     },
@@ -343,9 +400,9 @@ export default function Development() {
       const matchesCreatorRole = creatorRoleFilter === 'all' || 
         (item as any).created_by_role === creatorRoleFilter;
       
-      // Map old status to new for solved filtering
-      const mappedStatus = mapOldStatusToNew(item.status);
-      const matchesSolvedFilter = showSolved ? mappedStatus === 'solved' : mappedStatus !== 'solved';
+      // Use derived status for solved filtering
+      const status = item.derived_status || 'pending';
+      const matchesSolvedFilter = showSolved ? status === 'solved' : status !== 'solved';
       
       // Filter by deleted status - only admins can see deleted items
       const isDeleted = !!item.deleted_at;
