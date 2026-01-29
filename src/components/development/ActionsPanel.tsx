@@ -3,12 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
-import { MessageCircle, HelpCircle, DollarSign, Package, Container, Send, ArrowRight } from 'lucide-react';
+import { MessageCircle, HelpCircle, DollarSign, Package, Container, Send, ArrowRight, X, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -16,21 +15,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
 import { toast } from '@/hooks/use-toast';
 import { cn, formatBrazilianNumber, parseBrazilianNumber } from '@/lib/utils';
 import { MoveCardModal } from './MoveCardModal';
 import { AddSampleForm } from './AddSampleForm';
 import { SampleTrackingCard } from './SampleTrackingCard';
 import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton';
-
-// Ref for scrolling to review section after marking sample as arrived
-const SAMPLE_REVIEW_SCROLL_DELAY = 300;
+import { CardFilesTab } from './CardFilesTab';
 
 interface ActionsPanelProps {
   cardId: string;
@@ -48,12 +39,12 @@ interface ActionsPanelProps {
 }
 
 const CONTAINER_TYPES = [
-  { value: '20ft', label: '20ft Container' },
-  { value: '40ft', label: '40ft Container' },
-  { value: '40hq', label: '40ft High Cube' },
+  { value: '20ft', label: '20ft' },
+  { value: '40ft', label: '40ft' },
+  { value: '40hq', label: '40HQ' },
 ];
 
-type MessageType = 'comment' | 'question';
+type ActionType = 'comment' | 'question' | 'commercial' | 'samples' | 'files' | null;
 
 export function ActionsPanel({
   cardId,
@@ -75,18 +66,17 @@ export function ActionsPanel({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const samplesSectionRef = useRef<HTMLDivElement>(null);
 
-  // Accordion state - controlled
-  const [openSections, setOpenSections] = useState<string[]>([]);
+  // Active panel state
+  const [activeAction, setActiveAction] = useState<ActionType>(null);
 
   // Message state
-  const [messageType, setMessageType] = useState<MessageType>('comment');
   const [messageContent, setMessageContent] = useState('');
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveModalTrigger, setMoveModalTrigger] = useState<'question' | 'commercial'>('question');
 
-  // Commercial data state - initialize with formatted values
+  // Commercial data state
   const [localFobPrice, setLocalFobPrice] = useState(
     fobPriceUsd ? formatBrazilianNumber(fobPriceUsd, 2) : ''
   );
@@ -98,28 +88,20 @@ export function ActionsPanel({
   );
   const [localContainerType, setLocalContainerType] = useState(containerType || '');
 
-  // Formatting handlers for Brazilian number format
+  // Formatting handlers
   const handleFobPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let input = e.target.value;
-    // Remove non-numeric except comma
     input = input.replace(/[^\d,]/g, '');
-    // Only allow one comma
     const parts = input.split(',');
     if (parts.length > 2) input = parts[0] + ',' + parts.slice(1).join('');
-    // Limit decimal places to 2
     if (parts[1]?.length > 2) input = parts[0] + ',' + parts[1].slice(0, 2);
-    
-    // Format with thousand separators
     const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     const formatted = parts.length > 1 ? `${integerPart},${parts[1]}` : integerPart;
-    
     setLocalFobPrice(formatted);
   };
 
   const handleIntegerChange = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Remove all non-digits
     const digits = e.target.value.replace(/\D/g, '');
-    // Format with thousand separators
     const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     setter(formatted);
   };
@@ -127,11 +109,13 @@ export function ActionsPanel({
   // Handle forced section opening from parent
   useEffect(() => {
     if (forcedOpenSection) {
-      setOpenSections([forcedOpenSection]);
-      if (forcedMessageType) {
-        setMessageType(forcedMessageType);
+      if (forcedOpenSection === 'messaging') {
+        setActiveAction(forcedMessageType || 'comment');
+      } else if (forcedOpenSection === 'commercial') {
+        setActiveAction('commercial');
+      } else if (forcedOpenSection === 'samples') {
+        setActiveAction('samples');
       }
-      // Focus textarea after section opens
       setTimeout(() => {
         textareaRef.current?.focus();
       }, 100);
@@ -139,11 +123,11 @@ export function ActionsPanel({
     }
   }, [forcedOpenSection, forcedMessageType, onForcedSectionHandled]);
 
-  // Fetch samples with caching
+  // Fetch samples
   const { data: samples = [] } = useQuery({
     queryKey: ['development-item-samples', cardId],
-    staleTime: 30 * 1000, // Data is fresh for 30 seconds
-    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('development_item_samples')
@@ -155,7 +139,7 @@ export function ActionsPanel({
     },
   });
 
-  // Debounced realtime subscription for samples
+  // Realtime subscription for samples
   const invalidateSamplesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   useEffect(() => {
@@ -170,7 +154,6 @@ export function ActionsPanel({
           filter: `item_id=eq.${cardId}`,
         },
         () => {
-          // Debounce: wait 300ms before invalidating
           if (invalidateSamplesTimeoutRef.current) clearTimeout(invalidateSamplesTimeoutRef.current);
           invalidateSamplesTimeoutRef.current = setTimeout(() => {
             queryClient.invalidateQueries({ queryKey: ['development-item-samples', cardId] });
@@ -190,7 +173,7 @@ export function ActionsPanel({
     mutationFn: async () => {
       if (!user?.id || (!messageContent.trim() && attachments.length === 0)) return;
       
-      // Build metadata with attachments if any
+      const activityType = activeAction === 'question' ? 'question' : 'comment';
       const activityMetadata = attachments.length > 0 
         ? { attachments: attachments.map(a => ({ id: a.id, name: a.name, url: a.url, type: a.type })) }
         : null;
@@ -198,15 +181,13 @@ export function ActionsPanel({
       const { error } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
-        activity_type: messageType,
+        activity_type: activityType,
         content: messageContent.trim() || null,
         metadata: activityMetadata,
       });
       if (error) throw error;
 
-      // If it's a question, set pending action and prompt for movement
-      if (messageType === 'question') {
-        // Set pending_action_type on the card
+      if (activityType === 'question') {
         await (supabase.from('development_items') as any)
           .update({
             pending_action_type: 'question',
@@ -225,19 +206,19 @@ export function ActionsPanel({
       queryClient.invalidateQueries({ queryKey: ['development-items'] });
       setMessageContent('');
       setAttachments([]);
-      toast({ title: messageType === 'question' ? 'Question posted' : 'Comment added' });
+      setActiveAction(null);
+      toast({ title: activeAction === 'question' ? 'Question posted' : 'Comment added' });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to post message', variant: 'destructive' });
     },
   });
 
-  // Batch save commercial data mutation
+  // Save commercial data mutation
   const saveCommercialDataMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id) throw new Error('Not authenticated');
       
-      // Validate all fields are filled
       if (!localFobPrice || !localMoq || !localQtyPerContainer || !localContainerType) {
         throw new Error('All commercial data fields are required');
       }
@@ -246,7 +227,6 @@ export function ActionsPanel({
       const moqValue = parseBrazilianNumber(localMoq);
       const qtyValue = parseBrazilianNumber(localQtyPerContainer);
 
-      // Batch update all commercial fields
       const { error } = await (supabase.from('development_items') as any)
         .update({
           fob_price_usd: fobValue,
@@ -257,7 +237,6 @@ export function ActionsPanel({
         .eq('id', cardId);
       if (error) throw error;
 
-      // Log single activity with all values
       await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
@@ -271,7 +250,6 @@ export function ActionsPanel({
         },
       });
 
-      // Move card to other team
       const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
       const { error: moveError } = await (supabase.from('development_items') as any)
         .update({ 
@@ -281,7 +259,6 @@ export function ActionsPanel({
         .eq('id', cardId);
       if (moveError) throw moveError;
 
-      // Log ownership change
       await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
@@ -296,6 +273,7 @@ export function ActionsPanel({
       queryClient.invalidateQueries({ queryKey: ['development-items'] });
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
       onOwnerChange?.(targetOwner as 'mor' | 'arc');
+      setActiveAction(null);
       toast({ title: `Commercial data saved & card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}` });
     },
     onError: (error: Error) => {
@@ -340,7 +318,7 @@ export function ActionsPanel({
     }
   };
 
-  // Drag and drop handlers for file upload
+  // Drag and drop handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -363,7 +341,7 @@ export function ActionsPanel({
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
 
-    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
     const ALLOWED_TYPES = [
       'image/jpeg', 'image/png', 'image/gif', 'image/webp',
       'application/pdf', 'application/msword',
@@ -415,17 +393,12 @@ export function ActionsPanel({
     }
   };
 
-  const handleSaveCommercialData = () => {
-    saveCommercialDataMutation.mutate();
-  };
-
   const handleMoveConfirm = () => {
     const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
     moveCardMutation.mutate(targetOwner);
     setShowMoveModal(false);
   };
 
-  // Determine if commercial data is complete for the pending indicator
   const isCommercialComplete = Boolean(
     (fobPriceUsd || localFobPrice) && 
     (moq || localMoq) && 
@@ -433,44 +406,108 @@ export function ActionsPanel({
     (containerType || localContainerType)
   );
   const isCommercialPending = !isCommercialComplete && cardType !== 'task';
-
-  // Check if form is ready to submit
   const canSubmitCommercial = Boolean(
     localFobPrice && localMoq && localQtyPerContainer && localContainerType
   );
-
   const targetTeamName = currentOwner === 'arc' ? 'MOR (Brazil)' : 'ARC (China)';
 
   if (!canEdit) {
     return null;
   }
 
+  const toggleAction = (action: ActionType) => {
+    setActiveAction(activeAction === action ? null : action);
+  };
+
   return (
-    <div className="space-y-2">
-      <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="w-full">
-        {/* Messaging Section */}
-        <AccordionItem value="messaging" className="border rounded-lg">
-          <AccordionTrigger className="py-3 px-3 hover:no-underline">
-            <span className="flex items-center gap-2 text-sm font-medium">
-              <MessageCircle className="h-4 w-4" />
-              Add Comment / Ask Question
+    <div className="border-t bg-background">
+      {/* Quick Action Bar */}
+      <div className="flex items-center gap-1 p-2">
+        <Button 
+          variant={activeAction === 'comment' ? 'secondary' : 'ghost'} 
+          size="sm" 
+          className="h-8 flex-1 gap-1"
+          onClick={() => toggleAction('comment')}
+        >
+          <MessageCircle className="h-4 w-4" />
+          <span className="hidden sm:inline text-xs">Comment</span>
+        </Button>
+        <Button 
+          variant={activeAction === 'question' ? 'secondary' : 'ghost'} 
+          size="sm" 
+          className="h-8 flex-1 gap-1"
+          onClick={() => toggleAction('question')}
+        >
+          <HelpCircle className="h-4 w-4" />
+          <span className="hidden sm:inline text-xs">Question</span>
+        </Button>
+        {cardType !== 'task' && (
+          <>
+            <Button 
+              variant={activeAction === 'commercial' ? 'secondary' : 'ghost'} 
+              size="sm" 
+              className={cn(
+                "h-8 flex-1 gap-1 relative",
+                isCommercialPending && "text-destructive"
+              )}
+              onClick={() => toggleAction('commercial')}
+            >
+              <DollarSign className="h-4 w-4" />
+              <span className="hidden sm:inline text-xs">Commercial</span>
+              {isCommercialPending && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-destructive rounded-full" />
+              )}
+            </Button>
+            <Button 
+              variant={activeAction === 'samples' ? 'secondary' : 'ghost'} 
+              size="sm" 
+              className="h-8 flex-1 gap-1 relative"
+              onClick={() => toggleAction('samples')}
+            >
+              <Package className="h-4 w-4" />
+              <span className="hidden sm:inline text-xs">Samples</span>
+              {samples.length > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 bg-secondary text-secondary-foreground text-[10px] rounded-full flex items-center justify-center">
+                  {samples.length}
+                </span>
+              )}
+            </Button>
+          </>
+        )}
+        <Button 
+          variant={activeAction === 'files' ? 'secondary' : 'ghost'} 
+          size="sm" 
+          className="h-8 flex-1 gap-1"
+          onClick={() => toggleAction('files')}
+        >
+          <FolderOpen className="h-4 w-4" />
+          <span className="hidden sm:inline text-xs">Files</span>
+        </Button>
+      </div>
+
+      {/* Expanded Action Panel */}
+      {activeAction && (
+        <div className="p-3 border-t bg-muted/20 max-h-[50vh] overflow-y-auto">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-muted-foreground capitalize">
+              {activeAction === 'comment' ? 'Add Comment' : 
+               activeAction === 'question' ? 'Ask Question' :
+               activeAction === 'commercial' ? 'Commercial Data' :
+               activeAction === 'samples' ? 'Sample Tracking' : 'Files'}
             </span>
-          </AccordionTrigger>
-          <AccordionContent className="px-3 pb-3">
-            <form onSubmit={handleSendMessage} className="space-y-3">
-              <Tabs value={messageType} onValueChange={(v) => setMessageType(v as MessageType)}>
-                <TabsList className="grid w-full grid-cols-2 h-8">
-                  <TabsTrigger value="comment" className="text-xs flex items-center gap-1">
-                    <MessageCircle className="h-3 w-3" />
-                    Comment
-                  </TabsTrigger>
-                  <TabsTrigger value="question" className="text-xs flex items-center gap-1">
-                    <HelpCircle className="h-3 w-3" />
-                    Question
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-              
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-5 w-5"
+              onClick={() => setActiveAction(null)}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+
+          {/* Comment / Question Form */}
+          {(activeAction === 'comment' || activeAction === 'question') && (
+            <form onSubmit={handleSendMessage} className="space-y-2">
               <div 
                 className={cn(
                   "relative rounded-md transition-all",
@@ -484,9 +521,9 @@ export function ActionsPanel({
                   ref={textareaRef}
                   value={messageContent}
                   onChange={(e) => setMessageContent(e.target.value)}
-                  placeholder={messageType === 'question' 
+                  placeholder={activeAction === 'question' 
                     ? "Ask a question that requires a response..." 
-                    : "Add a comment or update... (drag files here)"
+                    : "Add a comment... (drag files here)"
                   }
                   rows={2}
                   className="text-sm"
@@ -516,35 +553,16 @@ export function ActionsPanel({
                 </Button>
               </div>
             </form>
-          </AccordionContent>
-        </AccordionItem>
+          )}
 
-        {/* Commercial Data Section - Only for non-task cards */}
-        {cardType !== 'task' && (
-          <AccordionItem 
-            value="commercial" 
-            className={cn(
-              "border rounded-lg mt-2",
-              isCommercialPending && "border-amber-400 animate-pulse bg-amber-50/50 dark:bg-amber-950/20"
-            )}
-          >
-            <AccordionTrigger className="py-3 px-3 hover:no-underline">
-              <span className="flex items-center gap-2 text-sm font-medium">
-                <DollarSign className="h-4 w-4" />
-                Commercial Data
-                {isCommercialPending && (
-                  <span className="text-xs text-amber-600 dark:text-amber-400 font-normal ml-1">
-                    (pending)
-                  </span>
-                )}
-              </span>
-            </AccordionTrigger>
-            <AccordionContent className="px-3 pb-3">
-              <div className="grid grid-cols-2 gap-3">
+          {/* Commercial Data Form */}
+          {activeAction === 'commercial' && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <Label htmlFor="fob-price" className="text-xs">FOB Price (USD)</Label>
+                  <Label htmlFor="fob-price" className="text-[10px]">FOB Price (USD)</Label>
                   <div className="relative">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
                     <Input
                       id="fob-price"
                       type="text"
@@ -552,14 +570,14 @@ export function ActionsPanel({
                       placeholder="0,00"
                       value={localFobPrice}
                       onChange={handleFobPriceChange}
-                      className="pl-6 h-8 text-sm"
+                      className="pl-5 h-7 text-xs"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="moq" className="text-xs flex items-center gap-1">
-                    <Package className="h-3 w-3" />
+                  <Label htmlFor="moq" className="text-[10px] flex items-center gap-1">
+                    <Package className="h-2.5 w-2.5" />
                     MOQ
                   </Label>
                   <Input
@@ -569,13 +587,13 @@ export function ActionsPanel({
                     placeholder="0"
                     value={localMoq}
                     onChange={handleIntegerChange(setLocalMoq)}
-                    className="h-8 text-sm"
+                    className="h-7 text-xs"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="qty-container" className="text-xs flex items-center gap-1">
-                    <Container className="h-3 w-3" />
+                  <Label htmlFor="qty-container" className="text-[10px] flex items-center gap-1">
+                    <Container className="h-2.5 w-2.5" />
                     Qty / Container
                   </Label>
                   <Input
@@ -585,22 +603,22 @@ export function ActionsPanel({
                     placeholder="0"
                     value={localQtyPerContainer}
                     onChange={handleIntegerChange(setLocalQtyPerContainer)}
-                    className="h-8 text-sm"
+                    className="h-7 text-xs"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="container-type" className="text-xs">Container Type</Label>
+                  <Label htmlFor="container-type" className="text-[10px]">Container</Label>
                   <Select
                     value={localContainerType}
                     onValueChange={setLocalContainerType}
                   >
-                    <SelectTrigger id="container-type" className="h-8 text-sm">
-                      <SelectValue placeholder="Select type" />
+                    <SelectTrigger id="container-type" className="h-7 text-xs">
+                      <SelectValue placeholder="Type" />
                     </SelectTrigger>
                     <SelectContent>
                       {CONTAINER_TYPES.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
+                        <SelectItem key={type.value} value={type.value} className="text-xs">
                           {type.label}
                         </SelectItem>
                       ))}
@@ -609,71 +627,59 @@ export function ActionsPanel({
                 </div>
               </div>
 
-              {/* Batch Save Button */}
-              <div className="mt-4 pt-3 border-t">
-                <Button
-                  onClick={handleSaveCommercialData}
-                  disabled={!canSubmitCommercial || saveCommercialDataMutation.isPending}
-                  className="w-full"
-                  size="sm"
-                >
-                  <ArrowRight className="h-4 w-4 mr-2" />
-                  {saveCommercialDataMutation.isPending 
-                    ? 'Saving...' 
-                    : `Save & Move Card to ${targetTeamName}`
-                  }
-                </Button>
-                {!canSubmitCommercial && (
-                  <p className="text-xs text-muted-foreground text-center mt-2">
-                    All 4 fields are required to submit
-                  </p>
-                )}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        )}
+              <Button
+                onClick={() => saveCommercialDataMutation.mutate()}
+                disabled={!canSubmitCommercial || saveCommercialDataMutation.isPending}
+                className="w-full h-8"
+                size="sm"
+              >
+                <ArrowRight className="h-3 w-3 mr-1" />
+                {saveCommercialDataMutation.isPending 
+                  ? 'Saving...' 
+                  : `Save & Move to ${targetTeamName}`
+                }
+              </Button>
+              {!canSubmitCommercial && (
+                <p className="text-[10px] text-muted-foreground text-center">
+                  All 4 fields required
+                </p>
+              )}
+            </div>
+          )}
 
-        {/* Sample Tracking Section - Only for non-task cards */}
-        {cardType !== 'task' && (
-          <AccordionItem value="samples" className="border rounded-lg mt-2">
-            <AccordionTrigger className="py-3 px-3 hover:no-underline">
-              <span className="flex items-center gap-2 text-sm font-medium">
-                <Package className="h-4 w-4" />
-                Sample Tracking
-                {samples.length > 0 && (
-                  <span className="bg-muted text-muted-foreground text-xs px-1.5 py-0.5 rounded">
-                    {samples.length}
-                  </span>
-                )}
-              </span>
-            </AccordionTrigger>
-            <AccordionContent className="px-3 pb-3 space-y-3">
+          {/* Samples Section */}
+          {activeAction === 'samples' && (
+            <div ref={samplesSectionRef} className="space-y-3">
               <AddSampleForm itemId={cardId} />
               
               {samples.length > 0 && (
-                <div ref={samplesSectionRef} className="space-y-2 pt-2">
+                <div className="space-y-2 pt-2">
                   {samples.map((sample) => (
                     <SampleTrackingCard 
                       key={sample.id} 
                       sample={sample} 
                       canEdit={canEdit}
                       onSampleArrived={() => {
-                        // Scroll to the bottom of the samples section after the review form appears
                         setTimeout(() => {
                           samplesSectionRef.current?.scrollIntoView({ 
                             behavior: 'smooth', 
                             block: 'end' 
                           });
-                        }, SAMPLE_REVIEW_SCROLL_DELAY);
+                        }, 300);
                       }}
                     />
                   ))}
                 </div>
               )}
-            </AccordionContent>
-          </AccordionItem>
-        )}
-      </Accordion>
+            </div>
+          )}
+
+          {/* Files Section */}
+          {activeAction === 'files' && (
+            <CardFilesTab cardId={cardId} />
+          )}
+        </div>
+      )}
 
       {/* Move Card Modal */}
       <MoveCardModal
