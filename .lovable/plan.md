@@ -1,158 +1,105 @@
 
-## Plan: Display Initial Card Image + Include in Files Archive
 
-### Problem Summary
+## Plan: Make Card Header Image Compact
 
-When you create a new card and upload a picture during creation:
-1. **Not visible in card header**: The image is saved to the database but not displayed in the card detail view
-2. **Not visible in Files tab**: The Files tab only shows attachments from timeline activities, not the initial card image
+### Current Issue
 
-### Root Cause
-
-| Location | Issue |
-|----------|-------|
-| `CardInfoSection.tsx` | Does not render `item.image_url` at all |
-| `CardFilesTab.tsx` | Only fetches from activity metadata, ignores `development_items.image_url` |
-| `CreateCardModal.tsx` | Saves image to `image_url` column but doesn't log it as an activity with attachments |
+The initial card image in the header uses `max-w-xs` (320px width) and `max-h-48` (192px height), taking up too much vertical space and reducing the timeline/history area.
 
 ### Solution
 
-Two complementary fixes:
+Make the image a small inline thumbnail (48x48px) that sits alongside the due date and supplier info, keeping it clickable to open full-size in a new tab.
 
-**1. Display the initial image in the card header** (CardInfoSection)
-Add a clickable image thumbnail below the title/badges section that shows the card's main image.
+### Visual Layout
 
-**2. Include the initial image in the Files tab** (CardFilesTab)
-Fetch the card's `image_url` from `development_items` and include it in the files list alongside activity attachments.
+**Current:**
+```text
+┌────────────────────────────────────────┐
+│ Title                        [Status]  │
+│ [Item] [Final Product] [Medium]        │
+│ 📅 Due date  🏭 Supplier               │
+│ ┌────────────────────────────┐         │
+│ │                            │         │
+│ │      LARGE IMAGE           │ ← Takes │
+│ │      (up to 320x192)       │   too   │
+│ │                            │   much  │
+│ └────────────────────────────┘   space │
+│ Desired Outcome: ...                   │
+└────────────────────────────────────────┘
+```
 
-### Technical Implementation
+**After fix:**
+```text
+┌────────────────────────────────────────┐
+│ Title                        [Status]  │
+│ [Item] [Final Product] [Medium]        │
+│ 📅 Due  🏭 Supplier  🖼️ [thumb]        │
+│ Desired Outcome: ...                   │
+└────────────────────────────────────────┘
+                               ↑
+                        Small 48x48 thumbnail
+                        inline with metadata
+```
 
-#### 1. Update CardInfoSection.tsx
+### Technical Changes
 
-Add image display below the title section:
+**File: `src/components/development/CardInfoSection.tsx`**
+
+Move the image from its own section into the metadata row (with due date and supplier), making it a small clickable thumbnail:
 
 ```tsx
-{/* Card Image - if available */}
-{item.image_url && (
-  <a
-    href={item.image_url}
-    target="_blank"
-    rel="noopener noreferrer"
-    className="block relative w-full max-w-xs rounded-lg overflow-hidden border hover:ring-2 hover:ring-primary transition-all"
-  >
-    <img
-      src={item.image_url}
-      alt={item.title}
-      className="w-full h-auto object-contain max-h-48"
-    />
-    <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center">
-      <ExternalLink className="h-5 w-5 text-white opacity-0 hover:opacity-100" />
-    </div>
-  </a>
+{/* Due date + Supplier + Image thumbnail inline */}
+{(item.due_date || item.supplier || item.image_url) && (
+  <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+    {item.due_date && (
+      <span className="flex items-center gap-1">
+        <Calendar className="h-3 w-3" />
+        {format(new Date(item.due_date), 'dd/MM/yyyy')}
+      </span>
+    )}
+    {item.supplier && (
+      <span className="flex items-center gap-1">
+        <Factory className="h-3 w-3" />
+        {item.supplier.company_name}
+      </span>
+    )}
+    {item.image_url && (
+      <a
+        href={item.image_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="group flex-shrink-0"
+        title="View full image"
+      >
+        <div className="relative w-10 h-10 rounded border overflow-hidden hover:ring-2 hover:ring-primary transition-all">
+          <img
+            src={item.image_url}
+            alt={item.title}
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+            <ExternalLink className="h-3 w-3 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+        </div>
+      </a>
+    )}
+  </div>
 )}
 ```
 
-This will show the initial image:
-- In a clickable container that opens full-size in a new tab
-- With a subtle hover effect indicating it's interactive
-- Below the title/badges but above the desired outcome
+### Key Changes
 
-#### 2. Update CardFilesTab.tsx
+| Property | Before | After |
+|----------|--------|-------|
+| Container size | `max-w-xs` (320px) | `w-10 h-10` (40x40px) |
+| Image height | `max-h-48` (192px) | `h-10` (40px) |
+| Object fit | `object-contain` | `object-cover` (crop to fit) |
+| Position | Own section below metadata | Inline with date/supplier row |
 
-Modify the query to also fetch the card's main image:
+### Result
 
-```tsx
-const { data: files = [], isLoading } = useQuery({
-  queryKey: ['card-files', cardId],
-  queryFn: async () => {
-    // Fetch activities with attachments (existing logic)
-    const { data: activities, error } = await supabase
-      .from('development_card_activity')
-      .select('*')
-      .eq('card_id', cardId)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
+- Header height reduced by ~150-200px
+- Image still visible as a recognizable thumbnail
+- Clicking opens full image in new tab
+- Timeline/history section gets more vertical space
 
-    // ALSO fetch the card's main image
-    const { data: card } = await supabase
-      .from('development_items')
-      .select('image_url, created_at, created_by')
-      .eq('id', cardId)
-      .single();
-
-    // ... existing profile lookup logic ...
-
-    const allFiles: FileItem[] = [];
-
-    // Add the card's initial image if it exists
-    if (card?.image_url) {
-      const creatorProfile = profileMap[card.created_by];
-      allFiles.push({
-        id: `card-image-${cardId}`,
-        name: 'Initial card image',
-        url: card.image_url,
-        type: 'image',
-        uploadedAt: card.created_at,
-        uploadedBy: {
-          name: creatorProfile?.full_name || null,
-          email: creatorProfile?.email || null,
-        },
-        activityType: 'created',
-        activityContent: 'Card created with image',
-      });
-    }
-
-    // ... existing activity attachments extraction logic ...
-
-    return allFiles;
-  },
-});
-```
-
-### Files to Modify
-
-| File | Change |
-|------|--------|
-| `src/components/development/CardInfoSection.tsx` | Add image display below title section |
-| `src/components/development/CardFilesTab.tsx` | Include card's `image_url` in files list |
-
-### Visual Result
-
-**Card Detail Header (after fix):**
-```text
-┌─────────────────────────────────────────┐
-│ Title                          [Status] │
-│ [Item] [Final Product] [Medium]         │
-│ 📅 Due date  🏭 Supplier                │
-│                                         │
-│ ┌─────────────────┐                     │
-│ │   Card Image    │  ← NEW: Clickable   │
-│ │   (thumbnail)   │     image display   │
-│ └─────────────────┘                     │
-│                                         │
-│ ┌─────────────────────────────────────┐ │
-│ │ Desired Outcome: ...                │ │
-│ └─────────────────────────────────────┘ │
-└─────────────────────────────────────────┘
-```
-
-**Files Tab (after fix):**
-```text
-┌─────────────────────────────────────────┐
-│ 🖼️ IMAGES (3)                           │
-│ ┌────┐ ┌────┐ ┌────┐                    │
-│ │Init│ │Time│ │Time│  ← "Init" = initial│
-│ │Img │ │line│ │line│    card image      │
-│ └────┘ └────┘ └────┘                    │
-│                                         │
-│ 📄 DOCUMENTS (1)                        │
-│ └ Report.pdf                            │
-└─────────────────────────────────────────┘
-```
-
-### Summary
-
-This fix ensures:
-1. The initial card image is visible in the card header when viewing card details
-2. ALL images (initial + timeline) appear in the Files archive tab
-3. Everyone can always access all media shared within a card
