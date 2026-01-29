@@ -1,60 +1,111 @@
 
 
-## Fix: "Unknown" Users in Development Card Timeline
+## Plan: Real-time Card Updates Without Refresh
 
 ### Problem
 
-When viewing development cards from another user's session, people appear as "Someone" or "Unknown" instead of their actual names (like "Caio Kohn"). This happens because the current database security rules only allow:
-1. Users to see their own profile
-2. Admins to see all profiles
-
-So when Peter (a trader) views a card created by Caio (a buyer/admin), Peter cannot read Caio's profile from the database, resulting in "Unknown" being displayed.
+Currently, when someone else updates a card (adds a comment, changes status, moves it between teams), you don't see the changes until you manually refresh the page.
 
 ### Solution
 
-Add a security policy that allows all logged-in users to view basic profile information (name and email) of other users. This is safe because:
-- Profiles only contain display information (name, email, avatar URL)
-- This data is already visible in the UI when viewing comments and activities
-- No sensitive information is exposed
+Add real-time synchronization so the card list automatically updates when changes occur. This uses the same technology already powering the timeline inside card drawers.
 
-### What Will Change
+### How It Works
 
-| Before | After |
-|--------|-------|
-| Non-admins see "Unknown" or "Someone" for other users | Everyone sees the actual user names |
-| Only admins and self can view profiles | All logged-in users can view all profiles |
+```text
+┌─────────────┐       ┌─────────────┐       ┌─────────────┐
+│  User A     │       │   Server    │       │   User B    │
+│  (Brazil)   │       │  (Database) │       │  (China)    │
+└──────┬──────┘       └──────┬──────┘       └──────┬──────┘
+       │                     │                     │
+       │  Updates card       │                     │
+       │ ──────────────────> │                     │
+       │                     │                     │
+       │                     │  Realtime push      │
+       │                     │ ──────────────────> │
+       │                     │                     │
+       │                     │                     │ Card list
+       │                     │                     │ auto-updates!
+       │                     │                     │
+```
+
+### What Changes
+
+1. **Database**: Enable real-time broadcasting for the development cards table
+2. **Code**: Add a lightweight listener that triggers a background refresh when changes are detected
+
+### Performance Guarantees
+
+- **Zero cost**: Uses existing infrastructure (no additional API calls)
+- **No delay**: Changes pushed instantly from server to all connected users  
+- **Smooth**: Uses debounced updates (waits 300ms to batch rapid changes)
+- **Battery-friendly**: Uses WebSocket connections, not polling
 
 ### Technical Implementation
 
-**Database Migration:**
+**Step 1: Database Migration**
+
+Enable realtime on the `development_items` table:
 
 ```sql
--- Allow all authenticated users to view profiles
--- This enables displaying user names in activity timelines, comments, etc.
-CREATE POLICY "Authenticated users can view all profiles"
-  ON public.profiles
-  FOR SELECT
-  TO authenticated
-  USING (true);
+ALTER PUBLICATION supabase_realtime ADD TABLE public.development_items;
+```
+
+**Step 2: Add Realtime Subscription**
+
+In `src/pages/Development.tsx`, add a subscription similar to the existing pattern in `HistoryTimeline.tsx`:
+
+```tsx
+// After the useQuery for items
+const invalidateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+useEffect(() => {
+  const channel = supabase
+    .channel('development-items-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'development_items',
+      },
+      () => {
+        // Debounce: wait 300ms before refetching
+        if (invalidateTimeoutRef.current) {
+          clearTimeout(invalidateTimeoutRef.current);
+        }
+        invalidateTimeoutRef.current = setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['development-items'] });
+        }, 300);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    if (invalidateTimeoutRef.current) {
+      clearTimeout(invalidateTimeoutRef.current);
+    }
+    supabase.removeChannel(channel);
+  };
+}, [queryClient]);
 ```
 
 ### Files to Modify
 
-| Location | Change |
-|----------|--------|
-| Database (migration) | Add new RLS policy for authenticated users to SELECT from profiles |
+| File | Change |
+|------|--------|
+| Database (migration) | Enable realtime for `development_items` table |
+| `src/pages/Development.tsx` | Add realtime subscription with debounced refresh |
 
-### Security Considerations
-
-- Only SELECT access is granted (no INSERT/UPDATE/DELETE)
-- Only authenticated users can access (not anonymous)
-- The `profiles` table only contains display information, not sensitive data
-- This pattern is standard for multi-user applications where users need to see each other's names
-
-### Expected Result
+### What You'll Notice
 
 After this change:
-- Peter will see "Caio Kohn commented" instead of "Unknown commented"
-- All users will properly see who created cards, added comments, or performed actions
-- The activity timeline will show correct names for all participants
+- When someone moves a card to your team, it appears immediately
+- When someone changes a card's status, the badge updates automatically
+- When new comments are added, the "new activity" indicator appears in real-time
+- All without any manual refresh
+
+### Summary
+
+This adds seamless real-time synchronization to the development cards list using the same proven pattern already working inside card drawers. The implementation is lightweight, efficient, and completely transparent to users.
 
