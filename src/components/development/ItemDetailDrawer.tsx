@@ -103,12 +103,12 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
         });
 
       if (!error) {
-        // Optimistically mark as viewed in the cache so the dot clears immediately,
-        // then force an immediate refetch for the *exact* query key.
+        // Optimistically mark as viewed in all matching caches
         const optimisticSeenAt = new Date().toISOString();
 
-        queryClient.setQueryData<DevelopmentItem[]>(
-          ['development-items', user.id],
+        // Use setQueriesData with partial key to match any query starting with 'development-items'
+        queryClient.setQueriesData<DevelopmentItem[]>(
+          { queryKey: ['development-items'] },
           (prev) => {
             if (!prev) return prev;
             return prev.map((it) =>
@@ -117,9 +117,10 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
           }
         );
 
-        await queryClient.invalidateQueries({
-          queryKey: ['development-items', user.id],
-          refetchType: 'active',
+        // Force immediate refetch to get server-confirmed data
+        await queryClient.refetchQueries({
+          queryKey: ['development-items'],
+          type: 'active',
         });
       }
     };
