@@ -461,16 +461,21 @@ export function ActionsPanel({
             <Button 
               variant={activeAction === 'samples' ? 'secondary' : 'ghost'} 
               size="sm" 
-              className="h-8 flex-1 gap-1 relative"
+              className={cn(
+                "h-8 flex-1 gap-1 relative",
+                samples.some(s => s.status === 'pending') && "text-amber-600"
+              )}
               onClick={() => toggleAction('samples')}
             >
               <Package className="h-4 w-4" />
               <span className="hidden sm:inline text-xs">Samples</span>
-              {samples.length > 0 && (
+              {samples.some(s => s.status === 'pending') ? (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse" />
+              ) : samples.length > 0 ? (
                 <span className="absolute -top-1 -right-1 min-w-4 h-4 bg-secondary text-secondary-foreground text-[10px] rounded-full flex items-center justify-center">
                   {samples.length}
                 </span>
-              )}
+              ) : null}
             </Button>
           </>
         )}
