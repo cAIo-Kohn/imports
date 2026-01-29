@@ -1,140 +1,60 @@
 
 
-## Plan: Add File Upload to Comment/Question Section
+## Fix: "Unknown" Users in Development Card Timeline
 
 ### Problem
 
-When creating a new card or adding comments/questions from the Actions Panel, there's no way to upload files (images, PDFs, Excel reports, etc.). The upload functionality exists in the reply box but is missing from the main messaging form.
+When viewing development cards from another user's session, people appear as "Someone" or "Unknown" instead of their actual names (like "Caio Kohn"). This happens because the current database security rules only allow:
+1. Users to see their own profile
+2. Admins to see all profiles
+
+So when Peter (a trader) views a card created by Caio (a buyer/admin), Peter cannot read Caio's profile from the database, resulting in "Unknown" being displayed.
 
 ### Solution
 
-Add the existing `TimelineUploadButton` component to the "Add Comment / Ask Question" section in the Actions Panel. This will allow users to attach files when posting comments or questions.
+Add a security policy that allows all logged-in users to view basic profile information (name and email) of other users. This is safe because:
+- Profiles only contain display information (name, email, avatar URL)
+- This data is already visible in the UI when viewing comments and activities
+- No sensitive information is exposed
 
 ### What Will Change
 
-The messaging section will now include:
-1. A paperclip/attach button next to the text area
-2. Preview of attached files before sending
-3. Attachments saved to the activity metadata when the message is sent
-
-### Visual Layout
-
-```text
-+-------------------------------------------+
-| Add Comment / Ask Question            [v] |
-+-------------------------------------------+
-| [Comment] [Question]  (tabs)              |
-|                                           |
-| +---------------------------------------+ |
-| | Type your message...                  | |
-| |                                       | |
-| +---------------------------------------+ |
-|                                           |
-| [📎 Attach] [img1.png] [report.xlsx]     | <- NEW: Upload button + previews
-|                                           |
-|                               [Send]      |
-+-------------------------------------------+
-```
+| Before | After |
+|--------|-------|
+| Non-admins see "Unknown" or "Someone" for other users | Everyone sees the actual user names |
+| Only admins and self can view profiles | All logged-in users can view all profiles |
 
 ### Technical Implementation
 
-**File: `src/components/development/ActionsPanel.tsx`**
+**Database Migration:**
 
-1. Import the `TimelineUploadButton` and `UploadedAttachment` type
-2. Add state for attachments: `const [attachments, setAttachments] = useState<UploadedAttachment[]>([])`
-3. Add the upload button below the textarea
-4. Update the mutation to include attachments in metadata
-5. Clear attachments after successful send
-
-**Code Changes:**
-
-```tsx
-// Add import
-import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton';
-
-// Add state (after messageContent state)
-const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
-
-// Update the mutation to include attachments
-const addMessageMutation = useMutation({
-  mutationFn: async () => {
-    if (!user?.id || (!messageContent.trim() && attachments.length === 0)) return;
-    
-    const metadata: Record<string, any> = {};
-    if (attachments.length > 0) {
-      metadata.attachments = attachments;
-    }
-    
-    const { error } = await supabase.from('development_card_activity').insert({
-      card_id: cardId,
-      user_id: user.id,
-      activity_type: messageType,
-      content: messageContent.trim() || null,
-      metadata: Object.keys(metadata).length > 0 ? metadata : null,
-    });
-    if (error) throw error;
-    // ... rest of mutation
-  },
-  onSuccess: () => {
-    // ... existing code
-    setAttachments([]); // Clear attachments after send
-  },
-});
-
-// Update canSubmit logic
-const canSubmit = messageContent.trim() || attachments.length > 0;
-
-// Add upload button in the form (after Textarea)
-<div className="flex items-center gap-2">
-  <TimelineUploadButton
-    attachments={attachments}
-    onAttachmentsChange={setAttachments}
-    variant="icon"
-    disabled={addMessageMutation.isPending}
-  />
-</div>
-```
-
-**Form Layout Update:**
-
-```tsx
-<form onSubmit={handleSendMessage} className="space-y-3">
-  <Tabs ...>...</Tabs>
-  
-  <Textarea ... />
-  
-  {/* NEW: Attachments section */}
-  <div className="flex items-center justify-between">
-    <TimelineUploadButton
-      attachments={attachments}
-      onAttachmentsChange={setAttachments}
-      variant="icon"
-      disabled={addMessageMutation.isPending}
-    />
-    
-    <Button type="submit" ...>
-      Send
-    </Button>
-  </div>
-</form>
+```sql
+-- Allow all authenticated users to view profiles
+-- This enables displaying user names in activity timelines, comments, etc.
+CREATE POLICY "Authenticated users can view all profiles"
+  ON public.profiles
+  FOR SELECT
+  TO authenticated
+  USING (true);
 ```
 
 ### Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/components/development/ActionsPanel.tsx` | Add upload button to messaging section, include attachments in mutation |
+| Location | Change |
+|----------|--------|
+| Database (migration) | Add new RLS policy for authenticated users to SELECT from profiles |
 
-### Supported File Types
+### Security Considerations
 
-The existing `TimelineUploadButton` already supports:
-- Images: JPEG, PNG, GIF, WebP
-- Documents: PDF, Word (DOC, DOCX)
-- Spreadsheets: Excel (XLS, XLSX)
-- Max file size: 10MB per file
-- Multiple files can be uploaded at once
+- Only SELECT access is granted (no INSERT/UPDATE/DELETE)
+- Only authenticated users can access (not anonymous)
+- The `profiles` table only contains display information, not sensitive data
+- This pattern is standard for multi-user applications where users need to see each other's names
 
-### Summary
+### Expected Result
 
-This simple integration reuses the existing upload component to add file attachment capability to the main comment/question form. Users will be able to attach images, PDFs, Excel reports, and other documents when posting messages on development cards.
+After this change:
+- Peter will see "Caio Kohn commented" instead of "Unknown commented"
+- All users will properly see who created cards, added comments, or performed actions
+- The activity timeline will show correct names for all participants
 
