@@ -37,11 +37,14 @@ const CATEGORY_LABELS: Record<string, string> = {
   raw_material: 'Raw',
 };
 
+// Max characters for truncated description
+const DESCRIPTION_TRUNCATE_LENGTH = 120;
+
 export function CardInfoSection({ 
   item, 
   canEdit, 
 }: CardInfoSectionProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [showGroupedItems, setShowGroupedItems] = useState(false);
   const itemWithNewFields = item as any;
   const cardType = item.card_type || 'item';
@@ -60,124 +63,182 @@ export function CardInfoSection({
     enabled: cardType === 'item_group',
   });
 
-  // Check if there's detailed content to show
-  const hasDetails = item.description || item.supplier || cardType === 'item_group';
+  // Check if description needs truncation
+  const description = item.description || '';
+  const needsTruncation = description.length > DESCRIPTION_TRUNCATE_LENGTH;
+  const truncatedDescription = needsTruncation 
+    ? description.slice(0, DESCRIPTION_TRUNCATE_LENGTH) + '...'
+    : description;
+
+  // Check if there's extra content to show in expanded view
+  const hasExpandableContent = needsTruncation || item.supplier || cardType === 'item_group';
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      {/* Always visible: Compact badges + metadata row */}
-      <div className="flex items-center justify-between py-2 px-4 bg-muted/30 border-b">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <Badge variant="outline" className="text-[9px] h-4 px-1.5">
-            {CARD_TYPE_LABELS[cardType]}
+    <div className="border-b">
+      {/* Always visible: Badges + metadata row */}
+      <div className="flex items-center gap-2 py-2 px-4 bg-muted/30 flex-wrap">
+        <Badge variant="outline" className="text-[10px] h-5 px-2">
+          {CARD_TYPE_LABELS[cardType]}
+        </Badge>
+        {itemWithNewFields.product_category && (
+          <Badge variant="secondary" className="text-[10px] h-5 px-2">
+            {CATEGORY_LABELS[itemWithNewFields.product_category] || itemWithNewFields.product_category}
           </Badge>
-          {itemWithNewFields.product_category && (
-            <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
-              {CATEGORY_LABELS[itemWithNewFields.product_category] || itemWithNewFields.product_category}
-            </Badge>
-          )}
-          <Badge className={cn('text-[9px] h-4 px-1.5', PRIORITY_STYLES[item.priority])}>
-            {item.priority}
+        )}
+        <Badge className={cn('text-[10px] h-5 px-2', PRIORITY_STYLES[item.priority])}>
+          {item.priority}
+        </Badge>
+        {item.product_code && (
+          <Badge variant="outline" className="text-[10px] h-5 px-2 font-mono">
+            {item.product_code}
           </Badge>
-          {item.product_code && (
-            <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-mono">
-              {item.product_code}
-            </Badge>
-          )}
-          {item.due_date && (
-            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5 ml-1">
-              <Calendar className="h-2.5 w-2.5" />
-              {format(new Date(item.due_date), 'dd/MM')}
-            </span>
-          )}
-          {item.image_url && (
-            <a
-              href={item.image_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ml-1 flex-shrink-0"
-              title="View full image"
-            >
-              <div className="w-5 h-5 rounded overflow-hidden border hover:ring-1 hover:ring-primary transition-all">
-                <img
-                  src={item.image_url}
-                  alt={item.title}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </a>
-          )}
-        </div>
-        
-        {hasDetails && (
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-5 text-[10px] px-2 gap-1">
-              Details
-              <ChevronDown className={cn(
-                "h-3 w-3 transition-transform",
-                isOpen && "rotate-180"
-              )} />
-            </Button>
-          </CollapsibleTrigger>
+        )}
+        {item.due_date && (
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Calendar className="h-3 w-3" />
+            {format(new Date(item.due_date), 'dd/MM')}
+          </span>
+        )}
+        {item.image_url && (
+          <a
+            href={item.image_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-shrink-0"
+            title="View full image"
+          >
+            <div className="w-6 h-6 rounded overflow-hidden border hover:ring-2 hover:ring-primary transition-all">
+              <img
+                src={item.image_url}
+                alt={item.title}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </a>
         )}
       </div>
-      
-      <CollapsibleContent>
-        <div className="px-4 py-2 space-y-2 border-b bg-muted/20">
-          {/* Description */}
-          {item.description && (
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              {item.description}
+
+      {/* Description / Desired Outcome - Always visible */}
+      {description && (
+        <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+          <div className="px-4 py-2 bg-muted/20">
+            <p className="text-sm text-foreground leading-relaxed">
+              {isExpanded ? description : truncatedDescription}
             </p>
-          )}
-          
-          {/* Supplier */}
-          {item.supplier && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Factory className="h-3 w-3" />
-              <span>{item.supplier.company_name}</span>
-            </div>
-          )}
-          
-          {/* Larger image preview if available */}
-          {item.image_url && (
-            <a
-              href={item.image_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group block w-fit"
-              title="View full image"
-            >
-              <div className="relative w-24 h-24 rounded-lg border overflow-hidden hover:ring-2 hover:ring-primary transition-all">
-                <img
-                  src={item.image_url}
-                  alt={item.title}
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                  <ExternalLink className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+            
+            {/* Expand/Collapse trigger for long descriptions */}
+            {needsTruncation && (
+              <CollapsibleTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-5 text-xs px-1 mt-1 text-muted-foreground hover:text-foreground"
+                >
+                  {isExpanded ? 'Show less' : 'Show more'}
+                  <ChevronDown className={cn(
+                    "h-3 w-3 ml-1 transition-transform",
+                    isExpanded && "rotate-180"
+                  )} />
+                </Button>
+              </CollapsibleTrigger>
+            )}
+          </div>
+
+          {/* Expandable extra content: supplier, larger image, grouped items */}
+          <CollapsibleContent>
+            <div className="px-4 py-2 space-y-2 bg-muted/10">
+              {/* Supplier */}
+              {item.supplier && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Factory className="h-3 w-3" />
+                  <span>{item.supplier.company_name}</span>
                 </div>
-              </div>
-            </a>
-          )}
+              )}
+              
+              {/* Larger image preview if available */}
+              {item.image_url && (
+                <a
+                  href={item.image_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group block w-fit"
+                  title="View full image"
+                >
+                  <div className="relative w-24 h-24 rounded-lg border overflow-hidden hover:ring-2 hover:ring-primary transition-all">
+                    <img
+                      src={item.image_url}
+                      alt={item.title}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                      <ExternalLink className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </div>
+                </a>
+              )}
+              
+              {/* Products in Group - only for item_group */}
+              {cardType === 'item_group' && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="w-full justify-between h-8 text-xs"
+                  onClick={() => setShowGroupedItems(true)}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Layers className="h-3 w-3" />
+                    Products in Group
+                  </span>
+                  <Badge variant="secondary" className="text-[10px] h-4">{productsCount} items</Badge>
+                </Button>
+              )}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      {/* If no description but has other expandable content */}
+      {!description && hasExpandableContent && (
+        <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+          <div className="px-4 py-1">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-6 text-xs px-2 gap-1 text-muted-foreground">
+                More details
+                <ChevronDown className={cn(
+                  "h-3 w-3 transition-transform",
+                  isExpanded && "rotate-180"
+                )} />
+              </Button>
+            </CollapsibleTrigger>
+          </div>
           
-          {/* Products in Group - only for item_group */}
-          {cardType === 'item_group' && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              className="w-full justify-between h-8 text-xs"
-              onClick={() => setShowGroupedItems(true)}
-            >
-              <span className="flex items-center gap-1.5">
-                <Layers className="h-3 w-3" />
-                Products in Group
-              </span>
-              <Badge variant="secondary" className="text-[10px] h-4">{productsCount} items</Badge>
-            </Button>
-          )}
-        </div>
-      </CollapsibleContent>
+          <CollapsibleContent>
+            <div className="px-4 py-2 space-y-2 bg-muted/10">
+              {item.supplier && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Factory className="h-3 w-3" />
+                  <span>{item.supplier.company_name}</span>
+                </div>
+              )}
+              
+              {cardType === 'item_group' && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="w-full justify-between h-8 text-xs"
+                  onClick={() => setShowGroupedItems(true)}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Layers className="h-3 w-3" />
+                    Products in Group
+                  </span>
+                  <Badge variant="secondary" className="text-[10px] h-4">{productsCount} items</Badge>
+                </Button>
+              )}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
 
       {/* Grouped Items Modal */}
       <GroupedItemsDrawer
@@ -186,6 +247,6 @@ export function CardInfoSection({
         cardId={item.id}
         canEdit={canEdit}
       />
-    </Collapsible>
+    </div>
   );
 }

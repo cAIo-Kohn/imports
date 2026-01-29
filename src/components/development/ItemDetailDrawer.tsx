@@ -377,6 +377,9 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               cardId={item.id}
               cardType={cardType}
               cardCreatedBy={item.created_by}
+              cardTitle={item.title}
+              cardDescription={item.description}
+              cardImageUrl={item.image_url}
               isCardSolved={itemWithNewFields.is_solved || false}
               showAttentionBanner={shouldShowAttentionBanner}
               currentOwner={itemWithNewFields.current_owner || 'arc'}

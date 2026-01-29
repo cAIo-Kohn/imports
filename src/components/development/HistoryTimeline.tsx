@@ -52,6 +52,9 @@ interface HistoryTimelineProps {
   cardId: string;
   cardType?: 'item' | 'item_group' | 'task';
   cardCreatedBy?: string;
+  cardTitle?: string;
+  cardDescription?: string | null;
+  cardImageUrl?: string | null;
   isCardSolved?: boolean;
   showAttentionBanner?: boolean;
   currentOwner?: 'mor' | 'arc';
@@ -197,6 +200,78 @@ function CompactActivityRow({ activity }: { activity: Activity }) {
       <span className="opacity-50 flex-shrink-0">
         • {format(parseISO(activity.created_at), 'HH:mm')}
       </span>
+    </div>
+  );
+}
+
+// Special card for the "created" activity showing title, description, and image
+interface CreatedActivityCardProps {
+  activity: Activity;
+  cardTitle?: string;
+  cardDescription?: string | null;
+  cardImageUrl?: string | null;
+}
+
+function CreatedActivityCard({ activity, cardTitle, cardDescription, cardImageUrl }: CreatedActivityCardProps) {
+  const firstName = activity.profile?.full_name?.split(' ')[0] || 'Someone';
+  const fullName = activity.profile?.full_name || activity.profile?.email || 'Unknown';
+  
+  const getInitials = (profile: Activity['profile']) => {
+    if (profile?.full_name) {
+      return profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    }
+    if (profile?.email) {
+      return profile.email[0].toUpperCase();
+    }
+    return '?';
+  };
+
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3">
+      {/* Creator info */}
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+        <Avatar className="h-5 w-5">
+          <AvatarFallback className="text-[10px] bg-background">
+            {getInitials(activity.profile)}
+          </AvatarFallback>
+        </Avatar>
+        <span className="font-medium text-foreground">{fullName}</span>
+        <span>created this card</span>
+        <span className="opacity-70">• {format(parseISO(activity.created_at), 'HH:mm')}</span>
+      </div>
+      
+      {/* Card content preview */}
+      <div className="flex gap-3">
+        {/* Image thumbnail */}
+        {cardImageUrl && (
+          <a
+            href={cardImageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-shrink-0"
+          >
+            <div className="w-16 h-16 rounded-lg border overflow-hidden hover:ring-2 hover:ring-primary transition-all">
+              <img
+                src={cardImageUrl}
+                alt={cardTitle || 'Card image'}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </a>
+        )}
+        
+        {/* Title and description */}
+        <div className="flex-1 min-w-0">
+          {cardTitle && (
+            <h4 className="font-medium text-sm text-foreground truncate">{cardTitle}</h4>
+          )}
+          {cardDescription && (
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+              {cardDescription}
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -870,6 +945,9 @@ export function HistoryTimeline({
   cardId, 
   cardType = 'item',
   cardCreatedBy,
+  cardTitle,
+  cardDescription,
+  cardImageUrl,
   isCardSolved = false,
   showAttentionBanner,
   currentOwner = 'arc',
@@ -1351,7 +1429,20 @@ export function HistoryTimeline({
           
           <div className="space-y-2">
             {groupedActivities[dateKey].map((activity) => {
-              // Render compact row for system activities
+              // Special card for "created" activity
+              if (activity.activity_type === 'created') {
+                return (
+                  <CreatedActivityCard
+                    key={activity.id}
+                    activity={activity}
+                    cardTitle={cardTitle}
+                    cardDescription={cardDescription}
+                    cardImageUrl={cardImageUrl}
+                  />
+                );
+              }
+              
+              // Render compact row for other system activities
               if (isCompactActivity(activity.activity_type)) {
                 return <CompactActivityRow key={activity.id} activity={activity} />;
               }
