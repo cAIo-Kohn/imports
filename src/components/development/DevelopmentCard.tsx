@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
 import { format } from 'date-fns';
-import { Calendar, Package, Layers, ListTodo, Box, Leaf, Sparkles, Trash2, Clock } from 'lucide-react';
+import { Calendar, Package, Layers, ListTodo, Box, Leaf, Sparkles, Trash2, Clock, MessageCircle } from 'lucide-react';
 import { DevelopmentItem, DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -117,15 +117,21 @@ function DevelopmentCardComponent({
     >
       {/* Indicators - both can show independently */}
       <div className="absolute top-2 right-2 flex items-center gap-1">
+        {/* Pending threads count indicator */}
+        {(item as any).pending_threads_count > 0 && (
+          <div className="relative flex items-center justify-center h-5 w-5 rounded-full bg-amber-500 text-white text-[10px] font-bold animate-pulse">
+            {(item as any).pending_threads_count}
+          </div>
+        )}
         {/* Unseen activity indicator - always shown when there's unseen activity */}
-        {hasUnseenActivity && (
+        {hasUnseenActivity && !(item as any).pending_threads_count && (
           <span className="relative flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
           </span>
         )}
         {/* Pending action indicator - shown independently */}
-        {item.pending_action_type && (
+        {item.pending_action_type && !(item as any).pending_threads_count && (
           <PendingActionIndicator
             pendingActionType={item.pending_action_type}
             pendingActionDueAt={item.pending_action_due_at || null}
@@ -246,6 +252,7 @@ export const DevelopmentCard = memo(DevelopmentCardComponent, (prev, next) => {
     prev.item.last_viewed_at === next.item.last_viewed_at &&
     prev.item.pending_action_type === next.item.pending_action_type &&
     prev.item.pending_action_snoozed_until === next.item.pending_action_snoozed_until &&
+    (prev.item as any).pending_threads_count === (next.item as any).pending_threads_count &&
     prev.canDrag === next.canDrag
   );
 });
