@@ -39,6 +39,7 @@ import { UserRoleBadge, UserRoleDot } from './UserRoleBadge';
 import { AppRole } from '@/hooks/useUserRole';
 import { ThreadedTimeline } from './ThreadedTimeline';
 import { CompactActivityRow } from './CompactActivityRow';
+import { NewThreadComposer } from './NewThreadComposer';
 
 interface Activity {
   id: string;
@@ -885,6 +886,9 @@ export function HistoryTimeline({
   // State for which question has the inline reply box open
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   
+  // Inline thread composer visibility (triggered from banner Quick Actions)
+  const [showInlineThreadComposer, setShowInlineThreadComposer] = useState(false);
+  
   // State to track if we just acknowledged an answer (for showing post-acknowledgement prompt)
   const [showPostAcknowledgementPrompt, setShowPostAcknowledgementPrompt] = useState(false);
 
@@ -1386,29 +1390,29 @@ export function HistoryTimeline({
       )}
 
       {/* Sample Delivered Banner - awaiting review */}
-      {showSampleDeliveredBanner && deliveredSampleAwaitingReview && onOpenMessageSection && (
+      {showSampleDeliveredBanner && deliveredSampleAwaitingReview && (
         <SampleDeliveredBanner
           sample={deliveredSampleAwaitingReview}
           cardId={cardId}
           onReviewSample={(sampleId) => onOpenSampleSection?.(sampleId)}
-          onStartThread={() => onOpenMessageSection('comment')}
+          onStartThread={() => setShowInlineThreadComposer(true)}
         />
       )}
 
       {/* Sample In Transit Banner */}
-      {showSampleInTransitBanner && inTransitSample && onOpenMessageSection && (
+      {showSampleInTransitBanner && inTransitSample && (
         <SampleInTransitBanner
           sample={inTransitSample}
           cardId={cardId}
           onMarkArrived={() => {
             queryClient.invalidateQueries({ queryKey: ['development-item-samples-timeline', cardId] });
           }}
-          onStartThread={() => onOpenMessageSection('comment')}
+          onStartThread={() => setShowInlineThreadComposer(true)}
         />
       )}
       
       {/* Commercial Data Banner - when commercial data is set */}
-      {showCommercialDataBanner && !showNewCardBanner && fobPriceUsd && moq && qtyPerContainer && containerType && onOpenMessageSection && (
+      {showCommercialDataBanner && !showNewCardBanner && fobPriceUsd && moq && qtyPerContainer && containerType && (
         <CommercialDataBanner
           fobPriceUsd={fobPriceUsd}
           moq={moq}
@@ -1416,13 +1420,13 @@ export function HistoryTimeline({
           containerType={containerType}
           updatedAt={commercialUpdatedAt}
           onRequestSample={handleRequestSample}
-          onStartThread={() => onOpenMessageSection('comment')}
+          onStartThread={() => setShowInlineThreadComposer(true)}
           onUpload={() => onOpenUploadSection?.()}
         />
       )}
 
       {/* New Card Banner - when card is new for receiving team */}
-      {showNewCardBanner && cardTitle && onOpenMessageSection && (
+      {showNewCardBanner && cardTitle && (
         <NewCardBanner
           cardTitle={cardTitle}
           cardDescription={cardDescription}
@@ -1431,7 +1435,7 @@ export function HistoryTimeline({
           pendingActionType={pendingActionType}
           onStartThread={() => {
             dismissNewCardBanner();
-            onOpenMessageSection('comment');
+            setShowInlineThreadComposer(true);
           }}
           onUpload={() => {
             dismissNewCardBanner();
@@ -1439,6 +1443,19 @@ export function HistoryTimeline({
           }}
           onSnooze={dismissNewCardBanner}
         />
+      )}
+
+      {/* Inline Thread Composer - shown when triggered from banner Quick Actions */}
+      {showInlineThreadComposer && (
+        <div className="mb-4">
+          <NewThreadComposer
+            cardId={cardId}
+            currentOwner={currentOwner}
+            onClose={() => setShowInlineThreadComposer(false)}
+            onCardMove={onOwnerChange}
+            autoFocus
+          />
+        </div>
       )}
       
       {/* Attention Banner - when there's an unresolved question */}
