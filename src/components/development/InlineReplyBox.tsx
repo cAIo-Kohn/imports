@@ -16,6 +16,7 @@ interface InlineReplyBoxProps {
   cardId: string;
   currentOwner?: 'mor' | 'arc';
   pendingActionType?: string | null;
+  threadId?: string | null;
   onClose: () => void;
   onCardMove?: () => void;
 }
@@ -26,6 +27,7 @@ export function InlineReplyBox({
   cardId, 
   currentOwner, 
   pendingActionType,
+  threadId,
   onClose, 
   onCardMove 
 }: InlineReplyBoxProps) {
@@ -70,12 +72,17 @@ export function InlineReplyBox({
     mutationFn: async () => {
       if (!user?.id || (!replyContent.trim() && attachments.length === 0)) return;
       
+      // Use provided threadId, or fallback to replyToId as thread root
+      const effectiveThreadId = threadId || replyToId;
+      
       const { data, error } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
         activity_type: 'comment',
         content: replyContent.trim() || null,
         metadata: buildMetadata(),
+        thread_id: effectiveThreadId,
+        thread_root_id: effectiveThreadId,
       }).select('id').single();
       if (error) throw error;
       
@@ -109,6 +116,9 @@ export function InlineReplyBox({
       
       const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
       
+      // Use provided threadId, or fallback to replyToId as thread root
+      const effectiveThreadId = threadId || replyToId;
+      
       // 1. Insert answer activity with embedded move info
       const { error: insertError } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
@@ -120,6 +130,8 @@ export function InlineReplyBox({
           moved_from: currentOwner,
           moved_to: targetOwner,
         },
+        thread_id: effectiveThreadId,
+        thread_root_id: effectiveThreadId,
       });
       if (insertError) throw insertError;
 
@@ -185,6 +197,9 @@ export function InlineReplyBox({
       
       const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
       
+      // Use provided threadId, or fallback to replyToId as thread root
+      const effectiveThreadId = threadId || replyToId;
+      
       // 1. Insert question activity with reference to the answer and embedded move info
       const { error: insertError } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
@@ -197,6 +212,8 @@ export function InlineReplyBox({
           moved_from: currentOwner,
           moved_to: targetOwner,
         },
+        thread_id: effectiveThreadId,
+        thread_root_id: effectiveThreadId,
       });
       if (insertError) throw insertError;
 
