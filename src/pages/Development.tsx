@@ -74,6 +74,8 @@ export interface DevelopmentItem {
   last_viewed_at?: string | null;
   // Creator info
   creator_name?: string | null;
+  created_by_role?: 'buyer' | 'trader' | null;
+  is_new_for_other_team?: boolean;
   // Pending action tracking
   pending_action_type?: string | null;
   pending_action_due_at?: string | null;

@@ -60,18 +60,17 @@ function DevelopmentCardComponent({
   const cardType = item.card_type || 'item';
   
   // Get creator role color
-  const creatorRole = (item as any).created_by_role;
+  const creatorRole = item.created_by_role;
   const { color: roleColor, label: roleLabel } = getColorForRole(creatorRole);
   
   // Check if this card is "new" for the current user (cross-team notification)
-  const itemWithNewFields = item as any;
-  const isNewForMe = itemWithNewFields.is_new_for_other_team && (
-    (isBuyer && itemWithNewFields.created_by_role === 'trader') ||
-    (isTrader && itemWithNewFields.created_by_role === 'buyer')
+  const isNewForMe = item.is_new_for_other_team && (
+    (isBuyer && item.created_by_role === 'trader') ||
+    (isTrader && item.created_by_role === 'buyer')
   );
 
   // Check if this card is deleted
-  const isDeleted = !!(item as any).deleted_at;
+  const isDeleted = !!item.deleted_at;
 
   // Check if there's unseen activity for this user
   const hasUnseenActivity = useMemo(() => {
@@ -86,7 +85,7 @@ function DevelopmentCardComponent({
 
   // Determine the highlight color based on who created it
   const highlightClass = isNewForMe
-    ? itemWithNewFields.created_by_role === 'buyer'
+    ? item.created_by_role === 'buyer'
       ? 'ring-2 ring-blue-400 ring-offset-1'
       : 'ring-2 ring-emerald-400 ring-offset-1'
     : isDeleted
@@ -121,18 +120,18 @@ function DevelopmentCardComponent({
       {/* Indicators - both can show independently */}
       <div className="absolute top-2 right-2 flex items-center gap-1">
         {/* Pending threads count indicator with tooltip */}
-        {(item as any).pending_threads_count > 0 && (
+        {item.pending_threads_count && item.pending_threads_count > 0 && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="relative flex items-center justify-center h-5 w-5 rounded-full bg-amber-500 text-white text-[10px] font-bold animate-pulse cursor-help">
-                  {(item as any).pending_threads_count}
+                  {item.pending_threads_count}
                 </div>
               </TooltipTrigger>
               <TooltipContent side="left" className="max-w-[220px] p-2">
                 <p className="font-medium text-xs mb-1.5">Pending threads:</p>
                 <ul className="text-xs space-y-1.5">
-                  {((item as any).pending_threads_info || []).slice(0, 5).map((thread: { id: string; title: string; type: string }, i: number) => (
+                  {(item.pending_threads_info || []).slice(0, 5).map((thread, i) => (
                     <li 
                       key={thread.id || i} 
                       className="flex items-center gap-1.5 cursor-pointer hover:text-primary transition-colors group/item"
@@ -149,8 +148,8 @@ function DevelopmentCardComponent({
                       <span className="truncate group-hover/item:underline">{thread.title}</span>
                     </li>
                   ))}
-                  {((item as any).pending_threads_info || []).length > 5 && (
-                    <li className="text-muted-foreground">+{(item as any).pending_threads_info.length - 5} more</li>
+                  {(item.pending_threads_info || []).length > 5 && (
+                    <li className="text-muted-foreground">+{item.pending_threads_info!.length - 5} more</li>
                   )}
                 </ul>
               </TooltipContent>
@@ -158,14 +157,14 @@ function DevelopmentCardComponent({
           </TooltipProvider>
         )}
         {/* Unseen activity indicator - always shown when there's unseen activity */}
-        {hasUnseenActivity && !(item as any).pending_threads_count && (
+        {hasUnseenActivity && !item.pending_threads_count && (
           <span className="relative flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
           </span>
         )}
         {/* Pending action indicator - shown independently */}
-        {item.pending_action_type && !(item as any).pending_threads_count && (
+        {item.pending_action_type && !item.pending_threads_count && (
           <PendingActionIndicator
             pendingActionType={item.pending_action_type}
             pendingActionDueAt={item.pending_action_due_at || null}
@@ -174,9 +173,9 @@ function DevelopmentCardComponent({
         )}
       </div>
       {/* Creator Name Label */}
-      {(item as any).creator_name && (
+      {item.creator_name && (
         <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-[10px] font-medium" style={{ color: roleColor }}>{(item as any).creator_name}</span>
+          <span className="text-[10px] font-medium" style={{ color: roleColor }}>{item.creator_name}</span>
         </div>
       )}
 
@@ -286,8 +285,8 @@ export const DevelopmentCard = memo(DevelopmentCardComponent, (prev, next) => {
     prev.item.last_viewed_at === next.item.last_viewed_at &&
     prev.item.pending_action_type === next.item.pending_action_type &&
     prev.item.pending_action_snoozed_until === next.item.pending_action_snoozed_until &&
-    (prev.item as any).pending_threads_count === (next.item as any).pending_threads_count &&
-    JSON.stringify((prev.item as any).pending_threads_info) === JSON.stringify((next.item as any).pending_threads_info) &&
+    prev.item.pending_threads_count === next.item.pending_threads_count &&
+    JSON.stringify(prev.item.pending_threads_info) === JSON.stringify(next.item.pending_threads_info) &&
     prev.canDrag === next.canDrag &&
     prev.onClickThread === next.onClickThread
   );
