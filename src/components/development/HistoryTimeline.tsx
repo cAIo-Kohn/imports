@@ -1270,11 +1270,21 @@ export function HistoryTimeline({
     if (a.activity_type === 'ownership_change' && a.metadata?.trigger) {
       return false; // Hide ownership_change if it has a trigger field
     }
+    // Filter out old 'created' activities if a new 'card_created' (original thread) exists
+    if (a.activity_type === 'created' && activities.some(x => x.activity_type === 'card_created')) {
+      return false;
+    }
     return true;
   });
 
   // Use filtered activities for display
   const allActivities: Activity[] = filteredActivities;
+  
+  // Find the "original thread" - the card_created activity that serves as the main thread
+  const originalThread = allActivities.find(a => 
+    a.activity_type === 'card_created' && 
+    a.thread_id === a.id // It's a thread root
+  );
 
   // Find the first unresolved question for keyboard shortcut / attention banner
   const firstUnresolvedQuestion = allActivities.find(a => 
@@ -1358,6 +1368,22 @@ export function HistoryTimeline({
   // Handle opening reply for the first unresolved question (unused now, actions in banner)
   const handleOpenFirstReply = () => {
     // No longer needed since actions are now in banner
+  };
+  
+  // Handle adding comment to original thread (from Quick Actions)
+  const handleAddCommentToOriginal = () => {
+    if (originalThread) {
+      setFocusReplyThreadId(originalThread.id);
+    } else {
+      // Fallback: open thread composer
+      setShowInlineThreadComposer(true);
+    }
+  };
+  
+  // Handle asking question on original thread (moves to creator)
+  const handleAskQuestionOnOriginal = () => {
+    // For now, just open thread composer - question logic handled there
+    setShowInlineThreadComposer(true);
   };
 
   if (isLoading) {
@@ -1507,8 +1533,8 @@ export function HistoryTimeline({
           cardId={cardId}
           onReviewSample={(sampleId) => onOpenSampleSection?.(sampleId)}
           onStartThread={() => setShowInlineThreadComposer(true)}
-          onAddComment={() => setShowInlineThreadComposer(true)}
-          onAskQuestion={() => setShowInlineThreadComposer(true)}
+          onAddComment={handleAddCommentToOriginal}
+          onAskQuestion={handleAskQuestionOnOriginal}
         />
       )}
 
@@ -1521,8 +1547,8 @@ export function HistoryTimeline({
             queryClient.invalidateQueries({ queryKey: ['development-item-samples-timeline', cardId] });
           }}
           onStartThread={() => setShowInlineThreadComposer(true)}
-          onAddComment={() => setShowInlineThreadComposer(true)}
-          onAskQuestion={() => setShowInlineThreadComposer(true)}
+          onAddComment={handleAddCommentToOriginal}
+          onAskQuestion={handleAskQuestionOnOriginal}
         />
       )}
       
@@ -1536,8 +1562,8 @@ export function HistoryTimeline({
           updatedAt={commercialUpdatedAt}
           onRequestSample={handleRequestSample}
           onStartThread={() => setShowInlineThreadComposer(true)}
-          onAddComment={() => setShowInlineThreadComposer(true)}
-          onAskQuestion={() => setShowInlineThreadComposer(true)}
+          onAddComment={handleAddCommentToOriginal}
+          onAskQuestion={handleAskQuestionOnOriginal}
           onUpload={() => onOpenUploadSection?.()}
         />
       )}
@@ -1551,8 +1577,8 @@ export function HistoryTimeline({
           cardId={cardId}
           pendingActionType={pendingActionType}
           onStartThread={() => setShowInlineThreadComposer(true)}
-          onAddComment={() => setShowInlineThreadComposer(true)}
-          onAskQuestion={() => setShowInlineThreadComposer(true)}
+          onAddComment={handleAddCommentToOriginal}
+          onAskQuestion={handleAskQuestionOnOriginal}
           onUpload={() => onOpenUploadSection?.()}
           onSnooze={dismissNewCardBanner}
         />

@@ -1,14 +1,19 @@
 
-# Unified Thread-Based Card System
+# Unified Thread-Based Card System - IMPLEMENTED
 
-## Overview
-Transform the card system to use a unified thread-based approach where every card starts with an "original thread" (using the card's title). This eliminates the need for MOR/ARC team-based sections and replaces it with a user/role-based assignment model. Users will only see what's pending for them based on explicit assignments.
+## Status: ✅ Complete
 
-## Key Changes Summary
+The card system now uses a unified thread-based approach with user/role assignment instead of team-based (MOR/ARC) sections.
 
-1. **Every card starts with an "original thread"** - When a card is created, an auto-generated thread root activity is created with the card title as thread title
-2. **"Assign to" required in Create Card modal** - Cards must be assigned to specific users or roles at creation time
-3. **Remove MOR/ARC team sections** - Replace with a unified card list (organize later)
+## Completed Changes
+
+1. ✅ Database migration: Added `assigned_to_users` and `assigned_to_role` columns to `development_items`
+2. ✅ CreateCardModal: Added required ThreadAssignmentSelect for card assignment
+3. ✅ Card creation: Auto-creates "original thread" (card_created activity) with card title
+4. ✅ Development.tsx: Replaced MOR/ARC sections with "My Pending" / "All Cards" layout
+5. ✅ ThreadedTimeline: Added 'card_created' to THREADABLE_TYPES
+6. ✅ Quick Actions: Differentiated Add Comment/Ask Question to work with original thread
+7. ✅ InlineReplyBox: Supports card_created replyToType
 4. **Restructure Quick Actions behavior:**
    - New Thread = Creates a NEW separate thread (same as current)
    - Add Comment = Adds comment to original thread (no action power)

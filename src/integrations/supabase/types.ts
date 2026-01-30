@@ -270,6 +270,8 @@ export type Database = {
       development_items: {
         Row: {
           assigned_to: string | null
+          assigned_to_role: string | null
+          assigned_to_users: string[] | null
           card_type: Database["public"]["Enums"]["development_card_type"] | null
           container_type: string | null
           created_at: string
@@ -307,6 +309,8 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          assigned_to_role?: string | null
+          assigned_to_users?: string[] | null
           card_type?:
             | Database["public"]["Enums"]["development_card_type"]
             | null
@@ -348,6 +352,8 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          assigned_to_role?: string | null
+          assigned_to_users?: string[] | null
           card_type?:
             | Database["public"]["Enums"]["development_card_type"]
             | null
