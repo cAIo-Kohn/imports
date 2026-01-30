@@ -77,7 +77,26 @@ export function InlineSampleShipForm({
 
       if (activityError) throw activityError;
 
-      // 3. Move card to MOR (Brazil) and set pending action for sample in transit
+      // 3. Find and update the sample_requested thread root to shift pending to MOR
+      // Since we're adding tracking, the ball is now in Brazil's court to wait for arrival
+      const { data: sampleRequestThread } = await supabase
+        .from('development_card_activity')
+        .select('id')
+        .eq('card_id', cardId)
+        .eq('activity_type', 'sample_requested')
+        .is('thread_resolved_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (sampleRequestThread?.id) {
+        await supabase
+          .from('development_card_activity')
+          .update({ pending_for_team: targetOwner }) // MOR now waits for arrival
+          .eq('id', sampleRequestThread.id);
+      }
+
+      // 4. Move card to MOR (Brazil) and set pending action for sample in transit
       const updateData: Record<string, any> = { 
         current_owner: targetOwner,
         is_new_for_other_team: true,

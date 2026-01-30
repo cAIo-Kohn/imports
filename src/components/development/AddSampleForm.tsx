@@ -77,19 +77,30 @@ export function AddSampleForm({ itemId, currentOwner, onSampleRequested }: AddSa
       });
       if (sampleError) throw sampleError;
 
-      // Log the request activity with embedded move info
-      await supabase.from('development_card_activity').insert({
+      // Log the request activity with embedded move info - creates its own thread
+      const { data: activityData, error: activityError } = await supabase.from('development_card_activity').insert({
         card_id: itemId,
         user_id: user.id,
         activity_type: 'sample_requested',
         content: `Requested ${requestQuantity} sample(s)${requestNotes ? `: ${requestNotes}` : ''}`,
+        thread_title: 'Sample Request',
         metadata: { 
           quantity: parseInt(requestQuantity) || 1, 
           notes: requestNotes || null,
           moved_from: fromOwner,
           moved_to: targetOwner,
         },
-      });
+        pending_for_team: targetOwner, // ARC (China) needs to add tracking
+      }).select('id').single();
+
+      if (activityError) throw activityError;
+
+      // Set thread_id and thread_root_id to itself (new thread root)
+      if (activityData?.id) {
+        await supabase.from('development_card_activity')
+          .update({ thread_id: activityData.id, thread_root_id: activityData.id })
+          .eq('id', activityData.id);
+      }
 
       // Update pending action and move card to ARC (China)
       await (supabase.from('development_items') as any)

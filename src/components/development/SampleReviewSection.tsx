@@ -110,6 +110,27 @@ export function SampleReviewSection({
 
       if (activityError) throw activityError;
 
+      // Resolve the sample_requested thread (mark as complete)
+      const { data: sampleRequestThread } = await supabase
+        .from('development_card_activity')
+        .select('id')
+        .eq('card_id', cardId)
+        .eq('activity_type', 'sample_requested')
+        .is('thread_resolved_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (sampleRequestThread?.id) {
+        await supabase
+          .from('development_card_activity')
+          .update({ 
+            pending_for_team: null,
+            thread_resolved_at: new Date().toISOString(),
+          })
+          .eq('id', sampleRequestThread.id);
+      }
+
       // Clear pending action and optionally move card
       if (decision === 'approved') {
         // Clear pending action - card stays with Brazil to decide next steps
