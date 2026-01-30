@@ -16,7 +16,12 @@ Added to `development_card_activity` table:
 - **Questions**: Set `pending_for_team: targetOwner` (receiving team must respond)
 - **Sample Requests**: Set `pending_for_team: 'arc'` (China must add tracking)
 
-### Thread Updates
+### Sample Flow Thread Updates
+- **Tracking Added**: Update sample_requested thread to `pending_for_team: 'mor'` (Brazil waits for arrival)
+- **Sample Arrived**: Keep `pending_for_team: 'mor'` (Brazil needs to review)
+- **Sample Reviewed**: Clear `pending_for_team` and set `thread_resolved_at` (thread complete)
+
+### Thread Updates (Questions/Answers)
 - When replying to a question with an **answer**: Update thread root's `pending_for_team` to the answer receiver
 - When posting a **follow-up question**: Update thread root's `pending_for_team` to the question receiver
 - When **resolving** a question: Clear `pending_for_team` and set `thread_resolved_at`

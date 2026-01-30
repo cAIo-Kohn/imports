@@ -285,6 +285,26 @@ export function SampleInTransitBanner({
         });
 
       if (activityError) throw activityError;
+
+      // Update the sample_requested thread to indicate MOR needs to review
+      // The thread stays pending for MOR until they review
+      const { data: sampleRequestThread } = await supabase
+        .from('development_card_activity')
+        .select('id')
+        .eq('card_id', sample.item_id)
+        .eq('activity_type', 'sample_requested')
+        .is('thread_resolved_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (sampleRequestThread?.id) {
+        // Keep pending_for_team as 'mor' - they need to review
+        await supabase
+          .from('development_card_activity')
+          .update({ pending_for_team: 'mor' })
+          .eq('id', sampleRequestThread.id);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-item-samples', sample.item_id] });
