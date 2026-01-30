@@ -931,37 +931,32 @@ export function HistoryTimeline({
   // State to track if we just acknowledged an answer (for showing post-acknowledgement prompt)
   const [showPostAcknowledgementPrompt, setShowPostAcknowledgementPrompt] = useState(false);
 
-  // New Request banner should remain visible until the user takes an explicit action.
-  // We persist it in sessionStorage so it won't disappear due to background refetches
-  // (or if the drawer is closed/reopened in the same session).
-  const [newCardBannerVisible, setNewCardBannerVisible] = useState(false);
+  // New Request banner visibility is now based on `isNewForOtherTeam` prop (captured state from ItemDetailDrawer)
+  // combined with a local state that persists during this drawer session.
+  // When user takes action, we clear `is_new_for_other_team` in the backend so it won't show for anyone.
+  const [newCardBannerDismissedLocally, setNewCardBannerDismissedLocally] = useState(false);
+  
+  // Show banner if prop says it's new AND we haven't dismissed it locally this session
+  const newCardBannerVisible = isNewForOtherTeam && !newCardBannerDismissedLocally;
 
-  useEffect(() => {
-    const key = `dev:new-card-banner:${cardId}`;
-    try {
-      const stored = sessionStorage.getItem(key);
-      if (stored === 'dismissed') {
-        setNewCardBannerVisible(false);
-        return;
-      }
-      if (isNewForOtherTeam) {
-        setNewCardBannerVisible(true);
-        sessionStorage.setItem(key, 'visible');
-        return;
-      }
-      setNewCardBannerVisible(stored === 'visible');
-    } catch {
-      setNewCardBannerVisible(isNewForOtherTeam);
-    }
-  }, [cardId, isNewForOtherTeam]);
+  // Mutation to clear is_new_for_other_team in the backend (team-level persistence)
+  const dismissNewCardBannerMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await (supabase.from('development_items') as any)
+        .update({ is_new_for_other_team: false })
+        .eq('id', cardId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+    },
+  });
 
   const dismissNewCardBanner = () => {
-    setNewCardBannerVisible(false);
-    try {
-      sessionStorage.setItem(`dev:new-card-banner:${cardId}`, 'dismissed');
-    } catch {
-      // ignore
-    }
+    // Immediately hide locally (prevents flicker)
+    setNewCardBannerDismissedLocally(true);
+    // Persist to backend so other team members also won't see it
+    dismissNewCardBannerMutation.mutate();
   };
 
   // Mutation to close the card
