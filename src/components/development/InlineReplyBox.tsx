@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { ArrowRight, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton';
 import { SnoozeButton } from './SnoozeButton';
+import { MentionInput } from '@/components/notifications/MentionInput';
+import { createMentionNotifications } from '@/hooks/useNotifications';
 
 interface InlineReplyBoxProps {
   replyToId: string;
@@ -32,12 +33,19 @@ export function InlineReplyBox({
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-focus textarea on mount
-  useEffect(() => {
-    textareaRef.current?.focus();
-  }, []);
+  // Fetch card title for notification content
+  const { data: cardData } = useQuery({
+    queryKey: ['development-item-title', cardId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('development_items')
+        .select('title')
+        .eq('id', cardId)
+        .single();
+      return data;
+    },
+  });
 
   // Build metadata with attachments and reply reference
   const buildMetadata = (includeReplyRef = true) => {
@@ -56,14 +64,25 @@ export function InlineReplyBox({
     mutationFn: async () => {
       if (!user?.id || (!replyContent.trim() && attachments.length === 0)) return;
       
-      const { error } = await supabase.from('development_card_activity').insert({
+      const { data, error } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
         activity_type: 'comment',
         content: replyContent.trim() || null,
         metadata: buildMetadata(),
-      });
+      }).select('id').single();
       if (error) throw error;
+      
+      // Create mention notifications
+      if (data?.id && replyContent.trim()) {
+        await createMentionNotifications({
+          text: replyContent,
+          cardId,
+          activityId: data.id,
+          triggeredBy: user.id,
+          cardTitle: cardData?.title || 'Development Card',
+        });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
@@ -218,15 +237,15 @@ export function InlineReplyBox({
 
   return (
     <div className="mt-3 p-3 bg-muted/50 rounded-lg border">
-      <Textarea
-        ref={textareaRef}
+      <MentionInput
         value={replyContent}
-        onChange={(e) => setReplyContent(e.target.value)}
+        onChange={setReplyContent}
         onKeyDown={handleKeyDown}
-        placeholder={replyToType === 'answer' ? "Type your reply or follow-up question..." : "Type your reply..."}
+        placeholder={replyToType === 'answer' ? "Type your reply or follow-up question... Use @ to mention" : "Type your reply... Use @ to mention"}
         rows={2}
         className="text-sm bg-background"
         disabled={isPending}
+        autoFocus
       />
       
       {/* Attachments */}

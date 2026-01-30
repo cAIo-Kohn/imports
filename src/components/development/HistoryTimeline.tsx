@@ -34,6 +34,7 @@ import { InlineSampleShipForm } from './InlineSampleShipForm';
 import { TimelineUploadButton, AttachmentDisplay, UploadedAttachment } from './TimelineUploadButton';
 import { SnoozeButton } from './SnoozeButton';
 import { CommercialDataBanner, SampleInTransitBanner, SampleDeliveredBanner, NewCardBanner, Sample } from './TimelineBanners';
+import { MentionText } from '@/components/notifications/MentionInput';
 
 interface Activity {
   id: string;
@@ -1593,9 +1594,9 @@ export function HistoryTimeline({
                           isResolved && "line-through opacity-70"
                         )}>
                           {isQuestion ? (
-                            <span className="italic">"{activity.content}"</span>
+                            <span className="italic">"<MentionText text={activity.content} />"</span>
                           ) : (
-                            activity.content
+                            <MentionText text={activity.content} />
                           )}
                         </p>
                       )}
