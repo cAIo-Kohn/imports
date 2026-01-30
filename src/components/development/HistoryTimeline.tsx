@@ -1303,10 +1303,12 @@ export function HistoryTimeline({
   // Filter activities for timeline (exclude ones shown in banners)
   const timelineActivities = allActivities.filter(a => !bannerActivityIds.has(a.id));
 
-  // Calculate pending threads for current team
+  // Calculate pending threads for current team - only thread roots
   const pendingThreads = allActivities
     .filter(a => 
-      // Only thread roots (have pending_for_team set)
+      // Only actual thread roots (thread_id equals its own id)
+      a.thread_id === a.id &&
+      // Has pending action for a team
       a.pending_for_team && 
       // Not resolved yet
       !a.thread_resolved_at &&
