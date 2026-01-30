@@ -1,172 +1,172 @@
 
-# Add Quick Actions to Sample Requested Banner
+# Auto-Thread Sample Requests
 
 ## Overview
-The "Sample Requested" banner currently only shows an "Add Tracking" button. Users need additional quick actions to:
-- Ask questions about the samples
-- Snooze the action with an expected tracking date
-- Add comments
-- Start new threads about the sample
+Instead of showing sample requests in a separate banner, treat them as auto-created threads that people can reply to directly. This allows users to comment on sample requests (e.g., "I'll talk to the supplier and inform an ETD soon") without creating separate threads, while still supporting snoozing and tracking actions.
 
-## Current State
-The `SampleRequestedBanner` component in `HistoryTimeline.tsx` (lines 402-474) has:
-- "Add Tracking" button only
-- Displays the requester info and content
-- Shows inline ship form when "Add Tracking" is clicked
-
-Other banners (NewCardBanner, CommercialDataBanner, SampleInTransitBanner, SampleDeliveredBanner) already have:
-- `BannerQuickActions` dropdown (New Thread, Add Comment, Ask Question, Upload)
-- `SnoozeButton` for deferring action
+## Problem
+Currently, `sample_requested` activities:
+- Are shown in a separate `SampleRequestedBanner` component
+- Are NOT recognized as threadable (filtered out by `THREADABLE_TYPES`)
+- Cannot receive replies/comments directly
+- Require users to "Start New Thread" to discuss sample-related topics
 
 ## Solution
-Enhance the `SampleRequestedBanner` to match other banner patterns by adding:
-1. `BannerQuickActions` dropdown with communication options
-2. `SnoozeButton` for setting expected tracking date
+Make sample requests automatically create and display as threads:
+1. When a sample is requested, it auto-creates a thread (already happens)
+2. The thread appears in the timeline like any other thread
+3. Users can reply/comment directly on it
+4. "Add Tracking" action moves inside the thread card
+5. Snooze works on the thread assignment level
 
-### Changes
+## Implementation
 
-**File: `src/components/development/HistoryTimeline.tsx`**
+### 1. Add sample_requested to THREADABLE_TYPES
 
-#### 1. Update SampleRequestedBannerProps interface (lines 403-408)
-Add new props for the quick actions:
+**File: `src/components/development/ThreadedTimeline.tsx`**
+
+Update the constant:
 ```typescript
-interface SampleRequestedBannerProps {
-  activity: Activity;
-  cardId: string;
-  currentOwner: 'mor' | 'arc';
-  pendingActionType?: string | null;  // NEW
-  onSuccess: () => void;
-  onStartThread: () => void;          // NEW
-  onAddComment: () => void;           // NEW  
-  onAskQuestion: () => void;          // NEW
-  onSnooze?: () => void;              // NEW
-}
+// Before:
+const THREADABLE_TYPES = ['comment', 'question', 'answer'];
+
+// After:
+const THREADABLE_TYPES = ['comment', 'question', 'answer', 'sample_requested'];
 ```
 
-#### 2. Update SampleRequestedBanner component (lines 410-474)
-Add the new props and render `BannerQuickActions` and `SnoozeButton`:
+### 2. Update Sample Request Creation with Assignment
 
+**File: `src/components/development/HistoryTimeline.tsx`** (lines ~738-762)
+
+Add the assignment columns when creating sample_requested activity:
 ```typescript
-function SampleRequestedBanner({ 
-  activity, 
-  cardId, 
-  currentOwner,
-  pendingActionType,
-  onSuccess,
-  onStartThread,
-  onAddComment,
-  onAskQuestion,
-  onSnooze,
-}: SampleRequestedBannerProps) {
-  // ... existing code ...
-  
-  return (
-    <div className="...">
-      {/* Header with title and Add Tracking button */}
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2 font-medium">
-          <Package className="h-5 w-5 text-cyan-600" />
-          <span className="...">Sample Requested</span>
-        </div>
-        {!showShipForm && (
-          <Button onClick={() => setShowShipForm(true)} ...>
-            <Truck /> Add Tracking
-          </Button>
-        )}
-      </div>
-      
-      {/* Activity content card */}
-      <div className="bg-white ...">
-        {/* ... existing content ... */}
-      </div>
-      
-      {/* NEW: Quick Actions row */}
-      {!showShipForm && (
-        <div className="flex flex-wrap gap-2 mt-3">
-          <BannerQuickActions
-            onStartThread={onStartThread}
-            onAddComment={onAddComment}
-            onAskQuestion={onAskQuestion}
-            colorScheme="blue"  // Use cyan/blue to match banner theme
-          />
-          <SnoozeButton
-            cardId={cardId}
-            currentActionType={pendingActionType}
-            variant="outline"
-            size="sm"
-            className="bg-white hover:bg-cyan-100 border-cyan-300 text-cyan-700 dark:bg-cyan-950 dark:hover:bg-cyan-900 dark:border-cyan-600 dark:text-cyan-200"
-            onSnooze={onSnooze}
-          />
-        </div>
-      )}
-      
-      {/* Inline ship form (when open) */}
-      {showShipForm && (
-        <InlineSampleShipForm ... />
-      )}
-    </div>
-  );
-}
+const { data: activityData, error: activityError } = await supabase
+  .from('development_card_activity')
+  .insert({
+    card_id: cardId,
+    user_id: user.id,
+    activity_type: 'sample_requested',
+    content: 'Sample requested',
+    thread_title: 'Sample Request',
+    metadata: {
+      moved_from: currentOwner,
+      moved_to: targetOwner,
+    },
+    // NEW: Add assignment columns
+    assigned_to_role: 'trader',    // Assigned to traders (China team)
+    thread_creator_id: user.id,    // Track who created this
+    thread_status: 'open',         // Thread is open
+  })
 ```
 
-#### 3. Update SampleRequestedBanner usage (lines 1454-1464)
-Pass the new callback props when rendering the banner:
+**File: `src/components/development/AddSampleForm.tsx`** (lines ~80-94)
 
+Same update for the other sample request flow.
+
+### 3. Update ThreadCard to Show Add Tracking
+
+**File: `src/components/development/ThreadCard.tsx`**
+
+Add an "Add Tracking" action button when:
+- Thread root is `sample_requested`
+- Sample hasn't been shipped yet (check metadata or related activities)
+- Current user has trader role
+
+Add state and inline form:
 ```typescript
-{showSampleRequestedBanner && sampleRequestedActivity && (
-  <SampleRequestedBanner
-    activity={sampleRequestedActivity}
-    cardId={cardId}
-    currentOwner={currentOwner}
-    pendingActionType={pendingActionType}
-    onSuccess={() => {
-      queryClient.invalidateQueries({ queryKey: ['development-items'] });
-      queryClient.invalidateQueries({ queryKey: ['development-item-samples-timeline', cardId] });
-      onOwnerChange?.();
-    }}
-    onStartThread={() => setShowInlineThreadComposer(true)}
-    onAddComment={() => setShowInlineThreadComposer(true)}
-    onAskQuestion={() => setShowInlineThreadComposer(true)}
-  />
+// Inside ThreadCard component:
+const [showShipForm, setShowShipForm] = useState(false);
+
+// In the header actions area, for sample_requested threads:
+{isSampleRelated && !isResolved && sampleStage === 'requested' && (
+  <Button 
+    size="sm" 
+    variant="outline"
+    onClick={() => setShowShipForm(true)}
+    className="bg-cyan-50 border-cyan-300 text-cyan-700"
+  >
+    <Truck className="h-3 w-3 mr-1" />
+    Add Tracking
+  </Button>
 )}
 ```
 
-#### 4. Add BannerQuickActions import (if not already imported)
-Ensure `BannerQuickActions` is imported at the top of the file.
+### 4. Remove SampleRequestedBanner from Priority Flow
 
-## Visual Result
-The Sample Requested banner will now show:
+**File: `src/components/development/HistoryTimeline.tsx`**
 
+Remove the banner rendering and associated logic:
+- Remove `showSampleRequestedBanner` calculation
+- Remove the `<SampleRequestedBanner>` JSX
+- Keep the `SampleRequestedBanner` component for now (can clean up later) or repurpose as inline content
+
+The sample_requested thread will now appear highlighted in the timeline with:
+- "Your turn" badge when assigned to current user/role
+- Reply capability
+- Snooze via thread assignment
+- Add Tracking button in thread header
+
+### 5. Update InlineReplyBox for Sample Threads
+
+**File: `src/components/development/InlineReplyBox.tsx`**
+
+Update the `replyToType` prop to accept 'sample_requested':
+```typescript
+replyToType: 'question' | 'answer' | 'comment' | 'sample_requested';
 ```
-┌─────────────────────────────────────────────────────────┐
-│ 📦 Sample Requested                    [Add Tracking]   │
-├─────────────────────────────────────────────────────────┤
-│ ○ Vitória · 15:10                                       │
-│ Sample requested                                        │
-├─────────────────────────────────────────────────────────┤
-│ [⚡ Quick Actions ▼]  [🕐 Snooze ▼]                      │
-└─────────────────────────────────────────────────────────┘
+
+When replying to a sample_requested thread, show appropriate options:
+- "Reply" - Just add a comment
+- "Reply & Reassign" - Reassign to another user/role
+
+## Visual Flow
+
+**Before:**
+```
+┌──────────────────────────────────┐
+│ BANNER: Sample Requested         │
+│ [Add Tracking]  [Quick Actions]  │
+└──────────────────────────────────┘
+
+┌──────────────────────────────────┐
+│ Thread: Color discussion         │
+└──────────────────────────────────┘
 ```
 
-Quick Actions dropdown includes:
-- New Thread
-- Add Comment  
-- Ask Question
+**After:**
+```
+┌──────────────────────────────────┐
+│ Thread: Sample Request       📦  │
+│ ├ Requested → Shipped → ...      │
+│ │                                │
+│ │ Vitória: Sample requested      │
+│ │                                │
+│ │ Jin: I'll talk to supplier...  │
+│ │                                │
+│ │ [Reply] [Add Tracking] [Snooze]│
+└──────────────────────────────────┘
 
-Snooze allows users to set expected dates like:
-- "1 day" / "3 days" / "1 week" / "2 weeks"
-- Custom date with optional reason (e.g., "Waiting for factory confirmation")
+┌──────────────────────────────────┐
+│ Thread: Color discussion         │
+└──────────────────────────────────┘
+```
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `HistoryTimeline.tsx` | Add props to SampleRequestedBannerProps, add BannerQuickActions + SnoozeButton to render, pass callbacks when using the component |
+| `ThreadedTimeline.tsx` | Add `sample_requested` to `THREADABLE_TYPES` |
+| `HistoryTimeline.tsx` | Add assignment columns to sample request creation, remove SampleRequestedBanner from render |
+| `AddSampleForm.tsx` | Add assignment columns to sample request creation |
+| `ThreadCard.tsx` | Add "Add Tracking" button and inline form for sample threads |
+| `InlineReplyBox.tsx` | Accept `sample_requested` as valid replyToType |
 
-## Testing Checklist
-1. Open a card with "Sample Requested" pending status
-2. Verify the Quick Actions dropdown appears next to Add Tracking
-3. Click Quick Actions > Add Comment - verify composer opens
-4. Click Quick Actions > Ask Question - verify composer opens
-5. Click Snooze > 3 days - verify snooze is applied
-6. Click Add Tracking - verify form appears and hides the quick actions row
+## Benefits
+1. **Unified experience** - Sample discussions work like all other threads
+2. **Direct replies** - No need to create separate threads for sample discussions
+3. **Assignment-based tracking** - "Your turn" badge shows who needs to act
+4. **Audit trail** - All sample-related comments stay in one thread
+5. **Snooze works naturally** - Via thread assignment, not card-level
+
+## Migration
+No database migration needed - sample_requested activities already have `thread_id`, `thread_root_id`, and `thread_title` set. The new assignment columns will be populated going forward; existing sample requests will display without assignment badges (acceptable for legacy data).
