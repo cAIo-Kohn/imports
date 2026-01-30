@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { Calendar, Package, Layers, ListTodo, Box, Leaf, Sparkles, Trash2, Clock, MessageCircle } from 'lucide-react';
 import { DevelopmentItem, DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useRoleColors } from '@/hooks/useRoleColors';
@@ -117,11 +118,28 @@ function DevelopmentCardComponent({
     >
       {/* Indicators - both can show independently */}
       <div className="absolute top-2 right-2 flex items-center gap-1">
-        {/* Pending threads count indicator */}
+        {/* Pending threads count indicator with tooltip */}
         {(item as any).pending_threads_count > 0 && (
-          <div className="relative flex items-center justify-center h-5 w-5 rounded-full bg-amber-500 text-white text-[10px] font-bold animate-pulse">
-            {(item as any).pending_threads_count}
-          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="relative flex items-center justify-center h-5 w-5 rounded-full bg-amber-500 text-white text-[10px] font-bold animate-pulse cursor-help">
+                  {(item as any).pending_threads_count}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="max-w-[200px]">
+                <p className="font-medium text-xs mb-1">Pending threads:</p>
+                <ul className="text-xs space-y-0.5">
+                  {((item as any).pending_threads_titles || []).slice(0, 5).map((title: string, i: number) => (
+                    <li key={i} className="truncate">• {title}</li>
+                  ))}
+                  {((item as any).pending_threads_titles || []).length > 5 && (
+                    <li className="text-muted-foreground">+{(item as any).pending_threads_titles.length - 5} more</li>
+                  )}
+                </ul>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
         {/* Unseen activity indicator - always shown when there's unseen activity */}
         {hasUnseenActivity && !(item as any).pending_threads_count && (
@@ -253,6 +271,7 @@ export const DevelopmentCard = memo(DevelopmentCardComponent, (prev, next) => {
     prev.item.pending_action_type === next.item.pending_action_type &&
     prev.item.pending_action_snoozed_until === next.item.pending_action_snoozed_until &&
     (prev.item as any).pending_threads_count === (next.item as any).pending_threads_count &&
+    JSON.stringify((prev.item as any).pending_threads_titles) === JSON.stringify((next.item as any).pending_threads_titles) &&
     prev.canDrag === next.canDrag
   );
 });

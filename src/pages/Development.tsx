@@ -79,8 +79,9 @@ export interface DevelopmentItem {
   pending_action_due_at?: string | null;
   pending_action_snoozed_until?: string | null;
   pending_action_snoozed_by?: string | null;
-  // Pending threads count for current user's team
+  // Pending threads count and titles for current user's team
   pending_threads_count?: number;
+  pending_threads_titles?: string[];
   // Derived status (computed from pending_action_type, is_solved, etc.)
   derived_status?: DevelopmentCardStatus;
 }
@@ -243,7 +244,7 @@ export default function Development() {
         // Fetch pending threads (thread roots with pending_for_team set and not resolved)
         supabase
           .from('development_card_activity')
-          .select('card_id, pending_for_team')
+          .select('card_id, pending_for_team, thread_title, activity_type, content')
           .in('card_id', itemIds)
           .not('pending_for_team', 'is', null)
           .is('thread_resolved_at', null),
@@ -297,16 +298,28 @@ export default function Development() {
         }
       }
 
-      // Compute pending threads count per card for user's team
+      // Compute pending threads count and titles per card for user's team
       // Determine user's team based on role
       const userTeam = isTrader ? 'arc' : 'mor';
-      const pendingThreadsCountMap = (pendingThreadsRes.data || []).reduce((acc, pt) => {
+      const pendingThreadsCountMap: Record<string, number> = {};
+      const pendingThreadsTitlesMap: Record<string, string[]> = {};
+      
+      for (const pt of pendingThreadsRes.data || []) {
         // Only count threads pending for the user's team
         if (pt.pending_for_team === userTeam) {
-          acc[pt.card_id] = (acc[pt.card_id] || 0) + 1;
+          pendingThreadsCountMap[pt.card_id] = (pendingThreadsCountMap[pt.card_id] || 0) + 1;
+          
+          // Build thread title for tooltip
+          const title = pt.thread_title || 
+            (pt.content ? pt.content.split(' ').slice(0, 6).join(' ') + (pt.content.split(' ').length > 6 ? '...' : '') : null) ||
+            (pt.activity_type === 'sample_requested' ? 'Sample Request' : 'Thread');
+          
+          if (!pendingThreadsTitlesMap[pt.card_id]) {
+            pendingThreadsTitlesMap[pt.card_id] = [];
+          }
+          pendingThreadsTitlesMap[pt.card_id].push(title);
         }
-        return acc;
-      }, {} as Record<string, number>);
+      }
 
       return data.map(item => {
         // Compute effective pending action type
@@ -347,6 +360,7 @@ export default function Development() {
           creator_name: creatorNameMap[item.created_by] || null,
           pending_action_type: effectivePendingActionType,
           pending_threads_count: pendingThreadsCountMap[item.id] || 0,
+          pending_threads_titles: pendingThreadsTitlesMap[item.id] || [],
           derived_status: derivedStatus,
         };
       }) as DevelopmentItem[];
