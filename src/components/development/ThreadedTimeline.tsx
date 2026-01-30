@@ -14,6 +14,7 @@ interface ThreadedTimelineProps {
   isResolving?: boolean;
   isAcknowledging?: boolean;
   excludeIds?: Set<string>;
+  focusReplyThreadId?: string | null;
 }
 
 // Primary activity types that form threads
@@ -50,6 +51,7 @@ export function ThreadedTimeline({
   isResolving,
   isAcknowledging,
   excludeIds = new Set(),
+  focusReplyThreadId,
 }: ThreadedTimelineProps) {
   // Filter out excluded activities (shown in banners)
   const filteredActivities = activities.filter(a => !excludeIds.has(a.id));
@@ -140,6 +142,7 @@ export function ThreadedTimeline({
                 isResolving={isResolving}
                 isAcknowledging={isAcknowledging}
                 defaultOpen={thread.activities.length === 1}
+                initialReplyToId={focusReplyThreadId === thread.threadId ? focusReplyThreadId : undefined}
               />
             ))}
           </div>

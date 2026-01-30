@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ChevronDown, ChevronRight, MessageCircle, HelpCircle, Reply, Pencil, Check, X, Package, AlertCircle, CheckCircle2, Truck, PackageCheck, FileCheck } from 'lucide-react';
@@ -46,6 +46,7 @@ interface ThreadCardProps {
   isResolving?: boolean;
   isAcknowledging?: boolean;
   defaultOpen?: boolean;
+  initialReplyToId?: string | null;
 }
 
 export function ThreadCard({
@@ -59,6 +60,7 @@ export function ThreadCard({
   isResolving,
   isAcknowledging,
   defaultOpen = false,
+  initialReplyToId,
 }: ThreadCardProps) {
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -73,6 +75,23 @@ export function ThreadCard({
 
   // Root activity is the first one (thread starter)
   const rootActivity = sortedActivities[0];
+
+  // Handle initial reply focus from PendingThreadsBanner quick action
+  useEffect(() => {
+    if (initialReplyToId && rootActivity.id === initialReplyToId) {
+      setIsOpen(true);
+      setReplyingToId(rootActivity.id);
+      // Scroll and focus after render
+      setTimeout(() => {
+        const element = document.getElementById(`thread-${rootActivity.id}`);
+        element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Focus the textarea in the reply box
+        const textarea = element?.querySelector('textarea');
+        textarea?.focus();
+      }, 100);
+    }
+  }, [initialReplyToId, rootActivity.id]);
+
   const replies = sortedActivities.slice(1);
   const replyCount = replies.length;
 

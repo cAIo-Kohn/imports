@@ -919,6 +919,9 @@ export function HistoryTimeline({
   
   // Inline thread composer visibility (triggered from banner Quick Actions)
   const [showInlineThreadComposer, setShowInlineThreadComposer] = useState(false);
+  
+  // Focus reply thread ID - when set, the target ThreadCard will auto-expand and focus the reply input
+  const [focusReplyThreadId, setFocusReplyThreadId] = useState<string | null>(null);
 
   // Scroll to target thread when specified
   useEffect(() => {
@@ -1463,9 +1466,10 @@ export function HistoryTimeline({
             element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }}
           onQuickReply={(threadId) => {
-            // Find the thread and open inline reply for it
-            const element = document.getElementById(`thread-${threadId}`);
-            element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Set focus state to trigger ThreadCard to expand and focus reply input
+            setFocusReplyThreadId(threadId);
+            // Clear after a delay to allow re-clicking the same thread
+            setTimeout(() => setFocusReplyThreadId(null), 500);
           }}
         />
       )}
@@ -1636,6 +1640,7 @@ export function HistoryTimeline({
         isResolving={resolveQuestionMutation.isPending}
         isAcknowledging={acknowledgeAnswerMutation.isPending}
         excludeIds={bannerActivityIds}
+        focusReplyThreadId={focusReplyThreadId}
       />
     </div>
   );
