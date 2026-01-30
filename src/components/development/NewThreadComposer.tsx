@@ -64,7 +64,7 @@ export function NewThreadComposer({
         metadata.attachments = attachments.map(a => ({ id: a.id, name: a.name, url: a.url, type: a.type }));
       }
 
-      // Insert the comment
+      // Insert the comment (no pending_for_team since comments don't require action)
       const { data, error } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
@@ -72,6 +72,7 @@ export function NewThreadComposer({
         content: messageContent.trim() || null,
         thread_title: threadTitle.trim() || null,
         metadata: Object.keys(metadata).length > 0 ? metadata : null,
+        pending_for_team: null, // Comments don't require action from either team
       }).select('id').single();
       if (error) throw error;
 
@@ -119,7 +120,7 @@ export function NewThreadComposer({
         metadata.attachments = attachments.map(a => ({ id: a.id, name: a.name, url: a.url, type: a.type }));
       }
 
-      // Insert the question
+      // Insert the question with pending_for_team set to target team
       const { data, error } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
@@ -127,6 +128,7 @@ export function NewThreadComposer({
         content: messageContent.trim() || null,
         thread_title: threadTitle.trim() || null,
         metadata,
+        pending_for_team: targetOwner, // The receiving team needs to act
       }).select('id').single();
       if (error) throw error;
 
