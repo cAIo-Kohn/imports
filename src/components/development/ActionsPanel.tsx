@@ -208,6 +208,8 @@ export function ActionsPanel({
         ? { attachments: attachments.map(a => ({ id: a.id, name: a.name, url: a.url, type: a.type })) }
         : null;
       
+      // New messages start their own thread (thread_id = activity's own id)
+      // We first insert without thread_id, then update with its own id
       const { data, error } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
@@ -215,6 +217,14 @@ export function ActionsPanel({
         content: messageContent.trim() || null,
         metadata: activityMetadata,
       }).select('id').single();
+      if (error) throw error;
+      
+      // Set thread_id and thread_root_id to point to itself (this is a new thread root)
+      if (data?.id) {
+        await supabase.from('development_card_activity')
+          .update({ thread_id: data.id, thread_root_id: data.id })
+          .eq('id', data.id);
+      }
       if (error) throw error;
 
       // Create mention notifications
