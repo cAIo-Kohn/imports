@@ -63,6 +63,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   const [wasNewForOtherTeam, setWasNewForOtherTeam] = useState(false);
 
   const canManage = canManageOrders || isTrader;
+  const canInteract = !!user; // Any authenticated user can comment/question/upload
   const canDelete = canManage;
   const canRestore = isAdmin;
 
@@ -403,7 +404,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
         </ScrollArea>
 
         {/* Quick Action Bar at Bottom */}
-        {canManage && !isDeleted && (
+        {canInteract && !isDeleted && (
           <ActionsPanel
             cardId={item.id}
             cardType={cardType}
