@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
-import { MessageCircle, HelpCircle, DollarSign, Package, Container, Send, ArrowRight, X, FolderOpen } from 'lucide-react';
+import { MessageCircle, HelpCircle, DollarSign, Package, Container, Send, ArrowRight, X, FolderOpen, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -473,13 +473,13 @@ export function ActionsPanel({
       {/* Quick Action Bar */}
       <div className="flex items-center gap-1 p-2">
         <Button 
-          variant={activeAction === 'comment' ? 'secondary' : 'ghost'} 
+          variant={activeAction === 'comment' ? 'default' : 'outline'} 
           size="sm" 
           className="h-8 flex-1 gap-1"
           onClick={() => toggleAction('comment')}
         >
-          <MessageCircle className="h-4 w-4" />
-          <span className="hidden sm:inline text-xs">Comment</span>
+          <Plus className="h-4 w-4" />
+          <span className="text-xs">New Thread</span>
         </Button>
         <Button 
           variant={activeAction === 'question' ? 'secondary' : 'ghost'} 
