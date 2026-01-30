@@ -686,7 +686,19 @@ function useRequestSample(cardId: string, currentOwner: 'mor' | 'arc', onOwnerCh
     try {
       const targetOwner = 'arc';
       
-      // 1. Log sample_requested activity with embedded move info
+      // 1. Create sample record in database (CRITICAL: this makes it appear in Sample Tracker)
+      const { error: sampleError } = await supabase
+        .from('development_item_samples')
+        .insert({
+          item_id: cardId,
+          quantity: 1,
+          status: 'pending',
+          notes: null,
+        });
+      
+      if (sampleError) throw sampleError;
+      
+      // 2. Log sample_requested activity with embedded move info
       const { error: activityError } = await supabase
         .from('development_card_activity')
         .insert({
@@ -702,7 +714,7 @@ function useRequestSample(cardId: string, currentOwner: 'mor' | 'arc', onOwnerCh
       
       if (activityError) throw activityError;
 
-      // 2. Move card to ARC (China) and set pending action for sample tracking
+      // 3. Move card to ARC (China) and set pending action for sample tracking
       const { error: moveError } = await (supabase.from('development_items') as any)
         .update({ 
           current_owner: targetOwner,
@@ -720,6 +732,8 @@ function useRequestSample(cardId: string, currentOwner: 'mor' | 'arc', onOwnerCh
 
       queryClient.invalidateQueries({ queryKey: ['development-items'] });
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+      queryClient.invalidateQueries({ queryKey: ['development-item-samples', cardId] });
+      queryClient.invalidateQueries({ queryKey: ['all-samples'] });
       toast({ title: 'Sample requested & card moved to China' });
       onOwnerChange?.();
     } catch (error) {
