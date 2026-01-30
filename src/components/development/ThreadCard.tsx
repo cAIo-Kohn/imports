@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
-import { ChevronDown, ChevronRight, MessageCircle, HelpCircle, Reply, Pencil, Check, X, Package, AlertCircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, MessageCircle, HelpCircle, Reply, Pencil, Check, X, Package, AlertCircle, CheckCircle2, Truck, PackageCheck, FileCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -140,6 +140,21 @@ export function ThreadCard({
   // Thread-level pending status (who needs to act on this thread)
   const pendingForTeam = rootActivity.pending_for_team;
   const isThreadPending = pendingForTeam && !isResolved;
+
+  // Sample lifecycle stage detection
+  const getSampleLifecycleStage = (): 'requested' | 'shipped' | 'arrived' | 'reviewed' | null => {
+    if (!isSampleRelated) return null;
+    
+    // Check metadata for sample status progression
+    const metadata = rootActivity.metadata || {};
+    
+    if (metadata.sample_decision || metadata.reviewed || isResolved) return 'reviewed';
+    if (metadata.sample_arrived || metadata.actual_arrival) return 'arrived';
+    if (metadata.tracking_number || metadata.shipped_date || metadata.courier) return 'shipped';
+    return 'requested';
+  };
+
+  const sampleStage = getSampleLifecycleStage();
   
   const getThreadStyle = () => {
     if (isResolved) return 'border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/20';
@@ -164,6 +179,57 @@ export function ThreadCard({
     if (isSampleRelated) return 'text-cyan-600';
     if (isQuestion) return 'text-purple-600';
     return 'text-blue-600';
+  };
+
+  // Sample Lifecycle Progress Component
+  const SampleLifecycleIndicator = () => {
+    if (!sampleStage) return null;
+
+    const stages = [
+      { key: 'requested', label: 'Requested', icon: Package, color: 'text-cyan-500' },
+      { key: 'shipped', label: 'Shipped', icon: Truck, color: 'text-blue-500' },
+      { key: 'arrived', label: 'Arrived', icon: PackageCheck, color: 'text-amber-500' },
+      { key: 'reviewed', label: 'Reviewed', icon: FileCheck, color: 'text-green-500' },
+    ];
+
+    const currentStageIndex = stages.findIndex(s => s.key === sampleStage);
+
+    return (
+      <div className="flex items-center gap-0.5 text-[10px]">
+        {stages.map((stage, index) => {
+          const Icon = stage.icon;
+          const isCompleted = index <= currentStageIndex;
+          const isCurrent = index === currentStageIndex;
+          
+          return (
+            <div key={stage.key} className="flex items-center">
+              <div 
+                className={cn(
+                  "flex items-center gap-0.5 px-1 py-0.5 rounded transition-all",
+                  isCurrent && "bg-white/50 dark:bg-black/20 shadow-sm",
+                  isCompleted ? stage.color : "text-muted-foreground/40"
+                )}
+                title={stage.label}
+              >
+                <Icon className={cn(
+                  "h-3 w-3",
+                  isCurrent && "animate-pulse"
+                )} />
+                {isCurrent && (
+                  <span className="font-medium hidden sm:inline">{stage.label}</span>
+                )}
+              </div>
+              {index < stages.length - 1 && (
+                <div className={cn(
+                  "w-2 h-px mx-0.5",
+                  index < currentStageIndex ? "bg-current opacity-30" : "bg-muted-foreground/20"
+                )} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   const getInitials = (profile: ThreadActivity['profile']) => {
@@ -264,6 +330,12 @@ export function ThreadCard({
                   </>
                 )}
               </div>
+              {/* Sample Lifecycle Progress - shown for sample-related threads */}
+              {sampleStage && (
+                <div className="mt-1">
+                  <SampleLifecycleIndicator />
+                </div>
+              )}
               <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                 <span>{rootActivity.profile?.full_name?.split(' ')[0] || 'Someone'}</span>
                 {rootActivity.roles && rootActivity.roles.length > 0 && (
