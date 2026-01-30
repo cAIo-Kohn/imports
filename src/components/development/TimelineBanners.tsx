@@ -7,18 +7,15 @@ import {
   Truck, 
   ExternalLink, 
   PackageCheck, 
-  HelpCircle, 
-  MessageCircle, 
-  Upload,
   CheckCircle,
   Sparkles,
-  Clock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { SnoozeButton } from './SnoozeButton';
+import { BannerQuickActions } from './BannerQuickActions';
 
 // Generate tracking URL based on courier name
 function getTrackingUrl(courier: string | null, trackingNumber: string | null): string | null {
@@ -123,24 +120,13 @@ export function NewCardBanner({
       
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-2">
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onAddComment}
-          className="bg-white hover:bg-violet-100 border-violet-300 text-violet-700 dark:bg-violet-950 dark:hover:bg-violet-900 dark:border-violet-600 dark:text-violet-200"
-        >
-          <MessageCircle className="h-3 w-3 mr-1" />
-          Comment
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onAskQuestion}
-          className="bg-white hover:bg-violet-100 border-violet-300 text-violet-700 dark:bg-violet-950 dark:hover:bg-violet-900 dark:border-violet-600 dark:text-violet-200"
-        >
-          <HelpCircle className="h-3 w-3 mr-1" />
-          Ask a Question
-        </Button>
+        <BannerQuickActions
+          onStartThread={onAddComment}
+          onAskQuestion={onAskQuestion}
+          onAddComment={onAddComment}
+          onUpload={onUpload}
+          colorScheme="violet"
+        />
         <SnoozeButton
           cardId={cardId}
           currentActionType={pendingActionType}
@@ -149,15 +135,6 @@ export function NewCardBanner({
           className="bg-white hover:bg-violet-100 border-violet-300 text-violet-700 dark:bg-violet-950 dark:hover:bg-violet-900 dark:border-violet-600 dark:text-violet-200"
           onSnooze={onSnooze}
         />
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onUpload}
-          className="bg-white hover:bg-violet-100 border-violet-300 text-violet-700 dark:bg-violet-950 dark:hover:bg-violet-900 dark:border-violet-600 dark:text-violet-200"
-        >
-          <Upload className="h-3 w-3 mr-1" />
-          Upload
-        </Button>
       </div>
     </div>
   );
@@ -233,33 +210,13 @@ export function CommercialDataBanner({
           <Package className="h-3 w-3 mr-1" />
           Request Sample
         </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onAskQuestion}
-          className="bg-white hover:bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-950 dark:hover:bg-emerald-900 dark:border-emerald-600 dark:text-emerald-200"
-        >
-          <HelpCircle className="h-3 w-3 mr-1" />
-          Ask a Question
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onAddComment}
-          className="bg-white hover:bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-950 dark:hover:bg-emerald-900 dark:border-emerald-600 dark:text-emerald-200"
-        >
-          <MessageCircle className="h-3 w-3 mr-1" />
-          Add Comment
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onUpload}
-          className="bg-white hover:bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-950 dark:hover:bg-emerald-900 dark:border-emerald-600 dark:text-emerald-200"
-        >
-          <Upload className="h-3 w-3 mr-1" />
-          Upload
-        </Button>
+        <BannerQuickActions
+          onStartThread={onAddComment}
+          onAskQuestion={onAskQuestion}
+          onAddComment={onAddComment}
+          onUpload={onUpload}
+          colorScheme="emerald"
+        />
       </div>
     </div>
   );
@@ -384,24 +341,12 @@ export function SampleInTransitBanner({
           <PackageCheck className="h-3 w-3 mr-1" />
           {markArrivedMutation.isPending ? 'Marking...' : 'Mark Arrived'}
         </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onAskQuestion}
-          className="bg-white hover:bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-950 dark:hover:bg-blue-900 dark:border-blue-600 dark:text-blue-200"
-        >
-          <HelpCircle className="h-3 w-3 mr-1" />
-          Ask a Question
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onAddComment}
-          className="bg-white hover:bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-950 dark:hover:bg-blue-900 dark:border-blue-600 dark:text-blue-200"
-        >
-          <MessageCircle className="h-3 w-3 mr-1" />
-          Add Comment
-        </Button>
+        <BannerQuickActions
+          onStartThread={onAddComment}
+          onAskQuestion={onAskQuestion}
+          onAddComment={onAddComment}
+          colorScheme="blue"
+        />
       </div>
     </div>
   );
@@ -469,15 +414,11 @@ export function SampleDeliveredBanner({
           <CheckCircle className="h-3 w-3 mr-1" />
           Review Sample
         </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onAskQuestion}
-          className="bg-white hover:bg-amber-100 border-amber-400 text-amber-700 dark:bg-amber-950 dark:hover:bg-amber-900 dark:border-amber-600 dark:text-amber-200"
-        >
-          <HelpCircle className="h-3 w-3 mr-1" />
-          Ask a Question
-        </Button>
+        <BannerQuickActions
+          onStartThread={onAskQuestion}
+          onAskQuestion={onAskQuestion}
+          colorScheme="amber"
+        />
       </div>
     </div>
   );
