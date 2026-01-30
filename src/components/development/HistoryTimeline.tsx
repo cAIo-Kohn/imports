@@ -1576,7 +1576,16 @@ export function HistoryTimeline({
               
               const isQuestion = activity.activity_type === 'question';
               const isAnswer = activity.activity_type === 'answer';
+              const isComment = activity.activity_type === 'comment';
               const isResolved = isQuestion && activity.metadata?.resolved;
+              const isAcknowledged = isAnswer && activity.metadata?.acknowledged;
+              
+              // Determine replyToType for the InlineReplyBox
+              const getReplyToType = (): 'question' | 'answer' | 'comment' => {
+                if (isQuestion) return 'question';
+                if (isAnswer) return 'answer';
+                return 'comment';
+              };
               
               return (
                 <div key={activity.id}>
@@ -1669,8 +1678,23 @@ export function HistoryTimeline({
                         </div>
                       )}
                       
+                      {/* Reply button for resolved questions - keep conversation going */}
+                      {isQuestion && isResolved && (
+                        <div className="flex gap-2 mt-2 flex-wrap">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900"
+                            onClick={() => setReplyingToId(activity.id)}
+                          >
+                            <Reply className="h-3 w-3 mr-1" />
+                            Reply
+                          </Button>
+                        </div>
+                      )}
+                      
                       {/* Action buttons for unacknowledged answers */}
-                      {isAnswer && !activity.metadata?.acknowledged && (
+                      {isAnswer && !isAcknowledged && (
                         <div className="flex gap-2 mt-2 flex-wrap">
                           <Button
                             variant="ghost"
@@ -1701,12 +1725,38 @@ export function HistoryTimeline({
                         </div>
                       )}
                       
-                      {/* Show acknowledged badge */}
-                      {isAnswer && activity.metadata?.acknowledged && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 mt-2 bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200">
-                          <Check className="h-3 w-3 mr-1" />
-                          Acknowledged
-                        </Badge>
+                      {/* Show acknowledged badge + Reply button */}
+                      {isAnswer && isAcknowledged && (
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200">
+                            <Check className="h-3 w-3 mr-1" />
+                            Acknowledged
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900"
+                            onClick={() => setReplyingToId(activity.id)}
+                          >
+                            <Reply className="h-3 w-3 mr-1" />
+                            Reply
+                          </Button>
+                        </div>
+                      )}
+                      
+                      {/* Reply button for regular comments */}
+                      {isComment && (
+                        <div className="flex gap-2 mt-2 flex-wrap">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900"
+                            onClick={() => setReplyingToId(activity.id)}
+                          >
+                            <Reply className="h-3 w-3 mr-1" />
+                            Reply
+                          </Button>
+                        </div>
                       )}
                       
                       {/* Metadata display for certain types */}
@@ -1716,7 +1766,7 @@ export function HistoryTimeline({
                         </p>
                       )}
                       
-                      {/* Show which question/answer this is a reply to */}
+                      {/* Show which question/answer/comment this is a reply to */}
                       {(isAnswer || (activity.activity_type === 'comment' && activity.metadata?.reply_to_question)) && (
                         <p className="text-xs mt-1 opacity-70 italic">
                           ↳ Reply to question
@@ -1727,6 +1777,11 @@ export function HistoryTimeline({
                           ↳ Reply to answer
                         </p>
                       )}
+                      {activity.activity_type === 'comment' && activity.metadata?.reply_to_comment && (
+                        <p className="text-xs mt-1 opacity-70 italic">
+                          ↳ Reply to comment
+                        </p>
+                      )}
                       {activity.activity_type === 'question' && activity.metadata?.reply_to_answer && (
                         <p className="text-xs mt-1 opacity-70 italic">
                           ↳ Follow-up question
@@ -1735,11 +1790,11 @@ export function HistoryTimeline({
                     </div>
                   </div>
                   
-                  {/* Inline Reply Box */}
+                  {/* Inline Reply Box - now supports all activity types */}
                   {replyingToId === activity.id && (
                     <InlineReplyBox
                       replyToId={activity.id}
-                      replyToType={isAnswer ? 'answer' : 'question'}
+                      replyToType={getReplyToType()}
                       cardId={cardId}
                       currentOwner={currentOwner}
                       pendingActionType={pendingActionType}
