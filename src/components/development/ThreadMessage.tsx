@@ -235,6 +235,7 @@ export function ThreadMessage({
               cardId={cardId}
               currentOwner={currentOwner}
               pendingActionType={pendingActionType}
+              threadId={activity.thread_root_id || activity.thread_id || activity.id}
               onClose={onCloseReply}
               onCardMove={onOwnerChange}
             />
