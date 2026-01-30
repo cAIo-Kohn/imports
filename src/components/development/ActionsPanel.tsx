@@ -451,9 +451,8 @@ export function ActionsPanel({
   );
   const targetTeamName = currentOwner === 'arc' ? 'MOR (Brazil)' : 'ARC (China)';
 
-  if (!canEdit) {
-    return null;
-  }
+  // All authenticated users can comment/question/upload files
+  // Only users with canEdit can manage commercial data and samples
 
   const toggleAction = (action: ActionType) => {
     setActiveAction(activeAction === action ? null : action);
@@ -481,7 +480,7 @@ export function ActionsPanel({
           <HelpCircle className="h-4 w-4" />
           <span className="hidden sm:inline text-xs">Question</span>
         </Button>
-        {cardType !== 'task' && (
+        {cardType !== 'task' && canEdit && (
           <>
             <Button 
               variant={activeAction === 'commercial' ? 'secondary' : 'ghost'} 
