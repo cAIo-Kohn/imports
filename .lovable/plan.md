@@ -1,60 +1,71 @@
 
 
-## Restore Comment and Question Options to Quick Actions
+## Fix Sample Request Not Creating Database Record
 
-The Quick Actions dropdown is missing the "Add Comment" and "Ask Question" options that were removed during the previous refactoring. I'll add them back while keeping the "New Thread" option.
+The banner's "Request Sample" button is not creating a sample record in the `development_item_samples` table. It only logs an activity entry but skips the actual database insert, which is why samples don't appear in the Sample Tracker.
 
 ---
 
-### Current State
+### Root Cause
+
+The `useRequestSample` hook in `HistoryTimeline.tsx` (used by banners) is missing the database insert that exists in `AddSampleForm.tsx`:
 
 ```text
-Quick Actions Dropdown:
-┌─────────────────────────┐
-│ + New Thread            │
-│ ─────────────────────── │
-│ 📎 Upload File          │
-└─────────────────────────┘
-```
+AddSampleForm (works correctly):
+1. INSERT into development_item_samples ✓
+2. INSERT activity log ✓
+3. UPDATE card owner ✓
 
-### Restored State
-
-```text
-Quick Actions Dropdown:
-┌─────────────────────────┐
-│ + New Thread            │
-│ 💬 Add Comment          │
-│ ❓ Ask Question         │
-│ ─────────────────────── │
-│ 📎 Upload File          │
-│ 📦 Request Sample       │  (when applicable)
-└─────────────────────────┘
+useRequestSample hook (broken):
+1. INSERT into development_item_samples ✗ MISSING!
+2. INSERT activity log ✓
+3. UPDATE card owner ✓
 ```
 
 ---
 
-### Changes Required
+### Fix Required
 
-#### 1. Update `BannerQuickActions.tsx`
-
-Add back the missing props and menu items:
+Add the missing database insert to `useRequestSample` in `HistoryTimeline.tsx`:
 
 ```typescript
-export interface BannerQuickActionsProps {
-  onStartThread?: () => void;
-  onAddComment?: () => void;    // ← Add back
-  onAskQuestion?: () => void;   // ← Add back
-  onUpload?: () => void;
-  onRequestSample?: () => void;
-  colorScheme?: BannerColorScheme;
-}
+// HistoryTimeline.tsx - useRequestSample hook
+const handleRequestSample = async () => {
+  if (!user?.id) return;
+  setIsRequesting(true);
+  
+  try {
+    const targetOwner = 'arc';
+    
+    // ADD THIS: Create sample record in database
+    const { error: sampleError } = await supabase
+      .from('development_item_samples')
+      .insert({
+        item_id: cardId,
+        quantity: 1,
+        status: 'pending',
+        notes: null,
+      });
+    
+    if (sampleError) throw sampleError;
+    
+    // Existing: Log activity
+    const { error: activityError } = await supabase
+      .from('development_card_activity')
+      .insert({...});
+    
+    // Existing: Move card
+    const { error: moveError } = await supabase
+      .from('development_items')
+      .update({...});
+    
+    // ADD THIS: Invalidate samples query
+    queryClient.invalidateQueries({ queryKey: ['development-item-samples', cardId] });
+    queryClient.invalidateQueries({ queryKey: ['all-samples'] }); // For Sample Tracker
+    ...
+  }
+};
 ```
-
-And add the menu items for Comment and Question with appropriate icons.
-
-#### 2. Update `TimelineBanners.tsx`
-
-Pass the `onAddComment` and `onAskQuestion` callbacks to `BannerQuickActions` in each banner component. These will trigger the appropriate actions (opening the comment section or starting a question flow).
 
 ---
 
@@ -62,6 +73,11 @@ Pass the `onAddComment` and `onAskQuestion` callbacks to `BannerQuickActions` in
 
 | File | Change |
 |------|--------|
-| `src/components/development/BannerQuickActions.tsx` | Add `onAddComment` and `onAskQuestion` props and menu items |
-| `src/components/development/TimelineBanners.tsx` | Pass comment/question callbacks to BannerQuickActions |
+| `src/components/development/HistoryTimeline.tsx` | Add `development_item_samples` insert to `useRequestSample` hook |
+
+### Result
+
+- Banner "Request Sample" button will create a proper sample record
+- Sample will appear in the "Requested" column of the Sample Tracker
+- Consistent behavior with the AddSampleForm component
 
