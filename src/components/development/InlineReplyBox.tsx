@@ -2,13 +2,24 @@ import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowRight, HelpCircle } from 'lucide-react';
+import { ArrowRight, HelpCircle, RotateCcw, Send, Users, Briefcase } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton';
 import { SnoozeButton } from './SnoozeButton';
 import { MentionInput } from '@/components/notifications/MentionInput';
 import { createMentionNotifications } from '@/hooks/useNotifications';
+import { ThreadAssignmentSelect } from './ThreadAssignmentSelect';
+import { AppRole } from '@/hooks/useUserRole';
+import { useRoleColors } from '@/hooks/useRoleColors';
+import { cn } from '@/lib/utils';
+
+interface AssignedUser {
+  id: string;
+  name: string;
+  email: string;
+}
 
 interface InlineReplyBoxProps {
   replyToId: string;
@@ -19,7 +30,19 @@ interface InlineReplyBoxProps {
   threadId?: string | null;
   onClose: () => void;
   onCardMove?: () => void;
+  threadCreatorId?: string | null;
+  assignedToUsers?: string[];
+  assignedToRole?: AppRole | null;
 }
+
+const ROLE_LABELS: Record<string, string> = {
+  buyer: 'Buyer',
+  marketing: 'Marketing',
+  quality: 'Quality',
+  trader: 'Trader',
+  admin: 'Admin',
+  viewer: 'Viewer',
+};
 
 export function InlineReplyBox({ 
   replyToId, 
@@ -29,12 +52,35 @@ export function InlineReplyBox({
   pendingActionType,
   threadId,
   onClose, 
-  onCardMove 
+  onCardMove,
+  threadCreatorId,
+  assignedToUsers = [],
+  assignedToRole,
 }: InlineReplyBoxProps) {
   const [replyContent, setReplyContent] = useState('');
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
+  const [showReassign, setShowReassign] = useState(false);
+  const [newAssignedUsers, setNewAssignedUsers] = useState<AssignedUser[]>([]);
+  const [newAssignedRole, setNewAssignedRole] = useState<AppRole | null>(null);
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { getColorForRole } = useRoleColors();
+
+  // Fetch thread creator profile for "Back to Creator" option
+  const { data: creatorProfile } = useQuery({
+    queryKey: ['user-profile', threadCreatorId],
+    queryFn: async () => {
+      if (!threadCreatorId) return null;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .eq('user_id', threadCreatorId)
+        .single();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!threadCreatorId,
+  });
 
   // Fetch card title for notification content
   const { data: cardData } = useQuery({
@@ -67,7 +113,7 @@ export function InlineReplyBox({
     return Object.keys(metadata).length > 0 ? metadata : null;
   };
 
-  // Reply as comment (no move)
+  // Reply as comment (no reassignment)
   const commentReplyMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id || (!replyContent.trim() && attachments.length === 0)) return;
@@ -109,158 +155,153 @@ export function InlineReplyBox({
     },
   });
 
-  // Reply as answer (moves card + resolves question) - only for questions
-  const answerReplyMutation = useMutation({
+  // Reply and reassign to thread creator
+  const replyBackToCreatorMutation = useMutation({
     mutationFn: async () => {
-      if (!user?.id || (!replyContent.trim() && attachments.length === 0)) return;
+      if (!user?.id || !threadCreatorId || (!replyContent.trim() && attachments.length === 0)) return;
       
-      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
-      
-      // Use provided threadId, or fallback to replyToId as thread root
       const effectiveThreadId = threadId || replyToId;
       
-      // 1. Insert answer activity with embedded move info
-      // Note: pending_for_team is NOT set on replies - only thread root tracks this
-      const { error: insertError } = await supabase.from('development_card_activity').insert({
+      // 1. Insert reply activity
+      const { data, error } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
         activity_type: 'answer',
         content: replyContent.trim() || null,
         metadata: {
           ...buildMetadata(),
-          moved_from: currentOwner,
-          moved_to: targetOwner,
+          reassigned_to_creator: true,
         },
         thread_id: effectiveThreadId,
         thread_root_id: effectiveThreadId,
-      });
-      if (insertError) throw insertError;
+      }).select('id').single();
+      if (error) throw error;
 
-      // 2. Fetch existing metadata from the question to preserve attachments
-      const { data: questionActivity, error: fetchError } = await supabase
-        .from('development_card_activity')
-        .select('metadata, thread_id, thread_root_id')
-        .eq('id', replyToId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      const existingQuestionMetadata = (questionActivity?.metadata as Record<string, any>) || {};
-
-      // 3. Mark question as resolved while preserving existing metadata
-      const { error: resolveError } = await supabase
+      // 2. Update thread root to reassign to creator
+      const { error: updateError } = await supabase
         .from('development_card_activity')
         .update({
-          metadata: {
-            ...existingQuestionMetadata,
-            resolved: true,
-            resolved_at: new Date().toISOString(),
-            resolved_by: user.id,
-          },
+          assigned_to_users: [threadCreatorId],
+          assigned_to_role: null,
         })
-        .eq('id', replyToId);
-      if (resolveError) throw resolveError;
+        .eq('id', effectiveThreadId);
+      if (updateError) throw updateError;
 
-      // 4. Update the thread root's pending_for_team to the target (answer receiver)
-      const threadRootId = questionActivity?.thread_root_id || questionActivity?.thread_id || replyToId;
-      const { error: threadRootError } = await supabase
-        .from('development_card_activity')
-        .update({ pending_for_team: targetOwner })
-        .eq('id', threadRootId);
-      if (threadRootError) throw threadRootError;
+      // 3. Notify thread creator
+      if (data?.id && threadCreatorId !== user.id) {
+        await supabase.from('notifications').insert({
+          user_id: threadCreatorId,
+          triggered_by: user.id,
+          type: 'thread_reply',
+          title: 'Thread response - your turn',
+          content: replyContent.trim().slice(0, 100) || 'New response',
+          card_id: cardId,
+          activity_id: data.id,
+        });
+      }
 
-      // 4. Move card to other team and set answer_pending
-      const { error: moveError } = await (supabase.from('development_items') as any)
-        .update({ 
-          current_owner: targetOwner,
-          is_new_for_other_team: true,
-          pending_action_type: 'answer_pending',
-          pending_action_due_at: null,
-          pending_action_snoozed_until: null,
-          pending_action_snoozed_by: null,
-        })
-        .eq('id', cardId);
-      if (moveError) throw moveError;
-
-      // NO separate ownership_change entry - move is embedded in answer activity
+      // Create mention notifications
+      if (data?.id && replyContent.trim()) {
+        await createMentionNotifications({
+          text: replyContent,
+          cardId,
+          activityId: data.id,
+          triggeredBy: user.id,
+          cardTitle: cardData?.title || 'Development Card',
+        });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
-      queryClient.invalidateQueries({ queryKey: ['development-items'] });
-      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
-      toast({ title: `Answer posted. Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}` });
+      toast({ title: 'Reply sent back to thread creator' });
       setReplyContent('');
       setAttachments([]);
       onClose();
-      onCardMove?.();
     },
     onError: () => {
-      toast({ title: 'Error', description: 'Failed to post answer', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to send reply', variant: 'destructive' });
     },
   });
 
-  // Ask follow-up question (for replying to answers) - moves card
-  const followUpQuestionMutation = useMutation({
+  // Reply and reassign to new users/role
+  const replyAndReassignMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id || (!replyContent.trim() && attachments.length === 0)) return;
+      if (newAssignedUsers.length === 0 && !newAssignedRole) return;
       
-      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
-      
-      // Use provided threadId, or fallback to replyToId as thread root
       const effectiveThreadId = threadId || replyToId;
       
-      // 1. Insert question activity with reference to the answer and embedded move info
-      // Note: pending_for_team is NOT set on replies - only thread root tracks this
-      const { error: insertError } = await supabase.from('development_card_activity').insert({
+      // 1. Insert reply activity
+      const metadata: Record<string, any> = {
+        ...buildMetadata(),
+        reassigned: true,
+      };
+      if (newAssignedUsers.length > 0) {
+        metadata.reassigned_to_user_names = newAssignedUsers.map(u => u.name);
+      }
+      if (newAssignedRole) {
+        metadata.reassigned_to_role = newAssignedRole;
+      }
+
+      const { data, error } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
-        activity_type: 'question',
+        activity_type: 'answer',
         content: replyContent.trim() || null,
-        metadata: {
-          ...buildMetadata(false),
-          reply_to_answer: replyToId,
-          moved_from: currentOwner,
-          moved_to: targetOwner,
-        },
+        metadata,
         thread_id: effectiveThreadId,
         thread_root_id: effectiveThreadId,
-      });
-      if (insertError) throw insertError;
+      }).select('id').single();
+      if (error) throw error;
 
-      // 2. Update the thread root's pending_for_team to the target (follow-up question receiver)
-      const { error: threadRootError } = await supabase
+      // 2. Update thread root with new assignment
+      const { error: updateError } = await supabase
         .from('development_card_activity')
-        .update({ pending_for_team: targetOwner })
-        .eq('id', effectiveThreadId);
-      if (threadRootError) throw threadRootError;
-
-      // 3. Move card to other team and set question pending
-      const { error: moveError } = await (supabase.from('development_items') as any)
-        .update({ 
-          current_owner: targetOwner,
-          is_new_for_other_team: true,
-          pending_action_type: 'question',
-          pending_action_due_at: null,
-          pending_action_snoozed_until: null,
-          pending_action_snoozed_by: null,
+        .update({
+          assigned_to_users: newAssignedUsers.map(u => u.id),
+          assigned_to_role: newAssignedRole,
         })
-        .eq('id', cardId);
-      if (moveError) throw moveError;
+        .eq('id', effectiveThreadId);
+      if (updateError) throw updateError;
 
-      // NO separate ownership_change entry - move is embedded in question activity
+      // 3. Notify new assignees
+      for (const assignedUser of newAssignedUsers) {
+        if (assignedUser.id !== user.id) {
+          await supabase.from('notifications').insert({
+            user_id: assignedUser.id,
+            triggered_by: user.id,
+            type: 'thread_assigned',
+            title: 'Thread reassigned to you',
+            content: replyContent.trim().slice(0, 100) || 'New assignment',
+            card_id: cardId,
+            activity_id: data?.id,
+          });
+        }
+      }
+
+      // Create mention notifications
+      if (data?.id && replyContent.trim()) {
+        await createMentionNotifications({
+          text: replyContent,
+          cardId,
+          activityId: data.id,
+          triggeredBy: user.id,
+          cardTitle: cardData?.title || 'Development Card',
+        });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
-      queryClient.invalidateQueries({ queryKey: ['development-items'] });
-      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
-      toast({ title: `Follow-up question posted. Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}` });
+      toast({ title: 'Reply sent and thread reassigned' });
       setReplyContent('');
       setAttachments([]);
+      setShowReassign(false);
+      setNewAssignedUsers([]);
+      setNewAssignedRole(null);
       onClose();
-      onCardMove?.();
     },
     onError: () => {
-      toast({ title: 'Error', description: 'Failed to post follow-up question', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to send reply', variant: 'destructive' });
     },
   });
 
@@ -271,12 +312,12 @@ export function InlineReplyBox({
     }
   };
 
-  const isPending = commentReplyMutation.isPending || answerReplyMutation.isPending || followUpQuestionMutation.isPending;
-  const targetTeam = currentOwner === 'arc' ? 'MOR' : 'ARC';
+  const isPending = commentReplyMutation.isPending || replyBackToCreatorMutation.isPending || replyAndReassignMutation.isPending;
   const canSubmit = replyContent.trim() || attachments.length > 0;
+  const canReassign = showReassign && (newAssignedUsers.length > 0 || newAssignedRole);
   
-  // Comments can only get "Just Comment" - no move options
-  const isCommentReply = replyToType === 'comment';
+  const creatorName = creatorProfile?.full_name?.split(' ')[0] || 'Creator';
+  const isCreator = user?.id === threadCreatorId;
 
   return (
     <div className="mt-3 p-3 bg-muted/50 rounded-lg border">
@@ -284,7 +325,7 @@ export function InlineReplyBox({
         value={replyContent}
         onChange={setReplyContent}
         onKeyDown={handleKeyDown}
-        placeholder={replyToType === 'answer' ? "Type your reply or follow-up question... Use @ to mention" : "Type your reply... Use @ to mention"}
+        placeholder="Type your reply... Use @ to mention"
         rows={2}
         className="text-sm bg-background"
         disabled={isPending}
@@ -300,8 +341,23 @@ export function InlineReplyBox({
           disabled={isPending}
         />
       </div>
+
+      {/* Reassignment UI */}
+      {showReassign && (
+        <div className="mt-3 p-3 bg-background rounded-lg border">
+          <div className="text-xs font-medium mb-2 text-muted-foreground">Reassign thread to:</div>
+          <ThreadAssignmentSelect
+            assignedUsers={newAssignedUsers}
+            assignedRole={newAssignedRole}
+            onAssignedUsersChange={setNewAssignedUsers}
+            onAssignedRoleChange={setNewAssignedRole}
+            disabled={isPending}
+            required={false}
+          />
+        </div>
+      )}
       
-      <div className="flex gap-2 mt-2 justify-end flex-wrap">
+      <div className="flex gap-2 mt-3 justify-end flex-wrap">
         <Button 
           variant="ghost" 
           size="sm" 
@@ -311,7 +367,7 @@ export function InlineReplyBox({
           Cancel
         </Button>
         
-        {/* Snooze button - allows user to delay the pending action */}
+        {/* Snooze button */}
         <SnoozeButton
           cardId={cardId}
           currentActionType={pendingActionType}
@@ -319,37 +375,50 @@ export function InlineReplyBox({
           size="sm"
         />
         
+        {/* Just Reply - no assignment change */}
         <Button 
           variant="outline" 
           size="sm" 
           onClick={() => commentReplyMutation.mutate()}
           disabled={!canSubmit || isPending}
         >
-          {commentReplyMutation.isPending ? 'Sending...' : (isCommentReply ? 'Reply' : 'Just Comment')}
+          <Send className="h-3 w-3 mr-1" />
+          {commentReplyMutation.isPending ? 'Sending...' : 'Reply'}
         </Button>
         
-        {/* Only show move buttons when replying to questions or answers, not comments */}
-        {replyToType === 'question' && currentOwner && (
-          // Replying to a question: Answer & Move
+        {/* Reply & Back to Creator - only if not the creator */}
+        {!isCreator && threadCreatorId && (
           <Button 
+            variant="outline"
             size="sm" 
-            onClick={() => answerReplyMutation.mutate()}
+            onClick={() => replyBackToCreatorMutation.mutate()}
             disabled={!canSubmit || isPending}
+            className="border-green-300 text-green-700 hover:bg-green-50"
           >
-            {answerReplyMutation.isPending ? 'Sending...' : `Answer & Move to ${targetTeam}`}
-            <ArrowRight className="h-3 w-3 ml-1" />
+            <RotateCcw className="h-3 w-3 mr-1" />
+            {replyBackToCreatorMutation.isPending ? 'Sending...' : `Reply to ${creatorName}`}
           </Button>
         )}
         
-        {replyToType === 'answer' && currentOwner && (
-          // Replying to an answer: Ask Follow-up & Move
+        {/* Toggle Reassign UI */}
+        {!showReassign ? (
+          <Button 
+            variant="outline"
+            size="sm" 
+            onClick={() => setShowReassign(true)}
+            disabled={isPending}
+          >
+            <Users className="h-3 w-3 mr-1" />
+            Reassign...
+          </Button>
+        ) : (
           <Button 
             size="sm" 
-            onClick={() => followUpQuestionMutation.mutate()}
-            disabled={!canSubmit || isPending}
+            onClick={() => replyAndReassignMutation.mutate()}
+            disabled={!canSubmit || !canReassign || isPending}
           >
-            {followUpQuestionMutation.isPending ? 'Sending...' : `Ask Follow-up & Move to ${targetTeam}`}
-            <HelpCircle className="h-3 w-3 ml-1" />
+            <Send className="h-3 w-3 mr-1" />
+            {replyAndReassignMutation.isPending ? 'Sending...' : 'Reply & Reassign'}
           </Button>
         )}
       </div>

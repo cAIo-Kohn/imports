@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
-import { ChevronDown, ChevronRight, MessageCircle, HelpCircle, Reply, Pencil, Check, X, Package, AlertCircle, CheckCircle2, Truck, PackageCheck, FileCheck } from 'lucide-react';
+import { ChevronDown, ChevronRight, MessageCircle, HelpCircle, Reply, Pencil, Check, X, Package, AlertCircle, CheckCircle2, Truck, PackageCheck, FileCheck, Briefcase, Users, Lock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { useUserRole, AppRole } from '@/hooks/useUserRole';
+import { useRoleColors } from '@/hooks/useRoleColors';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,7 +16,6 @@ import { toast } from '@/hooks/use-toast';
 import { ThreadMessage } from './ThreadMessage';
 import { InlineReplyBox } from './InlineReplyBox';
 import { UserRoleBadge } from './UserRoleBadge';
-import { AppRole } from '@/hooks/useUserRole';
 
 export interface ThreadActivity {
   id: string;
@@ -28,6 +30,10 @@ export interface ThreadActivity {
   thread_title: string | null;
   pending_for_team: 'mor' | 'arc' | null;
   thread_resolved_at: string | null;
+  assigned_to_users?: string[] | null;
+  assigned_to_role?: string | null;
+  thread_creator_id?: string | null;
+  thread_status?: string | null;
   profile?: {
     full_name: string | null;
     email: string | null;
@@ -49,6 +55,15 @@ interface ThreadCardProps {
   initialReplyToId?: string | null;
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  buyer: 'Buyer',
+  marketing: 'Marketing',
+  quality: 'Quality',
+  trader: 'Trader',
+  admin: 'Admin',
+  viewer: 'Viewer',
+};
+
 export function ThreadCard({
   activities,
   cardId,
@@ -62,6 +77,9 @@ export function ThreadCard({
   defaultOpen = false,
   initialReplyToId,
 }: ThreadCardProps) {
+  const { user } = useAuth();
+  const { roles: userRoles } = useUserRole();
+  const { getColorForRole } = useRoleColors();
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
@@ -76,7 +94,23 @@ export function ThreadCard({
   // Root activity is the first one (thread starter)
   const rootActivity = sortedActivities[0];
 
-  // Handle initial reply focus from PendingThreadsBanner quick action
+  // Thread assignment info from root
+  const assignedToUsers = rootActivity.assigned_to_users || [];
+  const assignedToRole = rootActivity.assigned_to_role as AppRole | null;
+  const threadCreatorId = rootActivity.thread_creator_id || rootActivity.user_id;
+  const threadStatus = rootActivity.thread_status || 'open';
+  const isResolved = threadStatus === 'resolved' || rootActivity.thread_resolved_at !== null;
+  
+  // Check if current user is assigned
+  const isAssignedToMe = user?.id && (
+    assignedToUsers.includes(user.id) ||
+    (assignedToRole && userRoles.includes(assignedToRole))
+  );
+  
+  // Check if current user is the thread creator
+  const isThreadCreator = user?.id === threadCreatorId;
+
+  // Handle initial reply focus from banner quick action
   useEffect(() => {
     if (initialReplyToId && rootActivity.id === initialReplyToId) {
       setIsOpen(true);
@@ -134,6 +168,27 @@ export function ThreadCard({
     },
   });
 
+  // Resolve thread mutation (only for thread creator)
+  const resolveThreadMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('development_card_activity')
+        .update({
+          thread_status: 'resolved',
+          thread_resolved_at: new Date().toISOString(),
+        })
+        .eq('id', rootActivity.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+      toast({ title: 'Thread resolved' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to resolve thread', variant: 'destructive' });
+    },
+  });
+
   const handleStartEditTitle = (e: React.MouseEvent) => {
     e.stopPropagation();
     setEditedTitle(rootActivity.thread_title || '');
@@ -151,15 +206,15 @@ export function ThreadCard({
     setEditedTitle('');
   };
 
+  const handleResolveThread = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    resolveThreadMutation.mutate();
+  };
+
   // Determine thread icon and color based on root activity
   const isQuestion = rootActivity.activity_type === 'question';
   const isSampleRelated = rootActivity.activity_type === 'sample_requested';
-  const isResolved = rootActivity.thread_resolved_at !== null || (isQuestion && rootActivity.metadata?.resolved);
   
-  // Thread-level pending status (who needs to act on this thread)
-  const pendingForTeam = rootActivity.pending_for_team;
-  const isThreadPending = pendingForTeam && !isResolved;
-
   // Sample lifecycle stage detection
   const getSampleLifecycleStage = (): 'requested' | 'shipped' | 'arrived' | 'reviewed' | null => {
     if (!isSampleRelated) return null;
@@ -176,11 +231,13 @@ export function ThreadCard({
   const sampleStage = getSampleLifecycleStage();
   
   const getThreadStyle = () => {
-    if (isResolved) return 'border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/20';
-    if (isThreadPending && pendingForTeam === currentOwner) {
-      // This team needs to act - highlight more prominently
+    // Resolved threads - grey/faded
+    if (isResolved) return 'border-muted bg-muted/30 opacity-70';
+    // Assigned to me - highlighted
+    if (isAssignedToMe) {
       return 'border-amber-300 bg-amber-50/50 dark:border-amber-700 dark:bg-amber-950/20 ring-1 ring-amber-300 dark:ring-amber-700';
     }
+    // Regular thread styles
     if (isSampleRelated) return 'border-cyan-200 bg-cyan-50/50 dark:border-cyan-800 dark:bg-cyan-950/20';
     if (isQuestion) return 'border-purple-200 bg-purple-50/50 dark:border-purple-800 dark:bg-purple-950/20';
     return 'border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20';
@@ -193,8 +250,8 @@ export function ThreadCard({
   };
   
   const getThreadIconColor = () => {
-    if (isResolved) return 'text-green-600';
-    if (isThreadPending && pendingForTeam === currentOwner) return 'text-amber-600';
+    if (isResolved) return 'text-muted-foreground';
+    if (isAssignedToMe) return 'text-amber-600';
     if (isSampleRelated) return 'text-cyan-600';
     if (isQuestion) return 'text-purple-600';
     return 'text-blue-600';
@@ -251,6 +308,35 @@ export function ThreadCard({
     );
   };
 
+  // Assignment badges component
+  const AssignmentBadges = () => {
+    if (!assignedToUsers.length && !assignedToRole) return null;
+
+    return (
+      <div className="flex items-center gap-1 flex-wrap">
+        {assignedToRole && (
+          <Badge 
+            variant="outline" 
+            className="text-[10px] px-1.5 py-0 gap-1"
+            style={{ 
+              borderColor: getColorForRole(assignedToRole).color,
+              backgroundColor: `${getColorForRole(assignedToRole).color}15`
+            }}
+          >
+            <Briefcase className="h-2.5 w-2.5" />
+            {ROLE_LABELS[assignedToRole] || assignedToRole}
+          </Badge>
+        )}
+        {assignedToUsers.length > 0 && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1">
+            <Users className="h-2.5 w-2.5" />
+            {rootActivity.metadata?.assigned_user_names?.length || assignedToUsers.length} user{assignedToUsers.length > 1 ? 's' : ''}
+          </Badge>
+        )}
+      </div>
+    );
+  };
+
   const getInitials = (profile: ThreadActivity['profile']) => {
     if (profile?.full_name) {
       return profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -259,9 +345,12 @@ export function ThreadCard({
     return '?';
   };
 
+  // Resolved threads are collapsed by default
+  const effectiveDefaultOpen = isResolved ? false : defaultOpen;
+
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <div id={`thread-${rootActivity.id}`} className={cn("rounded-lg border group", getThreadStyle())}>
+    <Collapsible open={isResolved ? isOpen : isOpen || effectiveDefaultOpen} onOpenChange={setIsOpen}>
+      <div id={`thread-${rootActivity.id}`} className={cn("rounded-lg border group transition-all", getThreadStyle())}>
         {/* Thread Header - Always Visible */}
         <CollapsibleTrigger className="w-full">
           <div className="flex items-center gap-3 p-3 hover:bg-muted/30 transition-colors cursor-pointer">
@@ -277,7 +366,7 @@ export function ThreadCard({
             
             {/* Thread Title & Meta */}
             <div className="flex-1 min-w-0 text-left">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {isEditingTitle ? (
                   <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <Input
@@ -329,32 +418,36 @@ export function ThreadCard({
                     >
                       <Pencil className="h-3 w-3 text-muted-foreground" />
                     </Button>
+                    
+                    {/* Status badges */}
                     {isResolved && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200">
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-muted border-muted-foreground/30 text-muted-foreground">
+                        <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
                         Resolved
                       </Badge>
                     )}
-                    {/* Pending for team badge */}
-                    {isThreadPending && (
-                      <Badge variant="outline" className={cn(
-                        "text-[10px] px-1.5 py-0 flex items-center gap-1",
-                        pendingForTeam === currentOwner 
-                          ? "bg-amber-100 border-amber-400 text-amber-700 dark:bg-amber-900 dark:border-amber-600 dark:text-amber-200 animate-pulse"
-                          : "bg-muted border-muted-foreground/30 text-muted-foreground"
-                      )}>
-                        {pendingForTeam === currentOwner && <AlertCircle className="h-2.5 w-2.5" />}
-                        {pendingForTeam === 'mor' ? '🇧🇷' : '🇨🇳'} {pendingForTeam === currentOwner ? 'Your turn' : 'Waiting'}
+                    
+                    {/* Assignment badges */}
+                    {!isResolved && <AssignmentBadges />}
+                    
+                    {/* Your turn badge */}
+                    {!isResolved && isAssignedToMe && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-100 border-amber-400 text-amber-700 dark:bg-amber-900 dark:border-amber-600 dark:text-amber-200 animate-pulse">
+                        <AlertCircle className="h-2.5 w-2.5 mr-0.5" />
+                        Your turn
                       </Badge>
                     )}
                   </>
                 )}
               </div>
+              
               {/* Sample Lifecycle Progress - shown for sample-related threads */}
-              {sampleStage && (
+              {sampleStage && !isResolved && (
                 <div className="mt-1">
                   <SampleLifecycleIndicator />
                 </div>
               )}
+              
               <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                 <span>{rootActivity.profile?.full_name?.split(' ')[0] || 'Someone'}</span>
                 {rootActivity.roles && rootActivity.roles.length > 0 && (
@@ -388,6 +481,20 @@ export function ThreadCard({
                 )}
               </div>
             )}
+            
+            {/* Resolve button for thread creator (only visible when not resolved) */}
+            {!isResolved && isThreadCreator && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs opacity-0 group-hover:opacity-100 transition-opacity text-green-600 hover:text-green-700 hover:bg-green-100"
+                onClick={handleResolveThread}
+                disabled={resolveThreadMutation.isPending}
+              >
+                <Lock className="h-3 w-3 mr-1" />
+                Close Thread
+              </Button>
+            )}
           </div>
         </CollapsibleTrigger>
 
@@ -411,11 +518,14 @@ export function ThreadCard({
                 replyingToId={replyingToId}
                 onCloseReply={() => setReplyingToId(null)}
                 onOwnerChange={onOwnerChange}
+                threadCreatorId={threadCreatorId}
+                assignedToUsers={assignedToUsers}
+                assignedToRole={assignedToRole}
               />
             ))}
             
-            {/* Quick reply button for thread */}
-            {!replyingToId && (
+            {/* Quick reply button for thread (only if not resolved) */}
+            {!replyingToId && !isResolved && (
               <Button
                 variant="ghost"
                 size="sm"
