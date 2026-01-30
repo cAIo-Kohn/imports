@@ -48,6 +48,9 @@ interface Activity {
   content: string | null;
   metadata: Record<string, any> | null;
   created_at: string;
+  thread_id: string | null;
+  thread_root_id: string | null;
+  thread_title: string | null;
   profile?: {
     full_name: string | null;
     email: string | null;
@@ -1488,268 +1491,19 @@ export function HistoryTimeline({
         />
       )}
       
-      {sortedDates.map((dateKey) => (
-        <div key={dateKey}>
-          <div className="sticky top-0 bg-background py-1 mb-3">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              {formatDateHeader(dateKey + 'T00:00:00')}
-            </span>
-          </div>
-          
-          <div className="space-y-2">
-            {groupedActivities[dateKey].map((activity) => {
-              // Special card for "created" activity
-              if (activity.activity_type === 'created') {
-                return (
-                  <CreatedActivityCard
-                    key={activity.id}
-                    activity={activity}
-                    cardTitle={cardTitle}
-                    cardDescription={cardDescription}
-                    cardImageUrl={cardImageUrl}
-                  />
-                );
-              }
-              
-              // Render compact row for other system activities
-              if (isCompactActivity(activity.activity_type)) {
-                return <CompactActivityRow key={activity.id} activity={activity} />;
-              }
-              
-              const isQuestion = activity.activity_type === 'question';
-              const isAnswer = activity.activity_type === 'answer';
-              const isComment = activity.activity_type === 'comment';
-              const isResolved = isQuestion && activity.metadata?.resolved;
-              const isAcknowledged = isAnswer && activity.metadata?.acknowledged;
-              
-              // Determine replyToType for the InlineReplyBox
-              const getReplyToType = (): 'question' | 'answer' | 'comment' => {
-                if (isQuestion) return 'question';
-                if (isAnswer) return 'answer';
-                return 'comment';
-              };
-              
-              return (
-                <div key={activity.id}>
-                  <div 
-                    className={cn(
-                      "flex gap-3 p-3 rounded-lg border",
-                      isResolved 
-                        ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800"
-                        : ACTIVITY_STYLES[activity.activity_type] || ACTIVITY_STYLES.comment
-                    )}
-                  >
-                    <Avatar className="h-7 w-7 flex-shrink-0">
-                      <AvatarFallback className="text-xs bg-background">
-                        {getInitials(activity.profile)}
-                      </AvatarFallback>
-                    </Avatar>
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">
-                          {activity.profile?.full_name || activity.profile?.email || 'Unknown'}
-                        </span>
-                        {/* Role badge for commenter */}
-                        {activity.roles && activity.roles.length > 0 && (
-                          <UserRoleBadge roles={activity.roles} />
-                        )}
-                        <span className="flex items-center gap-1 text-xs">
-                          {isResolved ? <Check className="h-3.5 w-3.5" /> : (ACTIVITY_ICONS[activity.activity_type] || ACTIVITY_ICONS.comment)}
-                          {isResolved ? 'question resolved' : (ACTIVITY_LABELS[activity.activity_type] || activity.activity_type)}
-                        </span>
-                        <span className="text-xs opacity-70">
-                          {format(parseISO(activity.created_at), 'HH:mm')}
-                        </span>
-                        {isResolved && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200">
-                            Resolved
-                          </Badge>
-                        )}
-                      </div>
-                      
-                      {activity.content && (
-                        <p className={cn(
-                          "text-sm mt-1 whitespace-pre-wrap",
-                          isResolved && "line-through opacity-70"
-                        )}>
-                          {isQuestion ? (
-                            <span className="italic">"<MentionText text={activity.content} />"</span>
-                          ) : (
-                            <MentionText text={activity.content} />
-                          )}
-                        </p>
-                      )}
-                      
-                      {/* Show attachments if present */}
-                      {activity.metadata?.attachments && Array.isArray(activity.metadata.attachments) && activity.metadata.attachments.length > 0 && (
-                        <AttachmentDisplay 
-                          attachments={activity.metadata.attachments as UploadedAttachment[]} 
-                        />
-                      )}
-                      
-                      {/* Action buttons for unresolved questions */}
-                      {isQuestion && !isResolved && (
-                        <div className="flex gap-2 mt-2 flex-wrap">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-100 dark:text-purple-400 dark:hover:bg-purple-900"
-                            onClick={() => setReplyingToId(activity.id)}
-                          >
-                            <Reply className="h-3 w-3 mr-1" />
-                            Reply
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-100 dark:text-purple-400 dark:hover:bg-purple-900"
-                            onClick={() => resolveQuestionMutation.mutate(activity.id)}
-                            disabled={resolveQuestionMutation.isPending}
-                          >
-                            <Check className="h-3 w-3 mr-1" />
-                            {resolveQuestionMutation.isPending ? 'Resolving...' : 'Mark as Resolved'}
-                          </Button>
-                          <SnoozeButton
-                            cardId={cardId}
-                            currentActionType="question"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-100 dark:text-purple-400 dark:hover:bg-purple-900"
-                          />
-                        </div>
-                      )}
-                      
-                      {/* Reply button for resolved questions - keep conversation going */}
-                      {isQuestion && isResolved && (
-                        <div className="flex gap-2 mt-2 flex-wrap">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900"
-                            onClick={() => setReplyingToId(activity.id)}
-                          >
-                            <Reply className="h-3 w-3 mr-1" />
-                            Reply
-                          </Button>
-                        </div>
-                      )}
-                      
-                      {/* Action buttons for unacknowledged answers */}
-                      {isAnswer && !isAcknowledged && (
-                        <div className="flex gap-2 mt-2 flex-wrap">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900"
-                            onClick={() => acknowledgeAnswerMutation.mutate(activity.id)}
-                            disabled={acknowledgeAnswerMutation.isPending}
-                          >
-                            <Check className="h-3 w-3 mr-1" />
-                            {acknowledgeAnswerMutation.isPending ? 'Acknowledging...' : 'Got it'}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900"
-                            onClick={() => setReplyingToId(activity.id)}
-                          >
-                            <Reply className="h-3 w-3 mr-1" />
-                            Reply
-                          </Button>
-                          <SnoozeButton
-                            cardId={cardId}
-                            currentActionType="answer_pending"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900"
-                          />
-                        </div>
-                      )}
-                      
-                      {/* Show acknowledged badge + Reply button */}
-                      {isAnswer && isAcknowledged && (
-                        <div className="flex items-center gap-2 mt-2 flex-wrap">
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200">
-                            <Check className="h-3 w-3 mr-1" />
-                            Acknowledged
-                          </Badge>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900"
-                            onClick={() => setReplyingToId(activity.id)}
-                          >
-                            <Reply className="h-3 w-3 mr-1" />
-                            Reply
-                          </Button>
-                        </div>
-                      )}
-                      
-                      {/* Reply button for regular comments */}
-                      {isComment && (
-                        <div className="flex gap-2 mt-2 flex-wrap">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900"
-                            onClick={() => setReplyingToId(activity.id)}
-                          >
-                            <Reply className="h-3 w-3 mr-1" />
-                            Reply
-                          </Button>
-                        </div>
-                      )}
-                      
-                      {/* Metadata display for certain types */}
-                      {activity.activity_type === 'commercial_update' && activity.metadata && (
-                        <p className="text-xs mt-1 opacity-80">
-                          {activity.metadata.field?.replace('_', ' ')}: {activity.metadata.value}
-                        </p>
-                      )}
-                      
-                      {/* Show which question/answer/comment this is a reply to */}
-                      {(isAnswer || (activity.activity_type === 'comment' && activity.metadata?.reply_to_question)) && (
-                        <p className="text-xs mt-1 opacity-70 italic">
-                          ↳ Reply to question
-                        </p>
-                      )}
-                      {activity.activity_type === 'comment' && activity.metadata?.reply_to_answer && (
-                        <p className="text-xs mt-1 opacity-70 italic">
-                          ↳ Reply to answer
-                        </p>
-                      )}
-                      {activity.activity_type === 'comment' && activity.metadata?.reply_to_comment && (
-                        <p className="text-xs mt-1 opacity-70 italic">
-                          ↳ Reply to comment
-                        </p>
-                      )}
-                      {activity.activity_type === 'question' && activity.metadata?.reply_to_answer && (
-                        <p className="text-xs mt-1 opacity-70 italic">
-                          ↳ Follow-up question
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Inline Reply Box - now supports all activity types */}
-                  {replyingToId === activity.id && (
-                    <InlineReplyBox
-                      replyToId={activity.id}
-                      replyToType={getReplyToType()}
-                      cardId={cardId}
-                      currentOwner={currentOwner}
-                      pendingActionType={pendingActionType}
-                      onClose={() => setReplyingToId(null)}
-                      onCardMove={onOwnerChange}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+      {/* Threaded Timeline - groups activities by thread */}
+      <ThreadedTimeline
+        activities={timelineActivities}
+        cardId={cardId}
+        currentOwner={currentOwner}
+        pendingActionType={pendingActionType}
+        onResolveQuestion={(id) => resolveQuestionMutation.mutate(id)}
+        onAcknowledgeAnswer={(id) => acknowledgeAnswerMutation.mutate(id)}
+        onOwnerChange={onOwnerChange}
+        isResolving={resolveQuestionMutation.isPending}
+        isAcknowledging={acknowledgeAnswerMutation.isPending}
+        excludeIds={bannerActivityIds}
+      />
     </div>
   );
 }
