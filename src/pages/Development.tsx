@@ -81,7 +81,7 @@ export interface DevelopmentItem {
   pending_action_snoozed_by?: string | null;
   // Pending threads count and info for current user's team
   pending_threads_count?: number;
-  pending_threads_info?: { id: string; title: string }[];
+  pending_threads_info?: { id: string; title: string; type: string }[];
   // Derived status (computed from pending_action_type, is_solved, etc.)
   derived_status?: DevelopmentCardStatus;
 }
@@ -303,7 +303,7 @@ export default function Development() {
       // Determine user's team based on role
       const userTeam = isTrader ? 'arc' : 'mor';
       const pendingThreadsCountMap: Record<string, number> = {};
-      const pendingThreadsInfoMap: Record<string, { id: string; title: string }[]> = {};
+      const pendingThreadsInfoMap: Record<string, { id: string; title: string; type: string }[]> = {};
       
       for (const pt of pendingThreadsRes.data || []) {
         // Only count threads pending for the user's team
@@ -318,7 +318,7 @@ export default function Development() {
           if (!pendingThreadsInfoMap[pt.card_id]) {
             pendingThreadsInfoMap[pt.card_id] = [];
           }
-          pendingThreadsInfoMap[pt.card_id].push({ id: (pt as any).id, title });
+          pendingThreadsInfoMap[pt.card_id].push({ id: (pt as any).id, title, type: pt.activity_type });
         }
       }
 

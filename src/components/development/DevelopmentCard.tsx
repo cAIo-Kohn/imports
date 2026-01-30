@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
 import { format } from 'date-fns';
-import { Calendar, Package, Layers, ListTodo, Box, Leaf, Sparkles, Trash2, Clock, MessageCircle } from 'lucide-react';
+import { Calendar, Package, Layers, ListTodo, Box, Leaf, Sparkles, Trash2, HelpCircle, MessageCircle, Reply } from 'lucide-react';
 import { DevelopmentItem, DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -131,17 +131,22 @@ function DevelopmentCardComponent({
               </TooltipTrigger>
               <TooltipContent side="left" className="max-w-[220px] p-2">
                 <p className="font-medium text-xs mb-1.5">Pending threads:</p>
-                <ul className="text-xs space-y-1">
-                  {((item as any).pending_threads_info || []).slice(0, 5).map((thread: { id: string; title: string }, i: number) => (
+                <ul className="text-xs space-y-1.5">
+                  {((item as any).pending_threads_info || []).slice(0, 5).map((thread: { id: string; title: string; type: string }, i: number) => (
                     <li 
                       key={thread.id || i} 
-                      className="truncate cursor-pointer hover:text-primary hover:underline transition-colors"
+                      className="flex items-center gap-1.5 cursor-pointer hover:text-primary transition-colors group/item"
                       onClick={(e) => {
                         e.stopPropagation();
                         onClickThread?.(thread.id);
                       }}
                     >
-                      • {thread.title}
+                      {thread.type === 'question' && <HelpCircle className="h-3 w-3 text-purple-500 flex-shrink-0" />}
+                      {thread.type === 'sample_requested' && <Package className="h-3 w-3 text-cyan-500 flex-shrink-0" />}
+                      {thread.type === 'answer' && <Reply className="h-3 w-3 text-green-500 flex-shrink-0" />}
+                      {thread.type === 'comment' && <MessageCircle className="h-3 w-3 text-blue-500 flex-shrink-0" />}
+                      {!['question', 'sample_requested', 'answer', 'comment'].includes(thread.type) && <MessageCircle className="h-3 w-3 text-muted-foreground flex-shrink-0" />}
+                      <span className="truncate group-hover/item:underline">{thread.title}</span>
                     </li>
                   ))}
                   {((item as any).pending_threads_info || []).length > 5 && (
