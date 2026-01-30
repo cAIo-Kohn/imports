@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
-import { MessageCircle, HelpCircle, DollarSign, Package, Container, Send, ArrowRight, X, FolderOpen, Plus } from 'lucide-react';
+import { DollarSign, Package, Container, Send, ArrowRight, X, FolderOpen, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +21,7 @@ import { AddSampleForm } from './AddSampleForm';
 import { SampleTrackingCard } from './SampleTrackingCard';
 import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton';
 import { CardFilesTab } from './CardFilesTab';
+import { NewThreadComposer } from './NewThreadComposer';
 import { MentionInput } from '@/components/notifications/MentionInput';
 import { createMentionNotifications } from '@/hooks/useNotifications';
 
@@ -46,7 +47,7 @@ const CONTAINER_TYPES = [
   { value: '40hq', label: '40HQ' },
 ];
 
-type ActionType = 'comment' | 'question' | 'commercial' | 'samples' | 'files' | null;
+type ActionType = 'thread' | 'commercial' | 'samples' | 'files' | null;
 
 export function ActionsPanel({
   cardId,
@@ -72,10 +73,7 @@ export function ActionsPanel({
   // Active panel state
   const [activeAction, setActiveAction] = useState<ActionType>(null);
 
-  // Message state
-  const [messageContent, setMessageContent] = useState('');
-  const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
-  const [isDragOver, setIsDragOver] = useState(false);
+  // Message state (kept for MoveCardModal)
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [moveModalTrigger, setMoveModalTrigger] = useState<'question' | 'commercial'>('question');
 
@@ -113,7 +111,7 @@ export function ActionsPanel({
   useEffect(() => {
     if (forcedOpenSection) {
       if (forcedOpenSection === 'messaging') {
-        setActiveAction(forcedMessageType || 'comment');
+        setActiveAction('thread');
       } else if (forcedOpenSection === 'commercial') {
         setActiveAction('commercial');
       } else if (forcedOpenSection === 'samples') {
@@ -198,72 +196,7 @@ export function ActionsPanel({
     };
   }, [cardId, queryClient]);
 
-  // Add message mutation
-  const addMessageMutation = useMutation({
-    mutationFn: async () => {
-      if (!user?.id || (!messageContent.trim() && attachments.length === 0)) return;
-      
-      const activityType = activeAction === 'question' ? 'question' : 'comment';
-      const activityMetadata = attachments.length > 0 
-        ? { attachments: attachments.map(a => ({ id: a.id, name: a.name, url: a.url, type: a.type })) }
-        : null;
-      
-      // New messages start their own thread (thread_id = activity's own id)
-      // We first insert without thread_id, then update with its own id
-      const { data, error } = await supabase.from('development_card_activity').insert({
-        card_id: cardId,
-        user_id: user.id,
-        activity_type: activityType,
-        content: messageContent.trim() || null,
-        metadata: activityMetadata,
-      }).select('id').single();
-      if (error) throw error;
-      
-      // Set thread_id and thread_root_id to point to itself (this is a new thread root)
-      if (data?.id) {
-        await supabase.from('development_card_activity')
-          .update({ thread_id: data.id, thread_root_id: data.id })
-          .eq('id', data.id);
-      }
-      if (error) throw error;
-
-      // Create mention notifications
-      if (data?.id && messageContent.trim()) {
-        await createMentionNotifications({
-          text: messageContent,
-          cardId,
-          activityId: data.id,
-          triggeredBy: user.id,
-          cardTitle: cardData?.title || 'Development Card',
-        });
-      }
-
-      if (activityType === 'question') {
-        await (supabase.from('development_items') as any)
-          .update({
-            pending_action_type: 'question',
-            pending_action_due_at: null,
-            pending_action_snoozed_until: null,
-            pending_action_snoozed_by: null,
-          })
-          .eq('id', cardId);
-
-        setMoveModalTrigger('question');
-        setShowMoveModal(true);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
-      queryClient.invalidateQueries({ queryKey: ['development-items'] });
-      setMessageContent('');
-      setAttachments([]);
-      setActiveAction(null);
-      toast({ title: activeAction === 'question' ? 'Question posted' : 'Comment added' });
-    },
-    onError: () => {
-      toast({ title: 'Error', description: 'Failed to post message', variant: 'destructive' });
-    },
-  });
+  // Note: Thread creation is now handled by NewThreadComposer component
 
   // Save commercial data mutation
   const saveCommercialDataMutation = useMutation({
@@ -361,87 +294,7 @@ export function ActionsPanel({
     },
   });
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (messageContent.trim() || attachments.length > 0) {
-      addMessageMutation.mutate();
-    }
-  };
-
-  // Drag and drop handlers
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.dataTransfer.types.includes('Files')) {
-      setIsDragOver(true);
-    }
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-
-    const files = e.dataTransfer.files;
-    if (!files || files.length === 0) return;
-
-    const MAX_FILE_SIZE = 10 * 1024 * 1024;
-    const ALLOWED_TYPES = [
-      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-      'application/pdf', 'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    ];
-
-    const newAttachments: UploadedAttachment[] = [];
-
-    for (const file of Array.from(files)) {
-      if (file.size > MAX_FILE_SIZE) {
-        toast({ title: 'File too large', description: `${file.name} exceeds 10MB limit`, variant: 'destructive' });
-        continue;
-      }
-      if (!ALLOWED_TYPES.includes(file.type)) {
-        toast({ title: 'Unsupported file type', description: `${file.name} is not supported`, variant: 'destructive' });
-        continue;
-      }
-
-      const fileExt = file.name.split('.').pop();
-      const fileName = `timeline/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('development-images')
-        .upload(fileName, file);
-
-      if (uploadError) {
-        toast({ title: 'Upload failed', description: `Failed to upload ${file.name}`, variant: 'destructive' });
-        continue;
-      }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('development-images')
-        .getPublicUrl(fileName);
-
-      const isImage = file.type.startsWith('image/');
-      newAttachments.push({
-        id: crypto.randomUUID(),
-        name: file.name,
-        url: publicUrl,
-        type: isImage ? 'image' : 'file',
-      });
-    }
-
-    if (newAttachments.length > 0) {
-      setAttachments(prev => [...prev, ...newAttachments]);
-      toast({ title: `${newAttachments.length} file(s) uploaded` });
-    }
-  };
+  // Drag and drop handlers removed - now using NewThreadComposer
 
   const handleMoveConfirm = () => {
     const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
@@ -473,22 +326,13 @@ export function ActionsPanel({
       {/* Quick Action Bar */}
       <div className="flex items-center gap-1 p-2">
         <Button 
-          variant={activeAction === 'comment' ? 'default' : 'outline'} 
+          variant={activeAction === 'thread' ? 'default' : 'outline'} 
           size="sm" 
           className="h-8 flex-1 gap-1"
-          onClick={() => toggleAction('comment')}
+          onClick={() => toggleAction('thread')}
         >
           <Plus className="h-4 w-4" />
           <span className="text-xs">New Thread</span>
-        </Button>
-        <Button 
-          variant={activeAction === 'question' ? 'secondary' : 'ghost'} 
-          size="sm" 
-          className="h-8 flex-1 gap-1"
-          onClick={() => toggleAction('question')}
-        >
-          <HelpCircle className="h-4 w-4" />
-          <span className="hidden sm:inline text-xs">Question</span>
         </Button>
         {cardType !== 'task' && canEdit && (
           <>
@@ -542,71 +386,31 @@ export function ActionsPanel({
       {/* Expanded Action Panel */}
       {activeAction && (
         <div className="p-3 border-t bg-muted/20 max-h-[50vh] overflow-y-auto">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-muted-foreground capitalize">
-              {activeAction === 'comment' ? 'Add Comment' : 
-               activeAction === 'question' ? 'Ask Question' :
-               activeAction === 'commercial' ? 'Commercial Data' :
-               activeAction === 'samples' ? 'Sample Tracking' : 'Files'}
-            </span>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-5 w-5"
-              onClick={() => setActiveAction(null)}
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
-
-          {/* Comment / Question Form */}
-          {(activeAction === 'comment' || activeAction === 'question') && (
-            <form onSubmit={handleSendMessage} className="space-y-2">
-              <div 
-                className={cn(
-                  "relative rounded-md transition-all",
-                  isDragOver && "ring-2 ring-primary ring-offset-2"
-                )}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
+          {activeAction !== 'thread' && (
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-muted-foreground capitalize">
+                {activeAction === 'commercial' ? 'Commercial Data' :
+                 activeAction === 'samples' ? 'Sample Tracking' : 'Files'}
+              </span>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-5 w-5"
+                onClick={() => setActiveAction(null)}
               >
-                <MentionInput
-                  value={messageContent}
-                  onChange={setMessageContent}
-                  placeholder={activeAction === 'question' 
-                    ? "Ask a question... Use @ to mention" 
-                    : "Add a comment... Use @ to mention (drag files here)"
-                  }
-                  rows={2}
-                  className="text-sm"
-                  autoFocus
-                />
-                {isDragOver && (
-                  <div className="absolute inset-0 bg-primary/10 rounded-md flex items-center justify-center pointer-events-none">
-                    <span className="text-sm font-medium text-primary">Drop files here</span>
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <TimelineUploadButton
-                  attachments={attachments}
-                  onAttachmentsChange={setAttachments}
-                  variant="icon"
-                  disabled={addMessageMutation.isPending}
-                />
-                
-                <Button 
-                  type="submit" 
-                  size="sm"
-                  disabled={(!messageContent.trim() && attachments.length === 0) || addMessageMutation.isPending}
-                >
-                  <Send className="h-3 w-3 mr-1" />
-                  {addMessageMutation.isPending ? 'Sending...' : 'Send'}
-                </Button>
-              </div>
-            </form>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+
+          {/* New Thread Composer */}
+          {activeAction === 'thread' && (
+            <NewThreadComposer
+              cardId={cardId}
+              currentOwner={currentOwner}
+              onClose={() => setActiveAction(null)}
+              onCardMove={() => onOwnerChange?.(currentOwner === 'arc' ? 'mor' : 'arc')}
+            />
           )}
 
           {/* Commercial Data Form */}

@@ -1391,7 +1391,7 @@ export function HistoryTimeline({
           sample={deliveredSampleAwaitingReview}
           cardId={cardId}
           onReviewSample={(sampleId) => onOpenSampleSection?.(sampleId)}
-          onAskQuestion={() => onOpenMessageSection('question')}
+          onStartThread={() => onOpenMessageSection('comment')}
         />
       )}
 
@@ -1403,8 +1403,7 @@ export function HistoryTimeline({
           onMarkArrived={() => {
             queryClient.invalidateQueries({ queryKey: ['development-item-samples-timeline', cardId] });
           }}
-          onAskQuestion={() => onOpenMessageSection('question')}
-          onAddComment={() => onOpenMessageSection('comment')}
+          onStartThread={() => onOpenMessageSection('comment')}
         />
       )}
       
@@ -1417,8 +1416,7 @@ export function HistoryTimeline({
           containerType={containerType}
           updatedAt={commercialUpdatedAt}
           onRequestSample={handleRequestSample}
-          onAskQuestion={() => onOpenMessageSection('question')}
-          onAddComment={() => onOpenMessageSection('comment')}
+          onStartThread={() => onOpenMessageSection('comment')}
           onUpload={() => onOpenUploadSection?.()}
         />
       )}
@@ -1431,13 +1429,9 @@ export function HistoryTimeline({
           cardImageUrl={cardImageUrl}
           cardId={cardId}
           pendingActionType={pendingActionType}
-          onAddComment={() => {
+          onStartThread={() => {
             dismissNewCardBanner();
             onOpenMessageSection('comment');
-          }}
-          onAskQuestion={() => {
-            dismissNewCardBanner();
-            onOpenMessageSection('question');
           }}
           onUpload={() => {
             dismissNewCardBanner();

@@ -68,8 +68,7 @@ interface NewCardBannerProps {
   cardImageUrl?: string | null;
   cardId: string;
   pendingActionType?: string | null;
-  onAddComment: () => void;
-  onAskQuestion: () => void;
+  onStartThread: () => void;
   onSnooze?: () => void;
   onUpload: () => void;
 }
@@ -80,8 +79,7 @@ export function NewCardBanner({
   cardImageUrl,
   cardId,
   pendingActionType,
-  onAddComment,
-  onAskQuestion,
+  onStartThread,
   onSnooze,
   onUpload,
 }: NewCardBannerProps) {
@@ -121,9 +119,7 @@ export function NewCardBanner({
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-2">
         <BannerQuickActions
-          onStartThread={onAddComment}
-          onAskQuestion={onAskQuestion}
-          onAddComment={onAddComment}
+          onStartThread={onStartThread}
           onUpload={onUpload}
           colorScheme="violet"
         />
@@ -148,8 +144,7 @@ interface CommercialDataBannerProps {
   containerType: string;
   updatedAt?: string;
   onRequestSample: () => void;
-  onAskQuestion: () => void;
-  onAddComment: () => void;
+  onStartThread: () => void;
   onUpload: () => void;
 }
 
@@ -159,9 +154,8 @@ export function CommercialDataBanner({
   qtyPerContainer, 
   containerType,
   updatedAt,
-  onRequestSample, 
-  onAskQuestion, 
-  onAddComment,
+  onRequestSample,
+  onStartThread,
   onUpload,
 }: CommercialDataBannerProps) {
   const [isRequesting, setIsRequesting] = useState(false);
@@ -211,9 +205,7 @@ export function CommercialDataBanner({
           Request Sample
         </Button>
         <BannerQuickActions
-          onStartThread={onAddComment}
-          onAskQuestion={onAskQuestion}
-          onAddComment={onAddComment}
+          onStartThread={onStartThread}
           onUpload={onUpload}
           colorScheme="emerald"
         />
@@ -227,16 +219,14 @@ interface SampleInTransitBannerProps {
   sample: Sample;
   cardId: string;
   onMarkArrived: () => void;
-  onAskQuestion: () => void;
-  onAddComment: () => void;
+  onStartThread: () => void;
 }
 
 export function SampleInTransitBanner({ 
   sample, 
   cardId,
-  onMarkArrived, 
-  onAskQuestion, 
-  onAddComment,
+  onMarkArrived,
+  onStartThread,
 }: SampleInTransitBannerProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -342,9 +332,7 @@ export function SampleInTransitBanner({
           {markArrivedMutation.isPending ? 'Marking...' : 'Mark Arrived'}
         </Button>
         <BannerQuickActions
-          onStartThread={onAddComment}
-          onAskQuestion={onAskQuestion}
-          onAddComment={onAddComment}
+          onStartThread={onStartThread}
           colorScheme="blue"
         />
       </div>
@@ -357,14 +345,14 @@ interface SampleDeliveredBannerProps {
   sample: Sample;
   cardId: string;
   onReviewSample: (sampleId: string) => void;
-  onAskQuestion: () => void;
+  onStartThread: () => void;
 }
 
 export function SampleDeliveredBanner({ 
   sample, 
   cardId,
-  onReviewSample, 
-  onAskQuestion,
+  onReviewSample,
+  onStartThread,
 }: SampleDeliveredBannerProps) {
   const daysWaiting = sample.actual_arrival 
     ? differenceInDays(new Date(), parseISO(sample.actual_arrival))
@@ -415,8 +403,7 @@ export function SampleDeliveredBanner({
           Review Sample
         </Button>
         <BannerQuickActions
-          onStartThread={onAskQuestion}
-          onAskQuestion={onAskQuestion}
+          onStartThread={onStartThread}
           colorScheme="amber"
         />
       </div>

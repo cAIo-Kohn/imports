@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { 
   Zap, 
   MessageCircle, 
-  HelpCircle, 
   Upload, 
   Plus,
   Package,
@@ -20,8 +19,6 @@ export type BannerColorScheme = 'violet' | 'emerald' | 'blue' | 'amber';
 
 export interface BannerQuickActionsProps {
   onStartThread?: () => void;
-  onAskQuestion?: () => void;
-  onAddComment?: () => void;
   onUpload?: () => void;
   onRequestSample?: () => void;
   colorScheme?: BannerColorScheme;
@@ -37,18 +34,15 @@ const colorClasses: Record<BannerColorScheme, string> = {
 
 export function BannerQuickActions({ 
   onStartThread,
-  onAskQuestion,
-  onAddComment,
   onUpload,
   onRequestSample,
   colorScheme = 'violet',
   className,
 }: BannerQuickActionsProps) {
-  const hasConversationActions = onStartThread || onAskQuestion || onAddComment;
-  const hasUtilityActions = onUpload || onRequestSample;
+  const hasActions = onStartThread || onUpload || onRequestSample;
 
   // Don't render if no actions available
-  if (!hasConversationActions && !hasUtilityActions) {
+  if (!hasActions) {
     return null;
   }
 
@@ -72,23 +66,11 @@ export function BannerQuickActions({
         {onStartThread && (
           <DropdownMenuItem onClick={onStartThread}>
             <Plus className="h-4 w-4 mr-2" />
-            Start New Thread
-          </DropdownMenuItem>
-        )}
-        {onAskQuestion && (
-          <DropdownMenuItem onClick={onAskQuestion}>
-            <HelpCircle className="h-4 w-4 mr-2" />
-            Ask a Question
-          </DropdownMenuItem>
-        )}
-        {onAddComment && (
-          <DropdownMenuItem onClick={onAddComment}>
-            <MessageCircle className="h-4 w-4 mr-2" />
-            Add Comment
+            New Thread
           </DropdownMenuItem>
         )}
         
-        {hasConversationActions && hasUtilityActions && (
+        {onStartThread && (onUpload || onRequestSample) && (
           <DropdownMenuSeparator />
         )}
         
