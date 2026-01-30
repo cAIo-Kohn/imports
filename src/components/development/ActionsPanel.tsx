@@ -7,7 +7,6 @@ import { MessageCircle, HelpCircle, DollarSign, Package, Container, Send, ArrowR
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -22,6 +21,8 @@ import { AddSampleForm } from './AddSampleForm';
 import { SampleTrackingCard } from './SampleTrackingCard';
 import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton';
 import { CardFilesTab } from './CardFilesTab';
+import { MentionInput } from '@/components/notifications/MentionInput';
+import { createMentionNotifications } from '@/hooks/useNotifications';
 
 interface ActionsPanelProps {
   cardId: string;
@@ -139,6 +140,19 @@ export function ActionsPanel({
     }
   }, [targetSampleId, activeAction]);
 
+  // Fetch card title for notifications
+  const { data: cardData } = useQuery({
+    queryKey: ['development-item-title', cardId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('development_items')
+        .select('title')
+        .eq('id', cardId)
+        .single();
+      return data;
+    },
+  });
+
   // Fetch samples
   const { data: samples = [] } = useQuery({
     queryKey: ['development-item-samples', cardId],
@@ -194,14 +208,25 @@ export function ActionsPanel({
         ? { attachments: attachments.map(a => ({ id: a.id, name: a.name, url: a.url, type: a.type })) }
         : null;
       
-      const { error } = await supabase.from('development_card_activity').insert({
+      const { data, error } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
         activity_type: activityType,
         content: messageContent.trim() || null,
         metadata: activityMetadata,
-      });
+      }).select('id').single();
       if (error) throw error;
+
+      // Create mention notifications
+      if (data?.id && messageContent.trim()) {
+        await createMentionNotifications({
+          text: messageContent,
+          cardId,
+          activityId: data.id,
+          triggeredBy: user.id,
+          cardTitle: cardData?.title || 'Development Card',
+        });
+      }
 
       if (activityType === 'question') {
         await (supabase.from('development_items') as any)
@@ -537,16 +562,16 @@ export function ActionsPanel({
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
               >
-                <Textarea
-                  ref={textareaRef}
+                <MentionInput
                   value={messageContent}
-                  onChange={(e) => setMessageContent(e.target.value)}
+                  onChange={setMessageContent}
                   placeholder={activeAction === 'question' 
-                    ? "Ask a question that requires a response..." 
-                    : "Add a comment... (drag files here)"
+                    ? "Ask a question... Use @ to mention" 
+                    : "Add a comment... Use @ to mention (drag files here)"
                   }
                   rows={2}
                   className="text-sm"
+                  autoFocus
                 />
                 {isDragOver && (
                   <div className="absolute inset-0 bg-primary/10 rounded-md flex items-center justify-center pointer-events-none">

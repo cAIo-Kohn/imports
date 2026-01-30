@@ -16,6 +16,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
+import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 
 const menuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
@@ -39,12 +40,15 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-6 py-4">
-        <div className="flex items-center gap-2">
-          <Package className="h-8 w-8 text-sidebar-primary" />
-          <div>
-            <h1 className="text-lg font-bold text-sidebar-foreground">MOR Imports</h1>
-            <p className="text-xs text-sidebar-foreground/60">Import Management</p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Package className="h-8 w-8 text-sidebar-primary" />
+            <div>
+              <h1 className="text-lg font-bold text-sidebar-foreground">MOR Imports</h1>
+              <p className="text-xs text-sidebar-foreground/60">Import Management</p>
+            </div>
           </div>
+          <NotificationCenter />
         </div>
       </SidebarHeader>
       

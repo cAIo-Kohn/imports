@@ -422,6 +422,63 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          activity_id: string | null
+          card_id: string | null
+          content: string | null
+          created_at: string
+          id: string
+          is_read: boolean
+          read_at: string | null
+          title: string
+          triggered_by: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          activity_id?: string | null
+          card_id?: string | null
+          content?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          read_at?: string | null
+          title: string
+          triggered_by: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          activity_id?: string | null
+          card_id?: string | null
+          content?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          read_at?: string | null
+          title?: string
+          triggered_by?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "development_card_activity"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "development_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_units: {
         Row: {
           created_at: string
