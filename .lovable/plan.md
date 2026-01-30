@@ -1,161 +1,83 @@
 
+## Fix Thread Titles and Timeline Organization
 
-## Threaded Conversations for Development Cards
-
-Your idea is excellent! Currently, all activities appear in a flat chronological list, which makes it hard to follow parallel conversations. A threaded system would allow:
-- **Marketing discussing packaging with China** in one thread
-- **Buyers negotiating pricing** in another thread
-- **Quality team reviewing samples** in yet another
+After investigating the codebase, I found **two critical issues** that explain why threads aren't visible:
 
 ---
 
-### Proposed Architecture
+### Root Causes
 
-#### Data Model Changes
+#### 1. ThreadedTimeline is imported but never rendered
+The `HistoryTimeline.tsx` component imports `ThreadedTimeline` (line 40) but the actual render logic still uses the old flat approach with `sortedDates.map()` (starting at line 1491). The `ThreadedTimeline` component is completely unused.
 
-We'll add a `thread_id` concept to the activity table:
+#### 2. Activity interface missing thread fields
+The `Activity` interface (lines 43-56) doesn't include `thread_id`, `thread_root_id`, or `thread_title` fields - even though the database has them and the query fetches them with `select('*')`.
 
-```text
-development_card_activity
-├── id (existing)
-├── card_id (existing)
-├── user_id (existing)
-├── activity_type (existing)
-├── content (existing)
-├── metadata (existing)
-├── created_at (existing)
-├── thread_id (NEW) ← UUID, nullable
-└── thread_root_id (NEW) ← UUID, nullable (points to first message in thread)
-```
-
-**How it works:**
-- When someone posts a **new question or comment** (not a reply), it creates a new thread (thread_id = activity.id)
-- When someone **replies** to that message, their activity gets the same thread_id
-- `thread_root_id` always points to the original message that started the thread
-
----
-
-#### Visual Design
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  TIMELINE VIEW                                               │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ▼ Thread: Packaging Requirements (3 replies)                │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │ 🏷️ Marketing · João asked                            │   │
-│  │ "What packaging options are available?"               │   │
-│  │                                                        │   │
-│  │   └─ 🏷️ Trader · Li Wei answered                      │   │
-│  │      "We have 3 options: retail box, bulk, blister"   │   │
-│  │                                                        │   │
-│  │   └─ 🏷️ Marketing · João commented                    │   │
-│  │      "We prefer retail box, can we get samples?"      │   │
-│  │                                                        │   │
-│  │   └─ 🏷️ Trader · Li Wei commented                     │   │
-│  │      "Sample sent today via DHL"                      │   │
-│  │                                                        │   │
-│  │   [Reply to this thread]                              │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                                                              │
-│  ▼ Thread: Pricing Discussion (5 replies)                    │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │ 🏷️ Buyer · Maria asked                               │   │
-│  │ "Can we get better FOB for 10K units?"                │   │
-│  │   ...                                                  │   │
-│  │   [Reply to this thread]                              │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                                                              │
-│  ─── System Activities (compact) ───                         │
-│  ○ Sample shipped · DHL · 2h ago                             │
-│  ○ Commercial data updated · FOB $2.50 · Yesterday           │
-│                                                              │
-│  [+ Start New Thread]                                        │
-└─────────────────────────────────────────────────────────────┘
+```typescript
+// Current interface (missing thread fields)
+interface Activity {
+  id: string;
+  card_id: string;
+  user_id: string;
+  activity_type: string;
+  content: string | null;
+  metadata: Record<string, any> | null;
+  created_at: string;
+  profile?: {...} | null;
+  roles?: AppRole[];
+}
 ```
 
 ---
 
-### Key Features
+### Solution
 
-| Feature | Description |
-|---------|-------------|
-| **Collapsible Threads** | Each thread can be expanded/collapsed to reduce visual noise |
-| **Thread Titles** | Auto-generated from first message, or user can set custom title |
-| **Visual Indentation** | Replies are indented under parent, making conversation flow clear |
-| **Thread Badges** | Show reply count, participants, and last activity time |
-| **Parallel Conversations** | Multiple teams can discuss different topics simultaneously |
-| **Thread Isolation** | Questions/answers within a thread don't affect card ownership unless explicitly chosen |
-| **System Activities Separate** | Non-conversational activities (status changes, sample updates) shown in a compact separate section |
-
----
-
-### Implementation Steps
-
-**Step 1: Database Migration**
-- Add `thread_id` (UUID, nullable) to `development_card_activity`
-- Add `thread_root_id` (UUID, nullable) to `development_card_activity`
-- Create index on `thread_id` for fast thread grouping
-
-```sql
-ALTER TABLE development_card_activity 
-ADD COLUMN thread_id UUID REFERENCES development_card_activity(id),
-ADD COLUMN thread_root_id UUID REFERENCES development_card_activity(id);
-
-CREATE INDEX idx_card_activity_thread ON development_card_activity(card_id, thread_id);
+#### Step 1: Update Activity interface
+Add the missing thread fields to the `Activity` interface:
+```typescript
+interface Activity {
+  // ... existing fields ...
+  thread_id: string | null;
+  thread_root_id: string | null;
+  thread_title: string | null;
+}
 ```
 
-**Step 2: Update Activity Query Logic**
-- Modify `HistoryTimeline.tsx` to group activities by `thread_id`
-- Sort threads by most recent activity
-- Show thread previews with expand/collapse
+#### Step 2: Replace flat rendering with ThreadedTimeline
+Replace the old flat `sortedDates.map()` logic (lines 1491-1752) with:
+```tsx
+<ThreadedTimeline
+  activities={allActivities}
+  cardId={cardId}
+  currentOwner={currentOwner}
+  pendingActionType={pendingActionType}
+  onResolveQuestion={(id) => resolveQuestionMutation.mutate(id)}
+  onAcknowledgeAnswer={(id) => acknowledgeAnswerMutation.mutate(id)}
+  onOwnerChange={onOwnerChange}
+  isResolving={resolveQuestionMutation.isPending}
+  isAcknowledging={acknowledgeAnswerMutation.isPending}
+  excludeIds={bannerActivityIds}
+/>
+```
 
-**Step 3: Create Thread Components**
-- `ThreadCard.tsx` - Collapsible thread container
-- `ThreadMessage.tsx` - Individual message within a thread
-- `NewThreadButton.tsx` - Start a new thread
-- `ThreadReplyBox.tsx` - Reply within a thread (simplified, no card move by default)
-
-**Step 4: Update InlineReplyBox**
-- When replying, inherit `thread_id` from parent
-- Remove card move options for intra-thread replies (optional - only at thread root)
-
-**Step 5: Maintain Backward Compatibility**
-- Existing activities without `thread_id` are treated as individual threads (one message each)
-- Migration script to group existing replies with their parent questions
-
----
-
-### Files to Create/Modify
-
-| File | Action | Description |
-|------|--------|-------------|
-| Migration | Create | Add thread_id and thread_root_id columns |
-| `ThreadCard.tsx` | Create | Collapsible thread container with header |
-| `ThreadMessage.tsx` | Create | Single message within a thread |
-| `HistoryTimeline.tsx` | Modify | Group activities by thread, render ThreadCards |
-| `InlineReplyBox.tsx` | Modify | Pass thread_id when replying |
-| `ActionsPanel.tsx` | Modify | "Start New Thread" creates new thread_id |
-| `.memory/features/development/threaded-conversations.md` | Create | Document the threading system |
+#### Step 3: Pass exclude IDs for banner activities
+Create a set of activity IDs that are already shown in banners (e.g., first unresolved question, first unacknowledged answer) so they don't duplicate in the timeline.
 
 ---
 
-### User Experience Flow
+### Summary of Changes
 
-1. **Start a new thread**: User clicks "Start New Thread" → types question/comment → posts
-2. **Reply in thread**: User clicks "Reply" on any message in thread → reply appears indented below
-3. **View threads**: Threads are collapsed by default showing: title, participant avatars, reply count, last activity
-4. **Expand thread**: Click thread header to see all messages
-5. **Card ownership**: Only "Answer & Move" from the thread root question triggers card movement
+| File | Change |
+|------|--------|
+| `src/components/development/HistoryTimeline.tsx` | 1. Add thread fields to Activity interface |
+| | 2. Replace flat rendering with ThreadedTimeline component |
+| | 3. Pass banner activity IDs to excludeIds prop |
 
 ---
 
-### Benefits
+### Result After Fix
 
-- **Clarity**: Parallel conversations don't get mixed up
-- **Organization**: Related messages stay together
-- **Scalability**: Cards with 50+ activities become manageable
-- **Team Collaboration**: Multiple teams can work on different aspects simultaneously
-- **History**: Easy to review what was discussed on a specific topic
-
+- Threads will be grouped and displayed as collapsible cards
+- Thread titles (auto-generated or custom) will appear in the header
+- System activities (status changes, sample updates) will appear in separate "Activity Log" section
+- Parallel conversations will be clearly organized by topic
