@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
+import { usePendingActionNotifications } from '@/hooks/usePendingActionNotifications';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Search, Filter, Eye, EyeOff, Trash2, Users, FileSpreadsheet, LayoutGrid, Package } from 'lucide-react';
@@ -159,6 +160,9 @@ export default function Development() {
   const { user } = useAuth();
   const { canManageOrders, isTrader, isAdmin } = useUserRole();
   const queryClient = useQueryClient();
+  
+  // Enable pending action notifications (sound + browser notifications)
+  usePendingActionNotifications();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
