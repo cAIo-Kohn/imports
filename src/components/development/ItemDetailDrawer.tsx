@@ -30,6 +30,7 @@ interface ItemDetailDrawerProps {
   item: DevelopmentItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  targetThreadId?: string | null;
 }
 
 // Map new status to old status for database
@@ -48,7 +49,7 @@ const mapNewToOldStatus = (newStatus: DevelopmentCardStatus): string => {
   }
 };
 
-export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerProps) {
+export function ItemDetailDrawer({ item, open, onOpenChange, targetThreadId }: ItemDetailDrawerProps) {
   const { canManageOrders, isTrader, isBuyer, isAdmin } = useUserRole();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -387,6 +388,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               moq={itemWithNewFields.moq}
               qtyPerContainer={itemWithNewFields.qty_per_container}
               containerType={itemWithNewFields.container_type}
+              targetThreadId={targetThreadId}
               onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
               onOpenSampleSection={(sampleId) => {
                 setForcedOpenSection('samples');

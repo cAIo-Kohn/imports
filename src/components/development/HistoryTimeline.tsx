@@ -62,7 +62,7 @@ interface Activity {
   roles?: AppRole[];
 }
 
-interface HistoryTimelineProps {
+export interface HistoryTimelineProps {
   cardId: string;
   cardType?: 'item' | 'item_group' | 'task';
   cardCreatedBy?: string;
@@ -81,6 +81,8 @@ interface HistoryTimelineProps {
   moq?: number | null;
   qtyPerContainer?: number | null;
   containerType?: string | null;
+  // Target thread to scroll to when opening
+  targetThreadId?: string | null;
   onOwnerChange?: () => void;
   onOpenSampleSection?: (sampleId?: string) => void;
   onOpenMessageSection?: (type: 'comment' | 'question') => void;
@@ -901,6 +903,7 @@ export function HistoryTimeline({
   moq,
   qtyPerContainer,
   containerType,
+  targetThreadId,
   onOwnerChange,
   onOpenSampleSection,
   onOpenMessageSection,
@@ -916,6 +919,25 @@ export function HistoryTimeline({
   
   // Inline thread composer visibility (triggered from banner Quick Actions)
   const [showInlineThreadComposer, setShowInlineThreadComposer] = useState(false);
+
+  // Scroll to target thread when specified
+  useEffect(() => {
+    if (targetThreadId) {
+      // Delay to allow DOM to render
+      const timer = setTimeout(() => {
+        const threadElement = document.getElementById(`thread-${targetThreadId}`);
+        if (threadElement) {
+          threadElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Add highlight effect
+          threadElement.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
+          setTimeout(() => {
+            threadElement.classList.remove('ring-2', 'ring-primary', 'ring-offset-2');
+          }, 2000);
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [targetThreadId]);
   
   // State to track if we just acknowledged an answer (for showing post-acknowledgement prompt)
   const [showPostAcknowledgementPrompt, setShowPostAcknowledgementPrompt] = useState(false);
