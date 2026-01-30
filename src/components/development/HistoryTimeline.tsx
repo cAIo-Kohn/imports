@@ -1551,22 +1551,10 @@ export function HistoryTimeline({
           cardImageUrl={cardImageUrl}
           cardId={cardId}
           pendingActionType={pendingActionType}
-          onStartThread={() => {
-            dismissNewCardBanner();
-            setShowInlineThreadComposer(true);
-          }}
-          onAddComment={() => {
-            dismissNewCardBanner();
-            setShowInlineThreadComposer(true);
-          }}
-          onAskQuestion={() => {
-            dismissNewCardBanner();
-            setShowInlineThreadComposer(true);
-          }}
-          onUpload={() => {
-            dismissNewCardBanner();
-            onOpenUploadSection?.();
-          }}
+          onStartThread={() => setShowInlineThreadComposer(true)}
+          onAddComment={() => setShowInlineThreadComposer(true)}
+          onAskQuestion={() => setShowInlineThreadComposer(true)}
+          onUpload={() => onOpenUploadSection?.()}
           onSnooze={dismissNewCardBanner}
         />
       )}
@@ -1579,6 +1567,7 @@ export function HistoryTimeline({
             currentOwner={currentOwner}
             onClose={() => setShowInlineThreadComposer(false)}
             onCardMove={onOwnerChange}
+            onActionComplete={dismissNewCardBanner}
             autoFocus
           />
         </div>

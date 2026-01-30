@@ -16,6 +16,7 @@ interface NewThreadComposerProps {
   currentOwner?: 'mor' | 'arc';
   onClose: () => void;
   onCardMove?: () => void;
+  onActionComplete?: () => void;
   autoFocus?: boolean;
   colorScheme?: 'violet' | 'emerald' | 'blue' | 'amber' | 'default';
 }
@@ -25,6 +26,7 @@ export function NewThreadComposer({
   currentOwner,
   onClose,
   onCardMove,
+  onActionComplete,
   autoFocus = true,
   colorScheme = 'default',
 }: NewThreadComposerProps) {
@@ -98,6 +100,7 @@ export function NewThreadComposer({
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
       toast({ title: 'Thread started' });
       resetForm();
+      onActionComplete?.();
       onClose();
     },
     onError: () => {
@@ -169,6 +172,7 @@ export function NewThreadComposer({
       const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
       toast({ title: `Question posted. Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}` });
       resetForm();
+      onActionComplete?.();
       onClose();
       onCardMove?.();
     },
