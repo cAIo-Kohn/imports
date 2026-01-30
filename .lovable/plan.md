@@ -1,112 +1,124 @@
 
-# Implement onQuickReply in PendingThreadsBanner
+# Improve TypeScript Type Safety for DevelopmentCard
 
 ## Overview
-When a user clicks a quick action button in the `PendingThreadsBanner`, the system should:
-1. Scroll to the target thread
-2. Automatically expand the thread (if collapsed)
-3. Open the inline reply box with the text area auto-focused
+The `DevelopmentCard` component uses `(item as any)` casts in multiple places, reducing type safety and IDE support. Most of these fields are already defined in the `DevelopmentItem` interface but the casts persist. Two fields are missing from the interface entirely.
 
-Currently, clicking the quick action button only scrolls to the thread but does not expand it or focus the reply input.
+## Current State
+Looking at `Development.tsx` lines 46-87, the `DevelopmentItem` interface already includes:
+- `pending_threads_count?: number;` (line 83)
+- `pending_threads_info?: { id: string; title: string; type: string }[];` (line 84)
+- `deleted_at: string | null;` (line 64)
+- `creator_name?: string | null;` (line 76)
 
-## Implementation Strategy
+However, `DevelopmentCard.tsx` still uses `(item as any)` for these and also accesses two fields missing from the interface:
+- `created_by_role` - The role of the card creator ('buyer' or 'trader')
+- `is_new_for_other_team` - Boolean flag for cross-team notifications
 
-The solution requires propagating a "focus reply" signal from `HistoryTimeline` through `ThreadedTimeline` to the target `ThreadCard`. The approach uses React state to track which thread should receive focus, and a `useEffect` in `ThreadCard` to respond when it becomes the target.
-
-```text
-User clicks Quick Action
-        ↓
-HistoryTimeline sets focusReplyThreadId state
-        ↓
-ThreadedTimeline receives focusReplyThreadId prop
-        ↓
-Matching ThreadCard receives initialReplyToId prop
-        ↓
-ThreadCard useEffect: opens thread + sets replyingToId + scrolls
-```
+## Solution
+1. Add the two missing fields to the `DevelopmentItem` interface
+2. Remove all `(item as any)` casts in `DevelopmentCard.tsx`
 
 ---
 
 ## Technical Details
 
-### File 1: `src/components/development/ThreadCard.tsx`
+### File 1: `src/pages/Development.tsx`
 
-**Changes:**
-1. Add new prop `initialReplyToId?: string | null` to the interface
-2. Add a `useEffect` that:
-   - Watches for `initialReplyToId` changes
-   - When set, opens the thread (`setIsOpen(true)`)
-   - Sets `replyingToId` to the root activity ID (to open reply box)
-   - Scrolls the thread into view
-   - Focuses the reply textarea after a short delay
+**Change:** Add `created_by_role` and `is_new_for_other_team` to the `DevelopmentItem` interface.
 
-**Code changes:**
-- Lines 38-49: Add `initialReplyToId` to `ThreadCardProps` interface
-- Lines 62-68: Add `useEffect` to handle auto-focus behavior
+```text
+Lines 74-76: Add new fields after creator_name
 
-```typescript
-// After line 67 (after editedTitle state)
-// Add new effect to handle initial reply focus
-useEffect(() => {
-  if (initialReplyToId && rootActivity.id === initialReplyToId) {
-    setIsOpen(true);
-    setReplyingToId(rootActivity.id);
-    // Scroll and focus after render
-    setTimeout(() => {
-      const element = document.getElementById(`thread-${rootActivity.id}`);
-      element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Focus the textarea in the reply box
-      const textarea = element?.querySelector('textarea');
-      textarea?.focus();
-    }, 100);
-  }
-}, [initialReplyToId, rootActivity.id]);
+Before:
+  // Creator info
+  creator_name?: string | null;
+
+After:
+  // Creator info
+  creator_name?: string | null;
+  created_by_role?: 'buyer' | 'trader' | null;
+  is_new_for_other_team?: boolean;
 ```
 
-### File 2: `src/components/development/ThreadedTimeline.tsx`
+### File 2: `src/components/development/DevelopmentCard.tsx`
 
-**Changes:**
-1. Add new prop `focusReplyThreadId?: string | null` to the interface
-2. Pass `initialReplyToId` to `ThreadCard` when the thread ID matches
+**Changes:** Remove all `(item as any)` casts and access properties directly from the typed `item`.
 
-**Code changes:**
-- Lines 6-17: Add `focusReplyThreadId` to `ThreadedTimelineProps`
-- Lines 131-143: Pass `initialReplyToId={focusReplyThreadId === thread.threadId ? focusReplyThreadId : undefined}` to `ThreadCard`
+**Lines 62-74:** Remove itemWithNewFields intermediate variable and use item directly
+```text
+Before:
+  const creatorRole = (item as any).created_by_role;
+  ...
+  const itemWithNewFields = item as any;
+  const isNewForMe = itemWithNewFields.is_new_for_other_team && (
+    (isBuyer && itemWithNewFields.created_by_role === 'trader') ||
+    (isTrader && itemWithNewFields.created_by_role === 'buyer')
+  );
 
-### File 3: `src/components/development/HistoryTimeline.tsx`
+  const isDeleted = !!(item as any).deleted_at;
 
-**Changes:**
-1. Add state `focusReplyThreadId` to track which thread should auto-focus
-2. Update `onQuickReply` callback to set this state instead of just scrolling
-3. Pass `focusReplyThreadId` to `ThreadedTimeline`
-4. Clear `focusReplyThreadId` when the targetThreadId prop changes (to allow re-triggering)
+After:
+  const creatorRole = item.created_by_role;
+  ...
+  const isNewForMe = item.is_new_for_other_team && (
+    (isBuyer && item.created_by_role === 'trader') ||
+    (isTrader && item.created_by_role === 'buyer')
+  );
 
-**Code changes:**
-- Add state near other state declarations: `const [focusReplyThreadId, setFocusReplyThreadId] = useState<string | null>(null);`
-- Lines 1465-1469: Update `onQuickReply` to set the state:
-```typescript
-onQuickReply={(threadId) => {
-  setFocusReplyThreadId(threadId);
-  // Clear after a delay to allow re-clicking
-  setTimeout(() => setFocusReplyThreadId(null), 500);
-}}
+  const isDeleted = !!item.deleted_at;
 ```
-- Lines 1628-1638: Add `focusReplyThreadId={focusReplyThreadId}` prop to `ThreadedTimeline`
+
+**Lines 124-168:** Remove casts for pending_threads_count and pending_threads_info
+```text
+Before:
+  {(item as any).pending_threads_count > 0 && ...}
+  {(item as any).pending_threads_count}
+  {((item as any).pending_threads_info || []).slice(0, 5).map(...)}
+  {((item as any).pending_threads_info || []).length > 5 && ...}
+  {hasUnseenActivity && !(item as any).pending_threads_count && ...}
+  {item.pending_action_type && !(item as any).pending_threads_count && ...}
+
+After:
+  {item.pending_threads_count && item.pending_threads_count > 0 && ...}
+  {item.pending_threads_count}
+  {(item.pending_threads_info || []).slice(0, 5).map(...)}
+  {(item.pending_threads_info || []).length > 5 && ...}
+  {hasUnseenActivity && !item.pending_threads_count && ...}
+  {item.pending_action_type && !item.pending_threads_count && ...}
+```
+
+**Lines 177-179:** Remove cast for creator_name
+```text
+Before:
+  {(item as any).creator_name && (
+    <span ...>{(item as any).creator_name}</span>
+
+After:
+  {item.creator_name && (
+    <span ...>{item.creator_name}</span>
+```
+
+**Lines 289-290:** Remove casts in memo comparison
+```text
+Before:
+  (prev.item as any).pending_threads_count === (next.item as any).pending_threads_count &&
+  JSON.stringify((prev.item as any).pending_threads_info) === JSON.stringify((next.item as any).pending_threads_info) &&
+
+After:
+  prev.item.pending_threads_count === next.item.pending_threads_count &&
+  JSON.stringify(prev.item.pending_threads_info) === JSON.stringify(next.item.pending_threads_info) &&
+```
 
 ---
 
-## User Experience Flow
+## Benefits
+- **Full IDE Support**: Autocomplete and go-to-definition will work for all fields
+- **Compile-time Errors**: TypeScript will catch typos and incorrect types
+- **Better Refactoring**: Renaming fields will update all usages
+- **Cleaner Code**: No more `as any` casts cluttering the component
 
-1. User sees amber "Your Pending Actions" banner with list of threads
-2. User hovers over a thread row - "Answer question" (or similar) button appears
-3. User clicks the button
-4. System scrolls smoothly to the thread in the timeline below
-5. Thread automatically expands if it was collapsed
-6. Reply box opens with textarea focused - user can start typing immediately
-
-## Edge Cases Handled
-
-- **Thread already expanded**: Will still focus the reply input
-- **Multiple quick clicks**: The 500ms timeout clears the state, allowing re-triggering
-- **Thread not in view**: `scrollIntoView` handles scrolling before focus
-- **Sample request threads**: Same behavior - scrolls and focuses (though "Add tracking" may need different handling in future)
+## Impact
+- Changes are purely type-related - no runtime behavior changes
+- All existing functionality remains the same
+- Better developer experience when maintaining the code
