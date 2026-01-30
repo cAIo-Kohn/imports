@@ -77,7 +77,7 @@ export function AddSampleForm({ itemId, currentOwner, onSampleRequested }: AddSa
       });
       if (sampleError) throw sampleError;
 
-      // Log the request activity with embedded move info - creates its own thread
+      // Log the request activity with embedded move info - creates its own thread with assignment
       const { data: activityData, error: activityError } = await supabase.from('development_card_activity').insert({
         card_id: itemId,
         user_id: user.id,
@@ -91,6 +91,10 @@ export function AddSampleForm({ itemId, currentOwner, onSampleRequested }: AddSa
           moved_to: targetOwner,
         },
         pending_for_team: targetOwner, // ARC (China) needs to add tracking
+        // Thread assignment columns - assigned to traders (China team)
+        assigned_to_role: 'trader',
+        thread_creator_id: user.id,
+        thread_status: 'open',
       }).select('id').single();
 
       if (activityError) throw activityError;

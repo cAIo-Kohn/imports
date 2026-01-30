@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ChevronDown, ChevronRight, MessageCircle, HelpCircle, Reply, Pencil, Check, X, Package, AlertCircle, CheckCircle2, Truck, PackageCheck, FileCheck, Briefcase, Users, Lock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,7 +15,9 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import { ThreadMessage } from './ThreadMessage';
 import { InlineReplyBox } from './InlineReplyBox';
+import { InlineSampleShipForm } from './InlineSampleShipForm';
 import { UserRoleBadge } from './UserRoleBadge';
+import { SnoozeButton } from './SnoozeButton';
 
 export interface ThreadActivity {
   id: string;
@@ -85,6 +87,7 @@ export function ThreadCard({
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
+  const [showShipForm, setShowShipForm] = useState(false);
 
   // Sort activities by created_at ascending (oldest first within thread)
   const sortedActivities = [...activities].sort(
@@ -215,16 +218,22 @@ export function ThreadCard({
   const isQuestion = rootActivity.activity_type === 'question';
   const isSampleRelated = rootActivity.activity_type === 'sample_requested';
   
-  // Sample lifecycle stage detection
+  // Sample lifecycle stage detection - check metadata AND related activities in thread
   const getSampleLifecycleStage = (): 'requested' | 'shipped' | 'arrived' | 'reviewed' | null => {
     if (!isSampleRelated) return null;
     
     // Check metadata for sample status progression
     const metadata = rootActivity.metadata || {};
     
+    // Check if there's a sample_shipped activity in thread replies
+    const hasShippedReply = sortedActivities.some(a => 
+      a.activity_type === 'sample_shipped' || 
+      a.metadata?.tracking_number
+    );
+    
     if (metadata.sample_decision || metadata.reviewed || isResolved) return 'reviewed';
     if (metadata.sample_arrived || metadata.actual_arrival) return 'arrived';
-    if (metadata.tracking_number || metadata.shipped_date || metadata.courier) return 'shipped';
+    if (metadata.tracking_number || metadata.shipped_date || metadata.courier || hasShippedReply) return 'shipped';
     return 'requested';
   };
 
@@ -482,6 +491,36 @@ export function ThreadCard({
               </div>
             )}
             
+            {/* Add Tracking button for sample_requested threads (when stage is 'requested') */}
+            {isSampleRelated && !isResolved && sampleStage === 'requested' && !showShipForm && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs bg-cyan-50 hover:bg-cyan-100 border-cyan-300 text-cyan-700 dark:bg-cyan-950 dark:hover:bg-cyan-900 dark:border-cyan-600 dark:text-cyan-200"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsOpen(true);
+                  setShowShipForm(true);
+                }}
+              >
+                <Truck className="h-3 w-3 mr-1" />
+                Add Tracking
+              </Button>
+            )}
+
+            {/* Snooze button for sample threads (when assigned to current user) */}
+            {isSampleRelated && !isResolved && isAssignedToMe && (
+              <div onClick={(e) => e.stopPropagation()}>
+                <SnoozeButton
+                  cardId={cardId}
+                  currentActionType={pendingActionType}
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                />
+              </div>
+            )}
+            
             {/* Resolve button for thread creator (only visible when not resolved) */}
             {!isResolved && isThreadCreator && (
               <Button
@@ -523,9 +562,22 @@ export function ThreadCard({
                 assignedToRole={assignedToRole}
               />
             ))}
+
+            {/* Inline Sample Ship Form (for Add Tracking in sample threads) */}
+            {showShipForm && isSampleRelated && (
+              <InlineSampleShipForm
+                cardId={cardId}
+                currentOwner={currentOwner}
+                onClose={() => setShowShipForm(false)}
+                onSuccess={() => {
+                  setShowShipForm(false);
+                  onOwnerChange?.();
+                }}
+              />
+            )}
             
-            {/* Quick reply button for thread (only if not resolved) */}
-            {!replyingToId && !isResolved && (
+            {/* Quick reply button for thread (only if not resolved and not showing ship form) */}
+            {!replyingToId && !isResolved && !showShipForm && (
               <Button
                 variant="ghost"
                 size="sm"
