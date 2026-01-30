@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
-import { Calendar, Package, Layers, ListTodo, Box, Leaf, Sparkles, Trash2, HelpCircle, MessageCircle, Reply } from 'lucide-react';
+import { Calendar, Package, Layers, ListTodo, Box, Leaf, Trash2, HelpCircle, MessageCircle, Reply, AlertCircle } from 'lucide-react';
 import { DevelopmentItem, DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -63,14 +64,21 @@ function DevelopmentCardComponent({
   const creatorRole = item.created_by_role;
   const { color: roleColor, label: roleLabel } = getColorForRole(creatorRole);
   
-  // Check if this card is "new" for the current user (cross-team notification)
-  const isNewForMe = item.is_new_for_other_team && (
-    (isBuyer && item.created_by_role === 'trader') ||
-    (isTrader && item.created_by_role === 'buyer')
-  );
-
   // Check if this card is deleted
   const isDeleted = !!item.deleted_at;
+  
+  // Check if current user is assigned (for "Your Turn" indicator)
+  const { user } = useAuth();
+  const { roles: userRoles } = useUserRole();
+  const isMyTurn = useMemo(() => {
+    if (!user?.id) return false;
+    // Card-level assignment
+    if (item.assigned_to_users?.includes(user.id)) return true;
+    if (item.assigned_to_role && userRoles.includes(item.assigned_to_role as any)) return true;
+    // Thread-level pending
+    if (item.pending_threads_count && item.pending_threads_count > 0) return true;
+    return false;
+  }, [user?.id, item.assigned_to_users, item.assigned_to_role, item.pending_threads_count, userRoles]);
 
   // Check if there's unseen activity for this user
   const hasUnseenActivity = useMemo(() => {
@@ -83,13 +91,11 @@ function DevelopmentCardComponent({
     return new Date(latestActivity) > new Date(lastViewed);
   }, [item.latest_activity_at, item.last_viewed_at]);
 
-  // Determine the highlight color based on who created it
-  const highlightClass = isNewForMe
-    ? item.created_by_role === 'buyer'
-      ? 'ring-2 ring-blue-400 ring-offset-1'
-      : 'ring-2 ring-emerald-400 ring-offset-1'
-    : isDeleted
-      ? 'opacity-60 border-destructive'
+  // Determine the highlight class - deleted cards are faded, "my turn" cards are highlighted
+  const highlightClass = isDeleted
+    ? 'opacity-60 border-destructive'
+    : isMyTurn
+      ? 'ring-2 ring-amber-400 ring-offset-1'
       : '';
   
   // Convert hex to rgba for subtle background
@@ -188,14 +194,14 @@ function DevelopmentCardComponent({
           >
             <Trash2 className="h-3 w-3" />
             Deleted
-          </Badge>
+        </Badge>
         )}
-        {isNewForMe && (
+        {isMyTurn && (
           <Badge
-            className="text-[10px] px-1.5 py-0 bg-gradient-to-r from-purple-500 to-pink-500 text-white animate-pulse flex items-center gap-1"
+            className="text-[10px] px-1.5 py-0 bg-amber-500 text-white animate-pulse flex items-center gap-1"
           >
-            <Sparkles className="h-3 w-3" />
-            NEW
+            <AlertCircle className="h-3 w-3" />
+            Your Turn
           </Badge>
         )}
         <Badge

@@ -41,8 +41,6 @@ export type DevelopmentItemStatus =
 
 export type DevelopmentItemType = 'new_item' | 'sample' | 'development';
 
-export type DevelopmentCardOwner = 'mor' | 'arc';
-
 export interface DevelopmentItem {
   id: string;
   title: string;
@@ -63,7 +61,6 @@ export interface DevelopmentItem {
   updated_at: string;
   deleted_at: string | null;
   deleted_by: string | null;
-  current_owner: DevelopmentCardOwner;
   image_url: string | null;
   supplier?: { id: string; company_name: string } | null;
   assigned_profile?: { id: string; full_name: string | null; email: string | null } | null;
@@ -74,19 +71,18 @@ export interface DevelopmentItem {
   last_viewed_at?: string | null;
   // Creator info
   creator_name?: string | null;
-  created_by_role?: 'buyer' | 'trader' | null;
-  is_new_for_other_team?: boolean;
+  created_by_role?: 'buyer' | 'trader' | 'admin' | 'quality' | 'marketing' | null;
   // Pending action tracking
   pending_action_type?: string | null;
   pending_action_due_at?: string | null;
   pending_action_snoozed_until?: string | null;
   pending_action_snoozed_by?: string | null;
-  // Pending threads count and info for current user's team
+  // Pending threads count and info based on assignment (not team)
   pending_threads_count?: number;
   pending_threads_info?: { id: string; title: string; type: string }[];
   // Derived status (computed from pending_action_type, is_solved, etc.)
   derived_status?: DevelopmentCardStatus;
-  // New assignment columns
+  // Assignment columns - the source of truth for "whose turn"
   assigned_to_users?: string[] | null;
   assigned_to_role?: string | null;
 }
@@ -247,13 +243,13 @@ export default function Development() {
           .select('card_id, metadata')
           .eq('activity_type', 'answer')
           .in('card_id', itemIds),
-        // Fetch pending threads (thread roots with pending_for_team set and not resolved)
+        // Fetch pending threads - based on assignment, not pending_for_team
         supabase
           .from('development_card_activity')
-          .select('id, card_id, pending_for_team, thread_title, activity_type, content')
+          .select('id, card_id, thread_title, activity_type, content, assigned_to_users, assigned_to_role, thread_status')
           .in('card_id', itemIds)
-          .not('pending_for_team', 'is', null)
-          .is('thread_resolved_at', null),
+          .is('thread_resolved_at', null)
+          .not('thread_id', 'is', null), // Only thread roots
       ]);
 
       const sampleCountMap = (sampleCountsRes.data || []).reduce((acc, s) => {
@@ -304,15 +300,20 @@ export default function Development() {
         }
       }
 
-      // Compute pending threads count and info per card for user's team
-      // Determine user's team based on role
-      const userTeam = isTrader ? 'arc' : 'mor';
+      // Get user's roles for pending thread calculation
+      const userRolesForCheck = isTrader ? ['trader'] : isAdmin ? ['admin', 'buyer', 'quality', 'marketing'] : ['buyer', 'quality', 'marketing'];
+      
+      // Compute pending threads count and info per card based on assignment
       const pendingThreadsCountMap: Record<string, number> = {};
       const pendingThreadsInfoMap: Record<string, { id: string; title: string; type: string }[]> = {};
       
       for (const pt of pendingThreadsRes.data || []) {
-        // Only count threads pending for the user's team
-        if (pt.pending_for_team === userTeam) {
+        // Check if this thread is assigned to current user or their role
+        const isAssignedToUser = pt.assigned_to_users?.includes(user?.id || '');
+        const isAssignedToRole = pt.assigned_to_role && userRolesForCheck.includes(pt.assigned_to_role);
+        const isOpen = pt.thread_status !== 'resolved';
+        
+        if (isOpen && (isAssignedToUser || isAssignedToRole)) {
           pendingThreadsCountMap[pt.card_id] = (pendingThreadsCountMap[pt.card_id] || 0) + 1;
           
           // Build thread title for tooltip
@@ -323,7 +324,7 @@ export default function Development() {
           if (!pendingThreadsInfoMap[pt.card_id]) {
             pendingThreadsInfoMap[pt.card_id] = [];
           }
-          pendingThreadsInfoMap[pt.card_id].push({ id: (pt as any).id, title, type: pt.activity_type });
+          pendingThreadsInfoMap[pt.card_id].push({ id: pt.id, title, type: pt.activity_type });
         }
       }
 
@@ -358,7 +359,6 @@ export default function Development() {
           is_solved: item.is_solved || false,
           deleted_at: item.deleted_at || null,
           deleted_by: item.deleted_by || null,
-          current_owner: item.current_owner || 'arc',
           samples_count: sampleCountMap[item.id] || 0,
           products_count: productCountMap[item.id] || 0,
           latest_activity_at: latestActivity,
@@ -461,14 +461,14 @@ export default function Development() {
   const { myPendingItems, otherItems } = useMemo(() => {
     const userId = user?.id;
     const userRolesArray = isTrader ? ['trader'] : isAdmin ? ['admin', 'buyer', 'quality', 'marketing'] : 
-      ['buyer', 'quality', 'marketing']; // Default for MOR team
+      ['buyer', 'quality', 'marketing'];
     
     const myPending = filteredItems.filter(item => {
-      // Check if assigned to current user
+      // Check if card-level assignment is to current user
       if (item.assigned_to_users?.includes(userId || '')) return true;
-      // Check if assigned to user's role
+      // Check if card-level assignment is to user's role
       if (item.assigned_to_role && userRolesArray.includes(item.assigned_to_role)) return true;
-      // Legacy: check pending threads for user's team
+      // Check if any open thread is assigned to user
       if (item.pending_threads_count && item.pending_threads_count > 0) return true;
       return false;
     });

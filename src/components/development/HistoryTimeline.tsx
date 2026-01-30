@@ -178,21 +178,7 @@ function groupByDate(activities: Activity[]): Record<string, Activity[]> {
   }, {} as Record<string, Activity[]>);
 }
 
-// Ownership direction indicator with country flags
-function OwnershipDirection({ from, to }: { from: 'mor' | 'arc'; to: 'mor' | 'arc' }) {
-  if (from === to) return null;
-  
-  const fromFlag = from === 'mor' ? '🇧🇷' : '🇨🇳';
-  const toFlag = to === 'mor' ? '🇧🇷' : '🇨🇳';
-  
-  return (
-    <span className="inline-flex items-center gap-0.5 text-xs opacity-80 flex-shrink-0">
-      <span>{fromFlag}</span>
-      <span className="text-[10px]">→</span>
-      <span>{toFlag}</span>
-    </span>
-  );
-}
+// Removed: OwnershipDirection component - no longer using MOR/ARC terminology
 
 // CompactActivityRow is now imported from './CompactActivityRow'
 
@@ -710,7 +696,7 @@ function SampleApprovedBanner({
 }
 
 // Request Sample Handler - extracted for reuse
-function useRequestSample(cardId: string, currentOwner: 'mor' | 'arc', onOwnerChange?: () => void) {
+function useRequestSample(cardId: string, cardCreatorId: string | undefined, onOwnerChange?: () => void) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [isRequesting, setIsRequesting] = useState(false);
@@ -720,8 +706,6 @@ function useRequestSample(cardId: string, currentOwner: 'mor' | 'arc', onOwnerCh
     setIsRequesting(true);
     
     try {
-      const targetOwner = 'arc';
-      
       // 1. Create sample record in database (CRITICAL: this makes it appear in Sample Tracker)
       const { error: sampleError } = await supabase
         .from('development_item_samples')
@@ -734,7 +718,7 @@ function useRequestSample(cardId: string, currentOwner: 'mor' | 'arc', onOwnerCh
       
       if (sampleError) throw sampleError;
       
-      // 2. Log sample_requested activity with embedded move info - creates its own thread with assignment
+      // 2. Log sample_requested activity - creates its own thread assigned to trader role
       const { data: activityData, error: activityError } = await supabase
         .from('development_card_activity')
         .insert({
@@ -743,12 +727,8 @@ function useRequestSample(cardId: string, currentOwner: 'mor' | 'arc', onOwnerCh
           activity_type: 'sample_requested',
           content: 'Sample requested',
           thread_title: 'Sample Request',
-          metadata: {
-            moved_from: currentOwner,
-            moved_to: targetOwner,
-          },
-          pending_for_team: targetOwner, // ARC (China) needs to add tracking
-          // Thread assignment columns - assigned to traders (China team)
+          metadata: {},
+          // Thread assignment - assigned to traders
           assigned_to_role: 'trader',
           thread_creator_id: user.id,
           thread_status: 'open',
@@ -765,11 +745,10 @@ function useRequestSample(cardId: string, currentOwner: 'mor' | 'arc', onOwnerCh
           .eq('id', activityData.id);
       }
 
-      // 3. Move card to ARC (China) and set pending action for sample tracking
-      const { error: moveError } = await (supabase.from('development_items') as any)
+      // 4. Update card pending action for sample tracking
+      const { error: updateError } = await supabase
+        .from('development_items')
         .update({ 
-          current_owner: targetOwner,
-          is_new_for_other_team: true,
           pending_action_type: 'sample_tracking',
           pending_action_due_at: null,
           pending_action_snoozed_until: null,
@@ -777,15 +756,13 @@ function useRequestSample(cardId: string, currentOwner: 'mor' | 'arc', onOwnerCh
         })
         .eq('id', cardId);
       
-      if (moveError) throw moveError;
-
-      // NO separate ownership_change entry - move is embedded in sample_requested
+      if (updateError) throw updateError;
 
       queryClient.invalidateQueries({ queryKey: ['development-items'] });
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
       queryClient.invalidateQueries({ queryKey: ['development-item-samples', cardId] });
       queryClient.invalidateQueries({ queryKey: ['all-samples'] });
-      toast({ title: 'Sample requested & card moved to China' });
+      toast({ title: 'Sample requested' });
       onOwnerChange?.();
     } catch (error) {
       toast({ title: 'Error', description: String(error), variant: 'destructive' });

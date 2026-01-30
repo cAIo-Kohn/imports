@@ -1,40 +1,42 @@
 
-# Card System Redesign - Comprehensive Review & Improvement Plan
+# Card System Redesign - Implementation Status
 
-## Current State Analysis
+## ✅ COMPLETED
 
-After reviewing the codebase, here's what exists:
+### Phase 1: Remove Legacy MOR/ARC Code ✅
+- Removed `current_owner` from DevelopmentItem type
+- Removed `is_new_for_other_team` logic  
+- Updated pending thread filtering to use assignment instead of `pending_for_team`
+- Removed OwnershipDirection component with country flags
+- Updated useRequestSample to use assignment-based system
 
-### What's Working
-1. **Card creation with assignment** - Cards can be assigned to users or department roles (buyer, marketing, quality, trader)
-2. **Original thread creation** - Every card auto-creates a `card_created` thread using the card title
-3. **Threaded conversations** - Activities group into collapsible threads with replies
-4. **Sample lifecycle tracking** - Requested → Shipped → Arrived → Reviewed stages
-5. **Role-based colors** - Visual distinction by department
-6. **Assignment at creation** - Cards require "Assign to" field
+### Phase 2: Simplify Dashboard Layout ✅
+- Dashboard now shows "My Pending" and "All Cards" sections
+- "My Pending" includes cards assigned to user or their role
+- Replaced team-based sections (MOR/ARC) with unified layout
+- "Your Turn" badge on cards assigned to current user
 
-### What's NOT Working Well
+### Phase 3: Elevate Original Thread ✅
+- `card_created` thread serves as primary conversation
+- Quick actions target original thread
+- InlineReplyBox supports question-to-creator reassignment
 
-| Problem | Impact |
-|---------|--------|
-| **Dual tracking systems** | Both `pending_for_team` (MOR/ARC) AND `assigned_to_users/assigned_to_role` exist, causing confusion |
-| **Legacy MOR/ARC logic everywhere** | Code still references "current_owner", "isTrader ? 'arc' : 'mor'" throughout |
-| **Unclear "My Pending" logic** | Uses multiple signals (assigned_to_users, assigned_to_role, pending_threads_count) inconsistently |
-| **Thread assignment doesn't cascade** | Replying/commenting doesn't properly update who needs to act next |
-| **No clear "ball-in-court" indicator** | Users can't quickly see whose turn it is on each thread |
-| **Banner actions still create threads** | "Add Comment" and "Ask Question" still force new thread creation instead of using original thread |
-| **Original thread is hidden** | The card_created thread should be the CENTRAL conversation hub but it's just another thread in the list |
+### Phase 4: Fix Assignment Handoff Rules ✅
+- Question asked → can reassign to card creator
+- Answer given → reassigns back to asker
+- Sample requested → assigns to trader role
+- Thread reassignment UI in InlineReplyBox
 
 ---
 
-## Proposed Redesign: Simplified Task Management
+## Key Changes Summary
 
-### Core Principles
-
-1. **One card = One primary conversation** - The "original thread" is THE discussion for the card
-2. **Clear ownership at all times** - Every thread has ONE owner (user or department) who must act
-3. **Simple handoff** - Actions like "Ask Question" automatically reassign to the right person
-4. **Daily dashboard** - Users see ONLY what they need to act on, with clear next steps
+| Before | After |
+|--------|-------|
+| MOR/ARC team sections | "My Pending" / "All Cards" |
+| `pending_for_team` column | `assigned_to_users` / `assigned_to_role` |
+| Country flags (🇧🇷/🇨🇳) | Role-based badges |
+| "Your Turn" based on team | "Your Turn" based on personal assignment |
 
 ---
 
