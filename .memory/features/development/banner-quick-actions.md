@@ -8,4 +8,6 @@ Timeline banners utilize a unified `BannerQuickActions` dropdown menu to consoli
 - **Upload File**: Opens the file upload section
 - **Request Sample**: (when applicable) Triggers sample request flow
 
-High-priority contextual actions—such as 'Review Sample', 'Request Sample', or 'Mark Arrived'—and the `SnoozeButton` remain visible as standalone buttons for immediate access. The ActionsPanel also uses `NewThreadComposer` for its "New Thread" button.
+High-priority contextual actions—such as 'Review Sample', 'Request Sample', 'Mark Arrived', or 'Add Tracking'—and the `SnoozeButton` remain visible as standalone buttons for immediate access. The ActionsPanel also uses `NewThreadComposer` for its "New Thread" button.
+
+All attention banners (NewCardBanner, CommercialDataBanner, SampleRequestedBanner, SampleInTransitBanner, SampleDeliveredBanner) now include both `BannerQuickActions` and `SnoozeButton` for consistent user experience.

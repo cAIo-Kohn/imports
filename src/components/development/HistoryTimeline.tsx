@@ -34,6 +34,7 @@ import { InlineSampleShipForm } from './InlineSampleShipForm';
 import { TimelineUploadButton, AttachmentDisplay, UploadedAttachment } from './TimelineUploadButton';
 import { SnoozeButton } from './SnoozeButton';
 import { CommercialDataBanner, SampleInTransitBanner, SampleDeliveredBanner, NewCardBanner, Sample } from './TimelineBanners';
+import { BannerQuickActions } from './BannerQuickActions';
 import { MentionText } from '@/components/notifications/MentionInput';
 import { UserRoleBadge, UserRoleDot } from './UserRoleBadge';
 import { AppRole } from '@/hooks/useUserRole';
@@ -404,14 +405,24 @@ interface SampleRequestedBannerProps {
   activity: Activity;
   cardId: string;
   currentOwner: 'mor' | 'arc';
+  pendingActionType?: string | null;
   onSuccess: () => void;
+  onStartThread: () => void;
+  onAddComment: () => void;
+  onAskQuestion: () => void;
+  onSnooze?: () => void;
 }
 
 function SampleRequestedBanner({ 
   activity, 
   cardId, 
-  currentOwner, 
-  onSuccess 
+  currentOwner,
+  pendingActionType,
+  onSuccess,
+  onStartThread,
+  onAddComment,
+  onAskQuestion,
+  onSnooze,
 }: SampleRequestedBannerProps) {
   const [showShipForm, setShowShipForm] = useState(false);
   
@@ -458,6 +469,26 @@ function SampleRequestedBanner({
           {activity.content || 'Sample requested'}
         </p>
       </div>
+      
+      {/* Quick Actions row */}
+      {!showShipForm && (
+        <div className="flex flex-wrap gap-2 mt-3">
+          <BannerQuickActions
+            onStartThread={onStartThread}
+            onAddComment={onAddComment}
+            onAskQuestion={onAskQuestion}
+            colorScheme="blue"
+          />
+          <SnoozeButton
+            cardId={cardId}
+            currentActionType={pendingActionType}
+            variant="outline"
+            size="sm"
+            className="bg-white hover:bg-cyan-100 border-cyan-300 text-cyan-700 dark:bg-cyan-950 dark:hover:bg-cyan-900 dark:border-cyan-600 dark:text-cyan-200"
+            onSnooze={onSnooze}
+          />
+        </div>
+      )}
       
       {showShipForm && (
         <InlineSampleShipForm
@@ -1456,11 +1487,15 @@ export function HistoryTimeline({
           activity={sampleRequestedActivity}
           cardId={cardId}
           currentOwner={currentOwner}
+          pendingActionType={pendingActionType}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['development-items'] });
             queryClient.invalidateQueries({ queryKey: ['development-item-samples-timeline', cardId] });
             onOwnerChange?.();
           }}
+          onStartThread={() => setShowInlineThreadComposer(true)}
+          onAddComment={() => setShowInlineThreadComposer(true)}
+          onAskQuestion={() => setShowInlineThreadComposer(true)}
         />
       )}
 
