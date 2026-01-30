@@ -79,9 +79,9 @@ export interface DevelopmentItem {
   pending_action_due_at?: string | null;
   pending_action_snoozed_until?: string | null;
   pending_action_snoozed_by?: string | null;
-  // Pending threads count and titles for current user's team
+  // Pending threads count and info for current user's team
   pending_threads_count?: number;
-  pending_threads_titles?: string[];
+  pending_threads_info?: { id: string; title: string }[];
   // Derived status (computed from pending_action_type, is_solved, etc.)
   derived_status?: DevelopmentCardStatus;
 }
@@ -173,6 +173,7 @@ export default function Development() {
   const [showDeleted, setShowDeleted] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [viewMode, setViewMode] = useState<'cards' | 'samples'>('cards');
 
@@ -244,7 +245,7 @@ export default function Development() {
         // Fetch pending threads (thread roots with pending_for_team set and not resolved)
         supabase
           .from('development_card_activity')
-          .select('card_id, pending_for_team, thread_title, activity_type, content')
+          .select('id, card_id, pending_for_team, thread_title, activity_type, content')
           .in('card_id', itemIds)
           .not('pending_for_team', 'is', null)
           .is('thread_resolved_at', null),
@@ -298,11 +299,11 @@ export default function Development() {
         }
       }
 
-      // Compute pending threads count and titles per card for user's team
+      // Compute pending threads count and info per card for user's team
       // Determine user's team based on role
       const userTeam = isTrader ? 'arc' : 'mor';
       const pendingThreadsCountMap: Record<string, number> = {};
-      const pendingThreadsTitlesMap: Record<string, string[]> = {};
+      const pendingThreadsInfoMap: Record<string, { id: string; title: string }[]> = {};
       
       for (const pt of pendingThreadsRes.data || []) {
         // Only count threads pending for the user's team
@@ -314,10 +315,10 @@ export default function Development() {
             (pt.content ? pt.content.split(' ').slice(0, 6).join(' ') + (pt.content.split(' ').length > 6 ? '...' : '') : null) ||
             (pt.activity_type === 'sample_requested' ? 'Sample Request' : 'Thread');
           
-          if (!pendingThreadsTitlesMap[pt.card_id]) {
-            pendingThreadsTitlesMap[pt.card_id] = [];
+          if (!pendingThreadsInfoMap[pt.card_id]) {
+            pendingThreadsInfoMap[pt.card_id] = [];
           }
-          pendingThreadsTitlesMap[pt.card_id].push(title);
+          pendingThreadsInfoMap[pt.card_id].push({ id: (pt as any).id, title });
         }
       }
 
@@ -360,7 +361,7 @@ export default function Development() {
           creator_name: creatorNameMap[item.created_by] || null,
           pending_action_type: effectivePendingActionType,
           pending_threads_count: pendingThreadsCountMap[item.id] || 0,
-          pending_threads_titles: pendingThreadsTitlesMap[item.id] || [],
+          pending_threads_info: pendingThreadsInfoMap[item.id] || [],
           derived_status: derivedStatus,
         };
       }) as DevelopmentItem[];
@@ -460,6 +461,12 @@ export default function Development() {
   // Stabilized event handlers
   const handleCardClick = useCallback((itemId: string) => {
     setSelectedItemId(itemId);
+    setSelectedThreadId(null); // Reset thread selection when opening normally
+  }, []);
+
+  const handleCardClickThread = useCallback((itemId: string, threadId: string) => {
+    setSelectedItemId(itemId);
+    setSelectedThreadId(threadId);
   }, []);
 
   const handleDragStart = useCallback((e: React.DragEvent, itemId: string) => {
@@ -721,6 +728,7 @@ export default function Development() {
               colorClass="border-blue-300 bg-blue-50/30"
               flagEmoji="🇧🇷"
               onCardClick={handleCardClick}
+              onCardClickThread={handleCardClickThread}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDropToOwner(e, 'mor')}
@@ -735,6 +743,7 @@ export default function Development() {
               colorClass="border-emerald-300 bg-emerald-50/30"
               flagEmoji="🇨🇳"
               onCardClick={handleCardClick}
+              onCardClickThread={handleCardClickThread}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDropToOwner(e, 'arc')}
@@ -757,7 +766,13 @@ export default function Development() {
       <ItemDetailDrawer
         item={selectedItem || null}
         open={!!selectedItemId}
-        onOpenChange={(open) => !open && setSelectedItemId(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedItemId(null);
+            setSelectedThreadId(null);
+          }
+        }}
+        targetThreadId={selectedThreadId}
       />
     </div>
   );

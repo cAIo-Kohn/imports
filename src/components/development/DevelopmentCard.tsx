@@ -12,6 +12,7 @@ import { PendingActionIndicator, ActionDueDate } from './PendingActionBadge';
 interface DevelopmentCardProps {
   item: DevelopmentItem;
   onClick: () => void;
+  onClickThread?: (threadId: string) => void;
   onDragStart: (e: React.DragEvent, itemId: string) => void;
   canDrag: boolean;
 }
@@ -50,6 +51,7 @@ const PRODUCT_CATEGORY_CONFIG: Record<DevelopmentProductCategory, { label: strin
 function DevelopmentCardComponent({
   item,
   onClick,
+  onClickThread,
   onDragStart,
   canDrag,
 }: DevelopmentCardProps) {
@@ -127,14 +129,23 @@ function DevelopmentCardComponent({
                   {(item as any).pending_threads_count}
                 </div>
               </TooltipTrigger>
-              <TooltipContent side="left" className="max-w-[200px]">
-                <p className="font-medium text-xs mb-1">Pending threads:</p>
-                <ul className="text-xs space-y-0.5">
-                  {((item as any).pending_threads_titles || []).slice(0, 5).map((title: string, i: number) => (
-                    <li key={i} className="truncate">• {title}</li>
+              <TooltipContent side="left" className="max-w-[220px] p-2">
+                <p className="font-medium text-xs mb-1.5">Pending threads:</p>
+                <ul className="text-xs space-y-1">
+                  {((item as any).pending_threads_info || []).slice(0, 5).map((thread: { id: string; title: string }, i: number) => (
+                    <li 
+                      key={thread.id || i} 
+                      className="truncate cursor-pointer hover:text-primary hover:underline transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClickThread?.(thread.id);
+                      }}
+                    >
+                      • {thread.title}
+                    </li>
                   ))}
-                  {((item as any).pending_threads_titles || []).length > 5 && (
-                    <li className="text-muted-foreground">+{(item as any).pending_threads_titles.length - 5} more</li>
+                  {((item as any).pending_threads_info || []).length > 5 && (
+                    <li className="text-muted-foreground">+{(item as any).pending_threads_info.length - 5} more</li>
                   )}
                 </ul>
               </TooltipContent>
@@ -271,7 +282,8 @@ export const DevelopmentCard = memo(DevelopmentCardComponent, (prev, next) => {
     prev.item.pending_action_type === next.item.pending_action_type &&
     prev.item.pending_action_snoozed_until === next.item.pending_action_snoozed_until &&
     (prev.item as any).pending_threads_count === (next.item as any).pending_threads_count &&
-    JSON.stringify((prev.item as any).pending_threads_titles) === JSON.stringify((next.item as any).pending_threads_titles) &&
-    prev.canDrag === next.canDrag
+    JSON.stringify((prev.item as any).pending_threads_info) === JSON.stringify((next.item as any).pending_threads_info) &&
+    prev.canDrag === next.canDrag &&
+    prev.onClickThread === next.onClickThread
   );
 });
