@@ -1,109 +1,230 @@
 
-# Fix Replies Being Treated as New Pending Threads
+# Redesign Thread Assignment System
 
-## Problem
-When you reply to a thread (e.g., Peter asks a question, you answer), the system incorrectly shows the **reply itself** as a new pending thread in the "Your Pending Actions" banner. This creates confusion because:
-- Multiple pending items appear for the same conversation
-- The pending action should be on the original thread root, not each reply
-- It makes it look like replying creates a new thread
+## Overview
+Replace the current team-based (`pending_for_team: 'mor' | 'arc'`) pending action system with a user/role-based assignment system. Each thread can be assigned to specific users (via @mentions) or department roles (buyer, marketing, quality, trader, admin). This enables multiple concurrent threads on a card with different assignees, each trackable individually.
 
-## Root Cause
-Two issues are causing this:
+## Current System Analysis
+The existing system has:
+- `pending_for_team` column on `development_card_activity` (values: 'mor' or 'arc')
+- `PendingThreadsBanner` component that shows all threads awaiting current team's action
+- Team-based ownership model (card moves between MOR/Brazil and ARC/China)
+- `@mentions` system for user notifications (stores `@[Name](uuid)` format)
 
-1. **InlineReplyBox.tsx** sets `pending_for_team` on the **reply activity itself** (lines 136 and 228), not just updating the thread root
-2. **HistoryTimeline.tsx** filters pending threads by checking `pending_for_team` on **all activities**, not just thread roots
+## New System Design
 
-For example:
-- Peter (ARC) asks a question → Thread root created with `pending_for_team: 'mor'`
-- You (MOR) answer → Answer activity created with `pending_for_team: 'arc'`, AND thread root updated to `pending_for_team: 'arc'`
-- Result: Both the thread root AND your answer show as pending items
+### Core Concept
+When creating a thread, the user must **assign** it to:
+1. **Specific users** - via @mention syntax (existing functionality)
+2. **A department/role** - buyer, marketing, quality, trader, admin, viewer
+3. **Both** - users AND a role
 
-## Solution
+The thread creator "owns" the thread and is the only one who can close/resolve it.
 
-### 1. Filter pendingThreads to Only Include Thread Roots
+### Database Changes
 
-**File: `src/components/development/HistoryTimeline.tsx`**
-
-Update the `pendingThreads` calculation (lines 1307-1325) to only include activities that are thread roots:
-
-```typescript
-// Before (lines 1307-1314):
-const pendingThreads = allActivities
-  .filter(a => 
-    a.pending_for_team && 
-    !a.thread_resolved_at &&
-    a.pending_for_team === currentOwner
-  )
-
-// After:
-const pendingThreads = allActivities
-  .filter(a => 
-    // Only actual thread roots (thread_id equals its own id)
-    a.thread_id === a.id &&
-    // Has pending action for a team
-    a.pending_for_team && 
-    // Not resolved yet
-    !a.thread_resolved_at &&
-    // Pending for current team
-    a.pending_for_team === currentOwner
-  )
+**New columns on `development_card_activity`:**
+```sql
+-- Replace pending_for_team with:
+assigned_to_users UUID[] DEFAULT '{}'::UUID[]  -- Array of user IDs
+assigned_to_role TEXT NULL                      -- 'buyer' | 'marketing' | 'quality' | 'trader' | 'admin' | NULL
+thread_creator_id UUID NULL                     -- Who created this thread (for ownership)
+thread_status TEXT DEFAULT 'open'               -- 'open' | 'resolved'
+-- Keep thread_resolved_at for when it was closed
 ```
 
-### 2. Stop Setting pending_for_team on Reply Activities
+**Columns to remove:**
+- `pending_for_team` - replaced by the new assignment system
 
-**File: `src/components/development/InlineReplyBox.tsx`**
+### Component Changes
 
-Remove `pending_for_team` from the INSERT statements for replies since only the thread root should track pending status:
+#### 1. Remove PendingThreadsBanner
+- Delete `src/components/development/PendingThreadsBanner.tsx`
+- Remove its usage from `HistoryTimeline.tsx`
 
-**Answer mutation (lines 123-137):**
+#### 2. Update NewThreadComposer
+Add thread assignment UI:
+- **"Assign to" section** with:
+  - User picker (enhanced @mention): Select one or more users
+  - Role dropdown: Select department (optional)
+- Make this **required** - cannot post thread without assignment
+- Store assignments in thread root activity
+
+New props:
 ```typescript
-// Before:
-const { error: insertError } = await supabase.from('development_card_activity').insert({
-  ...
-  pending_for_team: targetOwner,  // <-- REMOVE this line
-});
-
-// After:
-const { error: insertError } = await supabase.from('development_card_activity').insert({
-  ...
-  // pending_for_team is NOT set on replies - only thread root tracks this
-});
+interface NewThreadComposerProps {
+  // ... existing props
+  // Remove currentOwner dependency for movement logic
+}
 ```
 
-**Follow-up question mutation (lines 214-230):**
+New state:
 ```typescript
-// Before:
-const { error: insertError } = await supabase.from('development_card_activity').insert({
-  ...
-  pending_for_team: targetOwner,  // <-- REMOVE this line
-});
-
-// After:
-const { error: insertError } = await supabase.from('development_card_activity').insert({
-  ...
-  // pending_for_team is NOT set on replies - only thread root tracks this
-});
+const [assignedUsers, setAssignedUsers] = useState<{id: string, name: string}[]>([]);
+const [assignedRole, setAssignedRole] = useState<AppRole | null>(null);
 ```
 
-The existing code that updates the thread root's `pending_for_team` (lines 165-171 and 232-237) is correct and remains unchanged.
+#### 3. Update ThreadCard
+Modify thread display to show:
+- **Assignment badges** instead of team pending status
+- "Your turn" highlight when current user is assigned OR has the assigned role
+- **Thread status** (Open/Resolved) with visual distinction
+- **Close Thread** button only visible to thread creator
 
-## Summary of Changes
+Current styling logic changes:
+```typescript
+// Before: pendingForTeam === currentOwner
+// After: 
+const isAssignedToMe = 
+  thread.assigned_to_users?.includes(currentUserId) ||
+  (thread.assigned_to_role && userRoles.includes(thread.assigned_to_role));
+```
 
-| File | Change |
+Resolved threads styling:
+- Grey/faded background
+- "Resolved" badge
+- Collapsed by default but expandable
+- Strikethrough on title
+
+#### 4. Update InlineReplyBox
+When replying to a thread:
+- **Option 1: "Reply"** - Just adds a reply, no assignment change
+- **Option 2: "Reply & Reassign"** - Adds reply and shows reassignment picker
+  - Can reassign to thread creator (common: "answered, back to you")
+  - Can reassign to another user/role
+- **Option 3: "Resolve Thread"** - Only visible to thread creator, marks thread as resolved
+
+Remove:
+- "Answer & Move to ARC/MOR" buttons (no more team movement)
+- Card ownership change logic tied to replies
+
+#### 5. Create MyPendingThreadsPanel
+New component to replace PendingThreadsBanner with card-spanning view:
+- Shows ALL threads assigned to current user (across all cards)
+- Grouped by card
+- Quick access to respond
+- Located in sidebar or notification area
+
+Alternatively, keep a per-card banner but redesigned:
+```typescript
+// In HistoryTimeline.tsx
+const myPendingThreads = threadRoots.filter(t =>
+  t.thread_status === 'open' &&
+  (t.assigned_to_users?.includes(userId) || 
+   (t.assigned_to_role && userRoles.includes(t.assigned_to_role)))
+);
+```
+
+#### 6. Update HistoryTimeline
+- Remove `pendingThreads` calculation based on `pending_for_team`
+- Add new calculation based on `assigned_to_users` and `assigned_to_role`
+- Show a simplified banner for "You have X pending threads" with collapsible list
+- Pass assignment data to ThreadedTimeline and ThreadCard
+
+### UI Flow: Creating a Thread
+
+1. User clicks "New Thread"
+2. Composer opens with:
+   - Thread title (optional)
+   - Message content (with @mention support)
+   - **Assignment section (required)**:
+     - "Assign to users" - Multi-select user picker
+     - "Assign to department" - Dropdown: Buyer, Marketing, Quality, Trader, Admin
+   - Attachments
+3. Buttons: "Cancel" | "Post Thread"
+4. On submit:
+   - Creates thread root with `assigned_to_users`, `assigned_to_role`, `thread_creator_id`, `thread_status: 'open'`
+   - Sends notifications to assigned users/role members
+
+### UI Flow: Responding to a Thread
+
+1. Assigned user sees thread highlighted with "Your turn" badge
+2. User clicks "Reply" button
+3. Reply box opens with options:
+   - "Just Reply" - Adds comment, keeps current assignment
+   - "Reply & Back to Creator" - Adds comment, reassigns to thread creator
+   - "Reply & Reassign to..." - Opens reassignment picker
+4. Only thread creator sees "Resolve Thread" button
+
+### UI Flow: Resolved Threads
+
+1. Thread creator clicks "Resolve Thread"
+2. Confirmation dialog (optional)
+3. Thread marked as resolved:
+   - `thread_status = 'resolved'`
+   - `thread_resolved_at = now()`
+4. Thread displays:
+   - Grey/faded styling
+   - "Resolved" badge
+   - Collapsed by default
+   - Full history preserved and viewable
+
+### Migration Strategy
+
+1. **Create new columns** with migration
+2. **Migrate existing data**:
+   - Threads with `pending_for_team = 'mor'` → `assigned_to_role = 'buyer'`
+   - Threads with `pending_for_team = 'arc'` → `assigned_to_role = 'trader'`
+   - Set `thread_creator_id` from first activity in each thread
+   - Set `thread_status` based on `thread_resolved_at`
+3. **Deploy new UI components**
+4. **Remove old columns** after verification
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `NewThreadComposer.tsx` | Add assignment UI, remove team-based movement |
+| `ThreadCard.tsx` | Show assignment badges, highlight for assignees, add resolve button |
+| `InlineReplyBox.tsx` | Add reassignment options, remove team movement |
+| `HistoryTimeline.tsx` | Remove PendingThreadsBanner, add new assignment-based pending list |
+| `ThreadMessage.tsx` | Show assignment changes in thread |
+
+## Files to Delete
+
+| File | Reason |
 |------|--------|
-| `HistoryTimeline.tsx` | Add filter condition `a.thread_id === a.id` to only include thread roots in pendingThreads |
-| `InlineReplyBox.tsx` | Remove `pending_for_team: targetOwner` from answer and follow-up question INSERT statements |
+| `PendingThreadsBanner.tsx` | Replaced by new assignment-based system |
 
-## Expected Behavior After Fix
+## Database Migration
 
-1. Peter (ARC) asks you a question → Shows as "Your Pending Actions" for MOR
-2. You answer Peter's question → Pending action moves to Peter (ARC), only **one** pending thread shows
-3. Peter sees the same thread in his "Your Pending Actions" banner (to acknowledge your answer)
-4. No duplicate pending items - each thread shows only once
+```sql
+-- Add new columns
+ALTER TABLE public.development_card_activity
+ADD COLUMN assigned_to_users UUID[] DEFAULT '{}'::UUID[],
+ADD COLUMN assigned_to_role TEXT NULL,
+ADD COLUMN thread_creator_id UUID NULL,
+ADD COLUMN thread_status TEXT DEFAULT 'open';
 
-## Testing Checklist
-1. Open a card with an existing question thread
-2. Reply to the question with "Answer & Move"
-3. Check the PendingThreadsBanner - should show only ONE entry for that thread
-4. Switch to the other team's view - should see the thread pending for acknowledgment
-5. Verify no duplicate threads appear in the banner
+-- Migrate existing data
+UPDATE public.development_card_activity
+SET 
+  assigned_to_role = CASE 
+    WHEN pending_for_team = 'mor' THEN 'buyer'
+    WHEN pending_for_team = 'arc' THEN 'trader'
+    ELSE NULL
+  END,
+  thread_status = CASE 
+    WHEN thread_resolved_at IS NOT NULL THEN 'resolved'
+    ELSE 'open'
+  END,
+  thread_creator_id = user_id
+WHERE thread_id = id; -- Only update thread roots
+
+-- Remove old column (after verification)
+-- ALTER TABLE public.development_card_activity DROP COLUMN pending_for_team;
+```
+
+## Summary
+
+This redesign fundamentally changes how thread ownership works:
+
+| Aspect | Current | New |
+|--------|---------|-----|
+| Assignment target | Team (MOR/ARC) | Users + Roles |
+| Who can resolve | Anyone on receiving team | Only thread creator |
+| Multiple threads | Yes, but all per-team | Yes, each with different assignees |
+| Pending visibility | Team-based banner | User/role-based highlighting |
+| Card movement | Automatic on actions | Separate from thread assignment |
+
+The new system provides granular control over who is responsible for each conversation while preserving the ability to audit thread history.
