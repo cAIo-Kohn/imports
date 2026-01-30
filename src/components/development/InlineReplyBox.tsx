@@ -12,9 +12,9 @@ import { createMentionNotifications } from '@/hooks/useNotifications';
 
 interface InlineReplyBoxProps {
   replyToId: string;
-  replyToType: 'question' | 'answer';
+  replyToType: 'question' | 'answer' | 'comment';
   cardId: string;
-  currentOwner: 'mor' | 'arc';
+  currentOwner?: 'mor' | 'arc';
   pendingActionType?: string | null;
   onClose: () => void;
   onCardMove?: () => void;
@@ -51,7 +51,13 @@ export function InlineReplyBox({
   const buildMetadata = (includeReplyRef = true) => {
     const metadata: Record<string, any> = {};
     if (includeReplyRef) {
-      metadata[replyToType === 'question' ? 'reply_to_question' : 'reply_to_answer'] = replyToId;
+      if (replyToType === 'question') {
+        metadata.reply_to_question = replyToId;
+      } else if (replyToType === 'answer') {
+        metadata.reply_to_answer = replyToId;
+      } else if (replyToType === 'comment') {
+        metadata.reply_to_comment = replyToId;
+      }
     }
     if (attachments.length > 0) {
       metadata.attachments = attachments;
@@ -234,6 +240,9 @@ export function InlineReplyBox({
   const isPending = commentReplyMutation.isPending || answerReplyMutation.isPending || followUpQuestionMutation.isPending;
   const targetTeam = currentOwner === 'arc' ? 'MOR' : 'ARC';
   const canSubmit = replyContent.trim() || attachments.length > 0;
+  
+  // Comments can only get "Just Comment" - no move options
+  const isCommentReply = replyToType === 'comment';
 
   return (
     <div className="mt-3 p-3 bg-muted/50 rounded-lg border">
@@ -282,10 +291,11 @@ export function InlineReplyBox({
           onClick={() => commentReplyMutation.mutate()}
           disabled={!canSubmit || isPending}
         >
-          {commentReplyMutation.isPending ? 'Sending...' : 'Just Comment'}
+          {commentReplyMutation.isPending ? 'Sending...' : (isCommentReply ? 'Reply' : 'Just Comment')}
         </Button>
         
-        {replyToType === 'question' ? (
+        {/* Only show move buttons when replying to questions or answers, not comments */}
+        {replyToType === 'question' && currentOwner && (
           // Replying to a question: Answer & Move
           <Button 
             size="sm" 
@@ -295,7 +305,9 @@ export function InlineReplyBox({
             {answerReplyMutation.isPending ? 'Sending...' : `Answer & Move to ${targetTeam}`}
             <ArrowRight className="h-3 w-3 ml-1" />
           </Button>
-        ) : (
+        )}
+        
+        {replyToType === 'answer' && currentOwner && (
           // Replying to an answer: Ask Follow-up & Move
           <Button 
             size="sm" 
