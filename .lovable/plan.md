@@ -1,360 +1,257 @@
 
-# Unified Thread-Based Card System - IMPLEMENTED
+# Card System Redesign - Comprehensive Review & Improvement Plan
 
-## Status: ✅ Complete
+## Current State Analysis
 
-The card system now uses a unified thread-based approach with user/role assignment instead of team-based (MOR/ARC) sections.
+After reviewing the codebase, here's what exists:
 
-## Completed Changes
+### What's Working
+1. **Card creation with assignment** - Cards can be assigned to users or department roles (buyer, marketing, quality, trader)
+2. **Original thread creation** - Every card auto-creates a `card_created` thread using the card title
+3. **Threaded conversations** - Activities group into collapsible threads with replies
+4. **Sample lifecycle tracking** - Requested → Shipped → Arrived → Reviewed stages
+5. **Role-based colors** - Visual distinction by department
+6. **Assignment at creation** - Cards require "Assign to" field
 
-1. ✅ Database migration: Added `assigned_to_users` and `assigned_to_role` columns to `development_items`
-2. ✅ CreateCardModal: Added required ThreadAssignmentSelect for card assignment
-3. ✅ Card creation: Auto-creates "original thread" (card_created activity) with card title
-4. ✅ Development.tsx: Replaced MOR/ARC sections with "My Pending" / "All Cards" layout
-5. ✅ ThreadedTimeline: Added 'card_created' to THREADABLE_TYPES
-6. ✅ Quick Actions: Differentiated Add Comment/Ask Question to work with original thread
-7. ✅ InlineReplyBox: Supports card_created replyToType
-4. **Restructure Quick Actions behavior:**
-   - New Thread = Creates a NEW separate thread (same as current)
-   - Add Comment = Adds comment to original thread (no action power)
-   - Ask Question = Asks question in original thread, moves ball to card creator
-   - Upload = Treated as comment with attachment in original thread
+### What's NOT Working Well
 
-## Database Changes
+| Problem | Impact |
+|---------|--------|
+| **Dual tracking systems** | Both `pending_for_team` (MOR/ARC) AND `assigned_to_users/assigned_to_role` exist, causing confusion |
+| **Legacy MOR/ARC logic everywhere** | Code still references "current_owner", "isTrader ? 'arc' : 'mor'" throughout |
+| **Unclear "My Pending" logic** | Uses multiple signals (assigned_to_users, assigned_to_role, pending_threads_count) inconsistently |
+| **Thread assignment doesn't cascade** | Replying/commenting doesn't properly update who needs to act next |
+| **No clear "ball-in-court" indicator** | Users can't quickly see whose turn it is on each thread |
+| **Banner actions still create threads** | "Add Comment" and "Ask Question" still force new thread creation instead of using original thread |
+| **Original thread is hidden** | The card_created thread should be the CENTRAL conversation hub but it's just another thread in the list |
 
-### 1. Add assignment columns to `development_items` table
-```sql
-ALTER TABLE public.development_items
-ADD COLUMN assigned_to_users UUID[] DEFAULT '{}'::UUID[],
-ADD COLUMN assigned_to_role TEXT NULL;
+---
+
+## Proposed Redesign: Simplified Task Management
+
+### Core Principles
+
+1. **One card = One primary conversation** - The "original thread" is THE discussion for the card
+2. **Clear ownership at all times** - Every thread has ONE owner (user or department) who must act
+3. **Simple handoff** - Actions like "Ask Question" automatically reassign to the right person
+4. **Daily dashboard** - Users see ONLY what they need to act on, with clear next steps
+
+---
+
+## Implementation Plan
+
+### Phase 1: Clean Up Database & Remove Legacy Code
+
+#### 1.1 Remove dual tracking - eliminate `pending_for_team`
+The `pending_for_team` column in `development_card_activity` is legacy from MOR/ARC. Replace all logic with `assigned_to_users` and `assigned_to_role`.
+
+**Database changes:**
+- Deprecate `pending_for_team` column (keep for now, stop using)
+- Ensure all thread roots have `assigned_to_users` OR `assigned_to_role` set
+- Migrate existing data: convert `pending_for_team = 'arc'` → `assigned_to_role = 'trader'`
+
+**Code changes:**
+- Remove all `pending_for_team` references in Development.tsx, HistoryTimeline.tsx, ThreadCard.tsx
+- Remove `userTeam = isTrader ? 'arc' : 'mor'` patterns
+- Replace with direct `user.id` and `userRoles` checks
+
+#### 1.2 Remove MOR/ARC terminology
+Replace "MOR" / "ARC" / "China" / "Brazil" with role-based language:
+- "Your Pending" instead of "MOR Side" / "ARC Side"
+- Remove country flags (🇧🇷/🇨🇳) from UI
+- Remove `current_owner` from Development.tsx filtering
+
+---
+
+### Phase 2: Simplify Dashboard Layout
+
+#### 2.1 New dashboard structure
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│  Development Cards                          [New Card]       │
+├──────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │ 📌 MY PENDING (3 cards)                                 │ │
+│  │ ┌─────────┐ ┌─────────┐ ┌─────────┐                     │ │
+│  │ │ Card 1  │ │ Card 2  │ │ Card 3  │                     │ │
+│  │ │ [!]     │ │ [!]     │ │ [?]     │                     │ │
+│  │ └─────────┘ └─────────┘ └─────────┘                     │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │ 📋 ALL CARDS (15 cards)                                 │ │
+│  │ ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐ ...           │ │
+│  └─────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-These will store the initial card-level assignment (which dictates who owns the "original thread").
+#### 2.2 "My Pending" calculation - simplified
 
-### 2. Create "original thread" on card creation
-When a card is created, automatically insert a corresponding `development_card_activity` entry that serves as the original thread root:
-
-```sql
--- In card creation flow
-INSERT INTO development_card_activity (
-  card_id, user_id, activity_type, content, 
-  thread_title, thread_id, thread_root_id,
-  assigned_to_users, assigned_to_role, 
-  thread_creator_id, thread_status
-) VALUES (
-  $card_id, $user_id, 'card_created',
-  'Card created: ' || $title,
-  $title,  -- Thread title = Card title
-  $new_activity_id, $new_activity_id,  -- Self-referencing for thread root
-  $assigned_users, $assigned_role,
-  $user_id, 'open'
-);
-```
-
-## Component Changes
-
-### 1. CreateCardModal.tsx
-**Add "Assign to" section (required)**
+A card appears in "My Pending" if the user has ANY open thread assigned to them:
 
 ```typescript
-// New state
-const [assignedUsers, setAssignedUsers] = useState<AssignedUser[]>([]);
-const [assignedRole, setAssignedRole] = useState<AppRole | null>(null);
-
-// Add after form fields
-<div className="space-y-2">
-  <Label className="flex items-center gap-1">
-    Assign to <span className="text-destructive">*</span>
-  </Label>
-  <ThreadAssignmentSelect
-    assignedUsers={assignedUsers}
-    assignedRole={assignedRole}
-    onAssignedUsersChange={setAssignedUsers}
-    onAssignedRoleChange={setAssignedRole}
-    required
-  />
-</div>
-```
-
-**Update mutation to:**
-1. Save `assigned_to_users` and `assigned_to_role` to the card
-2. Create original thread activity with same assignment
-3. Remove logic that auto-assigns to opposite team (`is_new_for_other_team`, `initialOwner`)
-
-### 2. Development.tsx
-**Remove MOR/ARC team sections**
-
-Replace the two `TeamSection` components with a single unified card list. For now, show all cards in one section. The filtering will be based on:
-- Cards assigned to current user (via `assigned_to_users`)
-- Cards assigned to current user's role (via `assigned_to_role`)
-- All cards visible but "pending for me" highlighted
-
-```typescript
-// Remove:
-const { morItems, arcItems } = useMemo(() => ({
-  morItems: filteredItems.filter(item => item.current_owner === 'mor'),
-  arcItems: filteredItems.filter(item => item.current_owner === 'arc'),
-}), [filteredItems]);
-
-// Replace with:
-const { myPendingItems, otherItems } = useMemo(() => {
-  const myPending = filteredItems.filter(item => 
-    item.assigned_to_users?.includes(userId) ||
-    (item.assigned_to_role && userRoles.includes(item.assigned_to_role))
+const isMyPending = (card, userId, userRoles) => {
+  // Check all open threads in this card
+  return card.threads.some(thread => 
+    thread.status !== 'resolved' && (
+      thread.assigned_to_users?.includes(userId) ||
+      (thread.assigned_to_role && userRoles.includes(thread.assigned_to_role))
+    )
   );
-  const others = filteredItems.filter(item => 
-    !item.assigned_to_users?.includes(userId) &&
-    !(item.assigned_to_role && userRoles.includes(item.assigned_to_role))
-  );
-  return { myPendingItems: myPending, otherItems: others };
-}, [filteredItems, userId, userRoles]);
-```
-
-Create a new layout:
-- Option A: Single unified list with "My Pending" cards at top, visually highlighted
-- Option B: Two sections "My Pending" / "Other Cards" (simpler for now)
-
-### 3. BannerQuickActions.tsx
-**Update action behavior**
-
-Change the component to pass additional context about which action was selected:
-
-```typescript
-interface BannerQuickActionsProps {
-  onStartThread?: () => void;   // Creates NEW thread
-  onAddComment?: () => void;    // Comment on original thread
-  onAskQuestion?: () => void;   // Question on original thread (moves ball)
-  onUpload?: () => void;        // Upload as comment on original thread
-  // ...
-}
-```
-
-The handlers in `HistoryTimeline.tsx` will need to differentiate:
-- `onStartThread`: Opens NewThreadComposer (as current)
-- `onAddComment`: Opens InlineReplyBox configured for comment on original thread
-- `onAskQuestion`: Opens InlineReplyBox configured for question on original thread
-
-### 4. HistoryTimeline.tsx
-**Major updates needed:**
-
-1. **Identify "original thread"** - the first thread root with `activity_type === 'card_created'` or earliest thread
-2. **Update NewCardBanner** - now represents the "original thread" that users can reply to directly
-3. **Quick Actions handlers:**
-
-```typescript
-// Track original thread ID
-const originalThread = useMemo(() => {
-  return activities.find(a => 
-    a.activity_type === 'card_created' && 
-    a.thread_id === a.id
-  ) || activities.find(a => a.thread_root_id === a.id);
-}, [activities]);
-
-// Handler for "Add Comment" - comment on original thread
-const handleAddCommentToOriginal = () => {
-  if (originalThread) {
-    setReplyToActivityId(originalThread.id);
-    setReplyType('comment');
-    setShowInlineReply(true);
-  }
-};
-
-// Handler for "Ask Question" - question on original thread, moves to creator
-const handleAskQuestionOnOriginal = () => {
-  if (originalThread) {
-    setReplyToActivityId(originalThread.id);
-    setReplyType('question');
-    setReassignToCreator(true);
-    setShowInlineReply(true);
-  }
 };
 ```
 
-4. **Banner visibility logic** - Show banner when:
-   - Card is assigned to current user/role
-   - Original thread has pending actions for current user
+---
 
-### 5. InlineReplyBox.tsx
-**Add support for "question" that reassigns to creator**
+### Phase 3: Original Thread as Primary Conversation
 
-When `replyType === 'question'` and posting:
-1. Insert the question activity
-2. Update original thread's `assigned_to_users` to include only the card creator
-3. Clear `assigned_to_role` (since we're targeting a specific user)
+#### 3.1 Elevate the original thread
 
-```typescript
-// When posting a question in original thread
-if (replyType === 'question' && reassignToCreator) {
-  // Update the thread root to assign back to card creator
-  await supabase
-    .from('development_card_activity')
-    .update({
-      assigned_to_users: [cardCreatorId],
-      assigned_to_role: null,
-    })
-    .eq('id', threadRootId);
-}
+When opening a card, the "card_created" thread should be:
+- **Always visible at top** - Not collapsed, not mixed with other threads
+- **The default interaction point** - Quick actions (Comment, Question) target this thread
+- **Visually distinct** - Card title, description, and image displayed prominently
+
+**Visual layout for card detail:**
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ PE Strap - New Supplier Development          [Status ▼]     │
+├──────────────────────────────────────────────────────────────┤
+│ ┌──────────────────────────────────────────────────────────┐ │
+│ │ 📋 MAIN DISCUSSION (Original Thread)         Assigned: 📦 Trader │
+│ ├──────────────────────────────────────────────────────────┤ │
+│ │ [Image]  Title: PE Strap                                 │ │
+│ │          Need to develop new supplier in China...        │ │
+│ │                                                          │ │
+│ │ ○ Jin: I'll check with suppliers tomorrow — 30/01 14:00  │ │
+│ │ ○ Vitória: Any update? — 31/01 09:00                     │ │
+│ │                                                          │ │
+│ │ [Type your reply...                              ] [Send]│ │
+│ │                                                          │ │
+│ │ [💬 Comment]  [❓ Ask Question]  [⏰ Snooze]              │ │
+│ └──────────────────────────────────────────────────────────┘ │
+│                                                              │
+│ ┌─ Other Threads ──────────────────────────────────────────┐ │
+│ │ ▸ Sample Request (Assigned: Quality)           — Open    │ │
+│ │ ▸ Color Discussion (Assigned: Marketing)       — Open    │ │
+│ │ ▸ Volume clarification                         — Resolved│ │
+│ └──────────────────────────────────────────────────────────┘ │
+│                                                              │
+│ [➕ New Thread]                                              │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### 6. TimelineBanners.tsx (NewCardBanner)
-**Transform into "Original Thread" display**
+#### 3.2 Quick actions on original thread
 
-The NewCardBanner should now represent the original thread that people can interact with:
+| Action | What it does |
+|--------|--------------|
+| **Comment** | Posts a reply to original thread. NO ownership change. |
+| **Ask Question** | Posts a question, REASSIGNS original thread to card creator. |
+| **Snooze** | Sets reminder date, keeps current assignment. |
+| **Upload** | Adds attachment as comment on original thread. |
+| **New Thread** | Creates a SEPARATE thread (for specific topics like "Sample Request") |
 
-```typescript
-export function NewCardBanner({ 
-  cardTitle,
-  cardDescription,
-  cardImageUrl,
-  cardId,
-  originalThreadId,      // NEW: ID of original thread
-  pendingActionType,
-  onAddComment,          // Reply with comment
-  onAskQuestion,         // Reply with question (moves to creator)
-  onStartNewThread,      // Create separate thread
-  onSnooze,
-  onUpload,
-}: NewCardBannerProps) {
-  // ...
-}
+---
+
+### Phase 4: Clear Assignment & Handoff Rules
+
+#### 4.1 Who gets assigned when
+
+| Event | New Owner |
+|-------|-----------|
+| Card created | The selected user/department in "Assign to" |
+| Comment added | NO CHANGE - commenter just provides info |
+| Question asked | Thread reassigned to card creator |
+| Question answered | Thread reassigned to question asker |
+| Sample requested | Thread assigned to Trader |
+| Sample shipped | Thread assigned to original requester |
+| Sample arrived | Thread assigned to original requester (for review) |
+| Thread resolved | Thread owner (only they can resolve) |
+
+#### 4.2 Visual indicators on cards
+
+```text
+┌───────────────────────────┐
+│ PE Strap          [3] 🔔  │  ← [3] = 3 open threads assigned to me
+│ Buyer · Medium            │  
+│ 📦 2 samples              │
+│                           │
+│ ⚡ YOUR TURN              │  ← Clear call-to-action
+│ Sample Request pending    │
+└───────────────────────────┘
 ```
 
-### 7. ThreadedTimeline.tsx
-**Include original thread type**
+---
 
-Update `THREADABLE_TYPES` to include the new card_created type:
+### Phase 5: Code Changes Summary
 
-```typescript
-const THREADABLE_TYPES = ['comment', 'question', 'answer', 'sample_requested', 'card_created'];
-```
-
-### 8. DevelopmentItem type
-**Add new fields**
-
-```typescript
-export interface DevelopmentItem {
-  // ... existing fields
-  assigned_to_users?: string[] | null;
-  assigned_to_role?: string | null;
-  original_thread_id?: string | null;  // For quick access
-}
-```
-
-## Visual Flow
-
-### Card Creation
-```
-┌─────────────────────────────────────────────────────────┐
-│ Create New Card                                         │
-├─────────────────────────────────────────────────────────┤
-│ Title: PE Strap                                         │
-│ Category: ○ Final Product  ○ Raw Material               │
-│ Desired Outcome: Need to develop new supplier           │
-│ Picture: [Upload]                                       │
-│                                                         │
-│ ┌─────────────────────────────────────────────────────┐ │
-│ │ Assign to *                                         │ │
-│ │ [Select users or department...        ▼]            │ │
-│ │   ○ Trader (all traders see it)                     │ │
-│ │   ○ @Jin Wei (specific person)                      │ │
-│ │   ○ Marketing                                       │ │
-│ └─────────────────────────────────────────────────────┘ │
-│                                                         │
-│ Priority: [Medium ▼]    Due: [____]                     │
-│                                                         │
-│                              [Cancel]  [Create Card]    │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Card Timeline (when assignee opens it)
-```
-┌─────────────────────────────────────────────────────────┐
-│ ✨ PE Strap                                [Your Turn]   │
-├─────────────────────────────────────────────────────────┤
-│ ┌─ Original Thread ──────────────────────────────────┐  │
-│ │ [Image] PE Strap                                   │  │
-│ │         Need to develop new supplier in China      │  │
-│ │                                                    │  │
-│ │ [💬 Add Comment]  [❓ Ask Question]  [📎 Upload]   │  │
-│ │ [➕ New Thread]   [⏰ Snooze ▼]                     │  │
-│ └────────────────────────────────────────────────────┘  │
-│                                                         │
-│ ACTIVITY LOG                                            │
-│ ○ Vitória created this card — 30/01 15:24               │
-└─────────────────────────────────────────────────────────┘
-```
-
-### After adding a comment
-```
-┌─────────────────────────────────────────────────────────┐
-│ Thread: PE Strap                              (open)    │
-├─────────────────────────────────────────────────────────┤
-│ Vitória: Need to develop new supplier in China          │
-│                                                         │
-│ Jin: I'll check with suppliers and get back to you      │
-│      with options by Friday.                  — 30/01   │
-│                                                         │
-│ [Reply to this thread]                                  │
-└─────────────────────────────────────────────────────────┘
-```
-
-## Files to Modify
+#### Files to modify:
 
 | File | Changes |
 |------|---------|
-| `CreateCardModal.tsx` | Add ThreadAssignmentSelect, create original thread on card creation |
-| `Development.tsx` | Remove MOR/ARC sections, add unified list with "My Pending" logic |
-| `HistoryTimeline.tsx` | Track original thread, update Quick Actions handlers |
-| `BannerQuickActions.tsx` | Keep same interface, update usage in parent |
-| `TimelineBanners.tsx` | Update NewCardBanner to work with original thread |
-| `ThreadedTimeline.tsx` | Add 'card_created' to THREADABLE_TYPES |
-| `InlineReplyBox.tsx` | Add question-to-creator reassignment logic |
-| `TeamSection.tsx` | May be repurposed or removed |
+| `Development.tsx` | Remove MOR/ARC logic, simplify "My Pending" calculation, use thread assignment only |
+| `HistoryTimeline.tsx` | Separate original thread from other threads, route quick actions to original thread |
+| `ThreadCard.tsx` | Remove `pending_for_team`, use only `assigned_to_users/assigned_to_role` |
+| `DevelopmentCard.tsx` | Simplify pending indicator, show "Your Turn" based on thread assignment |
+| `InlineReplyBox.tsx` | Add "Ask Question" → reassign to creator logic |
+| `BannerQuickActions.tsx` | Wire up actions to original thread instead of creating new threads |
+| `TimelineBanners.tsx` | Remove separate banner components, integrate into original thread display |
+| `ThreadedTimeline.tsx` | Keep original thread separate from other threads |
+| `CreateCardModal.tsx` | Already good - has assignment |
 
-## Database Migration
+#### Database changes:
+- Migrate `pending_for_team` data to `assigned_to_role`
+- Add index on `assigned_to_users` for faster lookups
+- Consider adding computed column or view for "my pending count"
 
-```sql
--- Add assignment columns to development_items
-ALTER TABLE public.development_items
-ADD COLUMN IF NOT EXISTS assigned_to_users UUID[] DEFAULT '{}'::UUID[],
-ADD COLUMN IF NOT EXISTS assigned_to_role TEXT NULL;
+---
 
--- Create index for faster lookups
-CREATE INDEX IF NOT EXISTS idx_development_items_assigned_role 
-ON public.development_items(assigned_to_role);
+### Phase 6: User Experience Flow
 
--- Create GIN index for array lookups
-CREATE INDEX IF NOT EXISTS idx_development_items_assigned_users 
-ON public.development_items USING GIN(assigned_to_users);
-```
+#### Daily workflow for a user:
 
-## Migration Strategy
+1. **Login** → See "My Pending" section with cards needing action
+2. **Click card** → See original thread prominently with conversation
+3. **Take action:**
+   - Add comment (no handoff)
+   - Ask question (handoff to creator)
+   - Snooze (set reminder)
+   - Start new thread for specific topic
+4. **Card clears from "My Pending"** when all assigned threads are resolved or reassigned
 
-1. **Phase 1: Add assignment to Create Card**
-   - Add `assigned_to_users` and `assigned_to_role` columns
-   - Update CreateCardModal with assignment UI
-   - Create original thread on card creation
-   - Existing cards without original thread will get one created on first view
+#### Example scenario:
 
-2. **Phase 2: Update Timeline and Banners**
-   - Modify Quick Actions behavior
-   - Update NewCardBanner to work as original thread
-   - Update InlineReplyBox for question reassignment
+> **Vitória (Buyer)** creates card "PE Strap Development" assigned to **Trader**
+> 
+> 1. Card appears in Jin's (Trader) "My Pending"
+> 2. Jin comments: "I'll check suppliers" → Still Jin's turn
+> 3. Jin asks question: "What's the target price?" → Now Vitória's turn
+> 4. Vitória answers: "$2.50 FOB" → Now Jin's turn again
+> 5. Jin snoozes for 3 days → Card grayed out until then
+> 6. Jin starts new thread "Sample Request" assigned to Trader → New thread for sample tracking
+> 7. Jin resolves main thread when supplier is confirmed → Original thread closed
 
-3. **Phase 3: Remove MOR/ARC sections**
-   - Replace with unified view
-   - Add "My Pending" filtering
-   - Consider future organization options (tabs, filters)
+---
 
-## Summary
+## Migration Plan
 
-| Aspect | Current | New |
-|--------|---------|-----|
-| Card ownership | Team-based (MOR/ARC) | User/Role-based assignment |
-| Initial thread | None (must create) | Auto-created with card title |
-| Add Comment | Creates new thread | Replies to original thread |
-| Ask Question | Creates new thread | Replies to original thread + reassigns |
-| Board layout | Two team columns | Unified list (My Pending first) |
-| Visibility | Based on team | Based on personal assignment |
+1. **Week 1**: Clean up code - remove MOR/ARC references, simplify pending logic
+2. **Week 2**: Elevate original thread - make it the primary interaction point
+3. **Week 3**: Polish - clear indicators, smooth handoffs, test all scenarios
+4. **Week 4**: User testing and refinement
 
-This redesign simplifies the mental model: every card is a conversation with an original thread, and additional threads can be created for specific topics. Users see what's pending for them based on explicit assignments, not team membership.
+---
+
+## Summary of Key Changes
+
+| Before | After |
+|--------|-------|
+| MOR/ARC team sections | "My Pending" / "All Cards" |
+| `pending_for_team` column | `assigned_to_users` / `assigned_to_role` |
+| Multiple banners (NewCard, Sample, Commercial) | Single "Original Thread" with inline actions |
+| Actions create new threads | Actions target original thread by default |
+| Unclear ownership | Clear "Your Turn" indicator with specific next action |
+| Country-based thinking | Role/person-based thinking |
+
+This redesign transforms the system from "team handoffs" to "personal task management" - exactly what you described as users logging in, seeing their pending items, clearing them, and passing to the next person.
