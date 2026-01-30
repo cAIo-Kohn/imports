@@ -99,25 +99,12 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
     }
   }, [open, item?.id]); // Intentionally not including item itself to avoid updates from refetch
 
-  // Mark as seen when opened by the other team AND update last viewed timestamp
+  // Update last viewed timestamp when drawer opens (do NOT clear is_new_for_other_team here)
   useEffect(() => {
-    const markAsSeenAndUpdateView = async () => {
+    const updateViewTimestamp = async () => {
       if (!item?.id || !open || !user?.id) return;
-      
-      const itemWithNewFields = item as any;
-      const isNewForMe = itemWithNewFields.is_new_for_other_team && (
-        (isBuyer && itemWithNewFields.created_by_role === 'trader') ||
-        (isTrader && itemWithNewFields.created_by_role === 'buyer')
-      );
 
-      // Update is_new_for_other_team if applicable
-      if (isNewForMe) {
-        await (supabase.from('development_items') as any)
-          .update({ is_new_for_other_team: false })
-          .eq('id', item.id);
-      }
-
-      // Always update last viewed timestamp for current user
+      // Update last viewed timestamp for current user
       const { error } = await supabase
         .from('card_user_views')
         .upsert({
@@ -132,7 +119,6 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
         // Optimistically mark as viewed in all matching caches
         const optimisticSeenAt = new Date().toISOString();
 
-        // Use setQueriesData with partial key to match any query starting with 'development-items'
         queryClient.setQueriesData<DevelopmentItem[]>(
           { queryKey: ['development-items'] },
           (prev) => {
@@ -151,8 +137,8 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
       }
     };
 
-    markAsSeenAndUpdateView();
-  }, [item?.id, open, user?.id, isBuyer, isTrader, queryClient]);
+    updateViewTimestamp();
+  }, [item?.id, open, user?.id, queryClient]);
 
   // Update status mutation
   const updateStatusMutation = useMutation({
