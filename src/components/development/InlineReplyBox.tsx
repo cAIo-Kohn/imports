@@ -120,6 +120,7 @@ export function InlineReplyBox({
       const effectiveThreadId = threadId || replyToId;
       
       // 1. Insert answer activity with embedded move info
+      // Note: pending_for_team is NOT set on replies - only thread root tracks this
       const { error: insertError } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
@@ -132,8 +133,6 @@ export function InlineReplyBox({
         },
         thread_id: effectiveThreadId,
         thread_root_id: effectiveThreadId,
-        // Answer goes to the target team, so they have pending action
-        pending_for_team: targetOwner,
       });
       if (insertError) throw insertError;
 
@@ -211,6 +210,7 @@ export function InlineReplyBox({
       const effectiveThreadId = threadId || replyToId;
       
       // 1. Insert question activity with reference to the answer and embedded move info
+      // Note: pending_for_team is NOT set on replies - only thread root tracks this
       const { error: insertError } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
@@ -224,8 +224,6 @@ export function InlineReplyBox({
         },
         thread_id: effectiveThreadId,
         thread_root_id: effectiveThreadId,
-        // Follow-up question goes to the target team
-        pending_for_team: targetOwner,
       });
       if (insertError) throw insertError;
 
