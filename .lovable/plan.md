@@ -1,83 +1,238 @@
 
-## Fix Thread Titles and Timeline Organization
 
-After investigating the codebase, I found **two critical issues** that explain why threads aren't visible:
+## Unified Quick Actions Button for Banners
+
+Your idea is excellent! Currently, each banner has 3-4 separate buttons (Comment, Question, Snooze, Upload, etc.) which takes up significant space. A **single "Quick Actions" dropdown** would:
+
+- Save horizontal space in banners
+- Provide a consistent action interface across all banner types
+- Include a "Start Thread" option to make threading more visible
+- Scale better as we add more actions in the future
 
 ---
 
-### Root Causes
+### Current State vs. Proposed Design
 
-#### 1. ThreadedTimeline is imported but never rendered
-The `HistoryTimeline.tsx` component imports `ThreadedTimeline` (line 40) but the actual render logic still uses the old flat approach with `sortedDates.map()` (starting at line 1491). The `ThreadedTimeline` component is completely unused.
+```text
+CURRENT (4 separate buttons):
+┌─────────────────────────────────────────────────────┐
+│  ✨ New Request                                      │
+│  ┌──────────────────────────────────────────────┐   │
+│  │ [image] Title                                 │   │
+│  │         Description...                        │   │
+│  └──────────────────────────────────────────────┘   │
+│                                                      │
+│  [Comment] [Ask Question] [Snooze ▼] [Upload]       │  <- Takes full row
+└─────────────────────────────────────────────────────┘
 
-#### 2. Activity interface missing thread fields
-The `Activity` interface (lines 43-56) doesn't include `thread_id`, `thread_root_id`, or `thread_title` fields - even though the database has them and the query fetches them with `select('*')`.
+PROPOSED (single dropdown + primary action):
+┌─────────────────────────────────────────────────────┐
+│  ✨ New Request                                      │
+│  ┌──────────────────────────────────────────────┐   │
+│  │ [image] Title                                 │   │
+│  │         Description...                        │   │
+│  └──────────────────────────────────────────────┘   │
+│                                                      │
+│  [⚡ Quick Actions ▼]                                │  <- Compact single button
+└─────────────────────────────────────────────────────┘
 
-```typescript
-// Current interface (missing thread fields)
-interface Activity {
-  id: string;
-  card_id: string;
-  user_id: string;
-  activity_type: string;
-  content: string | null;
-  metadata: Record<string, any> | null;
-  created_at: string;
-  profile?: {...} | null;
-  roles?: AppRole[];
-}
+Dropdown opens to show:
+┌─────────────────────────────┐
+│ 💬 Start New Thread         │
+│ ❓ Ask a Question           │
+│ ─────────────────────────── │
+│ ⏰ Snooze...                │
+│ 📎 Upload File              │
+└─────────────────────────────┘
 ```
 
 ---
 
-### Solution
+### Implementation Approach
 
-#### Step 1: Update Activity interface
-Add the missing thread fields to the `Activity` interface:
+#### Create a Reusable `BannerQuickActions` Component
+
+This component will render a dropdown menu with all available actions for any banner type:
+
 ```typescript
-interface Activity {
-  // ... existing fields ...
-  thread_id: string | null;
-  thread_root_id: string | null;
-  thread_title: string | null;
+interface BannerQuickActionsProps {
+  cardId: string;
+  pendingActionType?: string | null;
+  // Available actions (each banner can customize)
+  onStartThread?: () => void;      // New! "Start New Thread"
+  onAskQuestion?: () => void;
+  onAddComment?: () => void;
+  onSnooze?: () => void;
+  onUpload?: () => void;
+  onRequestSample?: () => void;    // Commercial banner specific
+  onMarkArrived?: () => void;      // Sample transit specific
+  onReviewSample?: () => void;     // Sample delivered specific
+  // Styling
+  colorScheme: 'violet' | 'emerald' | 'blue' | 'amber';
 }
 ```
 
-#### Step 2: Replace flat rendering with ThreadedTimeline
-Replace the old flat `sortedDates.map()` logic (lines 1491-1752) with:
+#### Update All Banner Components
+
+Each banner will replace its multiple buttons with the single `BannerQuickActions` component:
+
+| Banner | Primary CTA (Optional) | Quick Actions |
+|--------|------------------------|---------------|
+| NewCardBanner | None | Thread, Question, Snooze, Upload |
+| CommercialDataBanner | Request Sample | Thread, Question, Comment, Upload |
+| SampleInTransitBanner | Mark Arrived | Thread, Question, Comment |
+| SampleDeliveredBanner | Review Sample | Thread, Question |
+
+For banners with a critical primary action (like "Review Sample" or "Mark Arrived"), we can keep that as a visible button alongside the dropdown.
+
+---
+
+### Detailed Changes
+
+#### 1. Create `BannerQuickActions.tsx` (New File)
+
+```typescript
+// src/components/development/BannerQuickActions.tsx
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuSeparator,
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { Zap, MessageCircle, HelpCircle, Clock, Upload, Plus } from 'lucide-react';
+import { SnoozeButton } from './SnoozeButton';
+
+// Renders a compact dropdown with all available actions
+export function BannerQuickActions({ 
+  cardId, 
+  pendingActionType,
+  onStartThread,
+  onAskQuestion,
+  onAddComment,
+  onSnooze,
+  onUpload,
+  onRequestSample,
+  colorScheme = 'violet',
+}: BannerQuickActionsProps) {
+  // Color mappings for each banner type
+  const colorClasses = {
+    violet: 'border-violet-300 text-violet-700 hover:bg-violet-100',
+    emerald: 'border-emerald-300 text-emerald-700 hover:bg-emerald-100',
+    blue: 'border-blue-300 text-blue-700 hover:bg-blue-100',
+    amber: 'border-amber-400 text-amber-700 hover:bg-amber-100',
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className={cn("bg-white", colorClasses[colorScheme])}>
+          <Zap className="h-3 w-3 mr-1" />
+          Quick Actions
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {onStartThread && (
+          <DropdownMenuItem onClick={onStartThread}>
+            <Plus className="h-4 w-4 mr-2" />
+            Start New Thread
+          </DropdownMenuItem>
+        )}
+        {onAskQuestion && (
+          <DropdownMenuItem onClick={onAskQuestion}>
+            <HelpCircle className="h-4 w-4 mr-2" />
+            Ask a Question
+          </DropdownMenuItem>
+        )}
+        {onAddComment && (
+          <DropdownMenuItem onClick={onAddComment}>
+            <MessageCircle className="h-4 w-4 mr-2" />
+            Add Comment
+          </DropdownMenuItem>
+        )}
+        {(onStartThread || onAskQuestion || onAddComment) && (onSnooze || onUpload) && (
+          <DropdownMenuSeparator />
+        )}
+        {/* Snooze as a sub-item or separate popover trigger */}
+        {onUpload && (
+          <DropdownMenuItem onClick={onUpload}>
+            <Upload className="h-4 w-4 mr-2" />
+            Upload File
+          </DropdownMenuItem>
+        )}
+        {/* Snooze might need special handling since it has its own popover */}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+```
+
+#### 2. Update `TimelineBanners.tsx`
+
+Replace the multiple `<Button>` elements in each banner with:
+
 ```tsx
-<ThreadedTimeline
-  activities={allActivities}
-  cardId={cardId}
-  currentOwner={currentOwner}
-  pendingActionType={pendingActionType}
-  onResolveQuestion={(id) => resolveQuestionMutation.mutate(id)}
-  onAcknowledgeAnswer={(id) => acknowledgeAnswerMutation.mutate(id)}
-  onOwnerChange={onOwnerChange}
-  isResolving={resolveQuestionMutation.isPending}
-  isAcknowledging={acknowledgeAnswerMutation.isPending}
-  excludeIds={bannerActivityIds}
-/>
+// Example for NewCardBanner:
+<div className="flex flex-wrap gap-2">
+  <BannerQuickActions
+    cardId={cardId}
+    pendingActionType={pendingActionType}
+    onStartThread={onAddComment}  // "Start Thread" maps to comment handler
+    onAskQuestion={onAskQuestion}
+    onSnooze={onSnooze}
+    onUpload={onUpload}
+    colorScheme="violet"
+  />
+</div>
 ```
 
-#### Step 3: Pass exclude IDs for banner activities
-Create a set of activity IDs that are already shown in banners (e.g., first unresolved question, first unacknowledged answer) so they don't duplicate in the timeline.
+#### 3. Handle Snooze Integration
+
+The `SnoozeButton` component has its own popover logic. Options:
+- **Option A**: Move snooze to a sub-menu with preset options
+- **Option B**: Keep Snooze as a visible button next to Quick Actions (recommended for now, since snoozing is time-sensitive)
+
+```tsx
+// Hybrid approach - keep Snooze visible when relevant
+<div className="flex flex-wrap gap-2">
+  <BannerQuickActions ... />
+  <SnoozeButton cardId={cardId} ... />
+</div>
+```
 
 ---
 
-### Summary of Changes
+### Files to Create/Modify
 
-| File | Change |
-|------|--------|
-| `src/components/development/HistoryTimeline.tsx` | 1. Add thread fields to Activity interface |
-| | 2. Replace flat rendering with ThreadedTimeline component |
-| | 3. Pass banner activity IDs to excludeIds prop |
+| File | Action | Description |
+|------|--------|-------------|
+| `src/components/development/BannerQuickActions.tsx` | **Create** | Reusable dropdown for all banner actions |
+| `src/components/development/TimelineBanners.tsx` | **Modify** | Replace multiple buttons with BannerQuickActions |
+| `src/components/development/HistoryTimeline.tsx` | **Modify** | Pass `onStartThread` callback to banners |
 
 ---
 
-### Result After Fix
+### User Experience Benefits
 
-- Threads will be grouped and displayed as collapsible cards
-- Thread titles (auto-generated or custom) will appear in the header
-- System activities (status changes, sample updates) will appear in separate "Activity Log" section
-- Parallel conversations will be clearly organized by topic
+1. **Space Savings**: Single button instead of 3-4 buttons per banner
+2. **Thread Discoverability**: "Start New Thread" is now prominently featured
+3. **Consistency**: All banners use the same action interface
+4. **Scalability**: Easy to add new actions without cluttering UI
+5. **Mobile-Friendly**: Dropdown works better on small screens than multiple buttons
+
+---
+
+### Visual Hierarchy
+
+Keep primary CTAs visible when they're urgent:
+
+| Banner | Visible Button | In Dropdown |
+|--------|----------------|-------------|
+| New Card | None (all in dropdown) | Thread, Question, Snooze, Upload |
+| Commercial Data | Request Sample | Thread, Question, Comment, Upload |
+| Sample In Transit | Mark Arrived | Thread, Question, Comment |
+| Sample Delivered | Review Sample | Thread, Question |
+
+This ensures the most important action per context is always one click away, while secondary actions are organized in the dropdown.
+
