@@ -35,6 +35,8 @@ import { TimelineUploadButton, AttachmentDisplay, UploadedAttachment } from './T
 import { SnoozeButton } from './SnoozeButton';
 import { CommercialDataBanner, SampleInTransitBanner, SampleDeliveredBanner, NewCardBanner, Sample } from './TimelineBanners';
 import { MentionText } from '@/components/notifications/MentionInput';
+import { UserRoleBadge, UserRoleDot } from './UserRoleBadge';
+import { AppRole } from '@/hooks/useUserRole';
 
 interface Activity {
   id: string;
@@ -48,6 +50,7 @@ interface Activity {
     full_name: string | null;
     email: string | null;
   } | null;
+  roles?: AppRole[];
 }
 
 interface HistoryTimelineProps {
@@ -217,6 +220,10 @@ function CompactActivityRow({ activity }: { activity: Activity }) {
       <span className="flex-shrink-0 opacity-70">
         {ACTIVITY_ICONS[activity.activity_type] || ACTIVITY_ICONS.created}
       </span>
+      {/* Role dot before name */}
+      {activity.roles && activity.roles.length > 0 && (
+        <UserRoleDot roles={activity.roles} />
+      )}
       <span className="font-medium">{firstName}</span>
       <span>{label}</span>
       {inlineContent && (
@@ -269,6 +276,10 @@ function CreatedActivityCard({ activity, cardTitle, cardDescription, cardImageUr
           </AvatarFallback>
         </Avatar>
         <span className="font-medium text-foreground">{fullName}</span>
+        {/* Role badge for creator */}
+        {activity.roles && activity.roles.length > 0 && (
+          <UserRoleBadge roles={activity.roles} />
+        )}
         <span>created this card</span>
         <span className="opacity-70">• {format(parseISO(activity.created_at), 'HH:mm')}</span>
       </div>
@@ -1124,14 +1135,28 @@ export function HistoryTimeline({
         .select('user_id, full_name, email')
         .in('user_id', userIds);
 
+      // Fetch roles for activity users
+      const { data: userRoles } = await supabase
+        .from('user_roles')
+        .select('user_id, role')
+        .in('user_id', userIds);
+
       const profileMap = (profiles || []).reduce((acc, p) => {
         acc[p.user_id] = p;
         return acc;
       }, {} as Record<string, { full_name: string | null; email: string | null }>);
 
+      // Build a map of user_id -> roles array
+      const rolesMap = (userRoles || []).reduce((acc, r) => {
+        if (!acc[r.user_id]) acc[r.user_id] = [];
+        acc[r.user_id].push(r.role as AppRole);
+        return acc;
+      }, {} as Record<string, AppRole[]>);
+
       return data.map(activity => ({
         ...activity,
         profile: profileMap[activity.user_id] || null,
+        roles: rolesMap[activity.user_id] || [],
       })) as Activity[];
     },
   });
@@ -1574,6 +1599,10 @@ export function HistoryTimeline({
                         <span className="font-medium text-sm">
                           {activity.profile?.full_name || activity.profile?.email || 'Unknown'}
                         </span>
+                        {/* Role badge for commenter */}
+                        {activity.roles && activity.roles.length > 0 && (
+                          <UserRoleBadge roles={activity.roles} />
+                        )}
                         <span className="flex items-center gap-1 text-xs">
                           {isResolved ? <Check className="h-3.5 w-3.5" /> : (ACTIVITY_ICONS[activity.activity_type] || ACTIVITY_ICONS.comment)}
                           {isResolved ? 'question resolved' : (ACTIVITY_LABELS[activity.activity_type] || activity.activity_type)}
