@@ -17,8 +17,8 @@ interface ThreadedTimelineProps {
   focusReplyThreadId?: string | null;
 }
 
-// Primary activity types that form threads (including sample_requested as auto-threads)
-const THREADABLE_TYPES = ['comment', 'question', 'answer', 'sample_requested'];
+// Primary activity types that form threads (including sample_requested and card_created as auto-threads)
+const THREADABLE_TYPES = ['comment', 'question', 'answer', 'sample_requested', 'card_created'];
 
 function formatDateHeader(dateStr: string): string {
   const date = parseISO(dateStr);

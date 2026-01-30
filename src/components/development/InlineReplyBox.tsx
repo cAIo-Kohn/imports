@@ -23,7 +23,7 @@ interface AssignedUser {
 
 interface InlineReplyBoxProps {
   replyToId: string;
-  replyToType: 'question' | 'answer' | 'comment' | 'sample_requested';
+  replyToType: 'question' | 'answer' | 'comment' | 'sample_requested' | 'card_created';
   cardId: string;
   currentOwner?: 'mor' | 'arc';
   pendingActionType?: string | null;
@@ -33,6 +33,7 @@ interface InlineReplyBoxProps {
   threadCreatorId?: string | null;
   assignedToUsers?: string[];
   assignedToRole?: AppRole | null;
+  cardCreatorId?: string | null; // Used for "Ask Question" to reassign to card creator
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -56,6 +57,7 @@ export function InlineReplyBox({
   threadCreatorId,
   assignedToUsers = [],
   assignedToRole,
+  cardCreatorId,
 }: InlineReplyBoxProps) {
   const [replyContent, setReplyContent] = useState('');
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);

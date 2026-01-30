@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUserRole } from '@/hooks/useUserRole';
+import { useUserRole, AppRole } from '@/hooks/useUserRole';
 import {
   Dialog,
   DialogContent,
@@ -27,6 +27,13 @@ import { DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategor
 import { Package, ListTodo, Plus, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ImageUpload } from './ImageUpload';
+import { ThreadAssignmentSelect } from './ThreadAssignmentSelect';
+
+interface AssignedUser {
+  id: string;
+  name: string;
+  email: string;
+}
 
 interface CreateCardModalProps {
   open: boolean;
@@ -61,6 +68,10 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
   const [groupProducts, setGroupProducts] = useState<GroupProduct[]>([]);
   const [newProductCode, setNewProductCode] = useState('');
   const [newProductName, setNewProductName] = useState('');
+  
+  // Assignment state - required for every card
+  const [assignedUsers, setAssignedUsers] = useState<AssignedUser[]>([]);
+  const [assignedRole, setAssignedRole] = useState<AppRole | null>(null);
 
   // Determine user's role for cross-team notification
   const createdByRole = isTrader ? 'trader' : 'buyer';
@@ -87,10 +98,7 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
           ? 'item_group' 
           : 'item';
 
-      // Determine initial owner: buyer creates → ARC; trader creates → MOR
-      const initialOwner = isTrader ? 'mor' : 'arc';
-
-      // Create the main card with new fields
+      // Create the main card with assignment columns
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: card, error } = await (supabase
         .from('development_items') as any)
@@ -108,9 +116,12 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
           created_by: user?.id,
           created_by_role: createdByRole,
           is_new_for_other_team: true,
-          current_owner: initialOwner,
+          current_owner: 'arc', // Legacy - kept for compatibility
           status: 'backlog',
           is_solved: false,
+          // New assignment columns
+          assigned_to_users: assignedUsers.map(u => u.id),
+          assigned_to_role: assignedRole,
         })
         .select()
         .single();
@@ -134,14 +145,33 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
         if (productsError) throw productsError;
       }
 
-      // Log creation activity
-      await supabase.from('development_card_activity').insert({
+      // Create the "original thread" activity - this auto-creates the main thread for the card
+      const { data: activityData, error: activityError } = await supabase.from('development_card_activity').insert({
         card_id: card.id,
         user_id: user?.id,
-        activity_type: 'created',
-        content: `Created ${cardType === 'task' ? 'task' : cardType === 'item_group' ? 'item group' : 'item'}`,
-        metadata: { card_type: cardType },
-      });
+        activity_type: 'card_created',
+        content: desiredOutcome || `Created: ${title}`,
+        thread_title: title,
+        metadata: { 
+          card_type: cardType,
+          assigned_user_names: assignedUsers.map(u => u.name),
+          assigned_role: assignedRole,
+        },
+        // Thread assignment - matches card assignment
+        assigned_to_users: assignedUsers.map(u => u.id),
+        assigned_to_role: assignedRole,
+        thread_creator_id: user?.id,
+        thread_status: 'open',
+      }).select('id').single();
+
+      if (activityError) throw activityError;
+
+      // Set thread_id and thread_root_id to itself (new thread root)
+      if (activityData?.id) {
+        await supabase.from('development_card_activity')
+          .update({ thread_id: activityData.id, thread_root_id: activityData.id })
+          .eq('id', activityData.id);
+      }
 
       return card;
     },
@@ -177,6 +207,8 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
     setGroupProducts([]);
     setNewProductCode('');
     setNewProductName('');
+    setAssignedUsers([]);
+    setAssignedRole(null);
   };
 
   const handleAddProduct = () => {
@@ -240,6 +272,16 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
       toast({
         title: 'Validation Error',
         description: 'Add at least one product to the group',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Assignment is required
+    if (assignedUsers.length === 0 && !assignedRole) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please assign this card to a user or department',
         variant: 'destructive',
       });
       return;
@@ -438,6 +480,20 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
                   </SelectContent>
                 </Select>
               </div>
+              
+              {/* Assignment - Required */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1">
+                  Assign to <span className="text-destructive">*</span>
+                </Label>
+                <ThreadAssignmentSelect
+                  assignedUsers={assignedUsers}
+                  assignedRole={assignedRole}
+                  onAssignedUsersChange={setAssignedUsers}
+                  onAssignedRoleChange={setAssignedRole}
+                  required
+                />
+              </div>
             </TabsContent>
 
             {/* Task Tab */}
@@ -460,6 +516,20 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
                   onChange={(e) => setDesiredOutcome(e.target.value)}
                   placeholder="Enter description"
                   rows={3}
+                />
+              </div>
+              
+              {/* Assignment - Required for tasks too */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1">
+                  Assign to <span className="text-destructive">*</span>
+                </Label>
+                <ThreadAssignmentSelect
+                  assignedUsers={assignedUsers}
+                  assignedRole={assignedRole}
+                  onAssignedUsersChange={setAssignedUsers}
+                  onAssignedRoleChange={setAssignedRole}
+                  required
                 />
               </div>
             </TabsContent>

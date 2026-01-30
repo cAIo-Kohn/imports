@@ -86,6 +86,9 @@ export interface DevelopmentItem {
   pending_threads_info?: { id: string; title: string; type: string }[];
   // Derived status (computed from pending_action_type, is_solved, etc.)
   derived_status?: DevelopmentCardStatus;
+  // New assignment columns
+  assigned_to_users?: string[] | null;
+  assigned_to_role?: string | null;
 }
 
 // Derive card status automatically from pending_action_type, snooze, and is_solved
@@ -454,11 +457,31 @@ export default function Development() {
     });
   }, [items, deferredSearchTerm, priorityFilter, cardTypeFilter, creatorRoleFilter, showSolved, showDeleted]);
 
-  // Memoized grouped items by owner (MOR/ARC)
-  const { morItems, arcItems } = useMemo(() => ({
-    morItems: filteredItems.filter(item => item.current_owner === 'mor'),
-    arcItems: filteredItems.filter(item => item.current_owner === 'arc'),
-  }), [filteredItems]);
+  // Filter items into "My Pending" and "Other Cards" based on assignment
+  const { myPendingItems, otherItems } = useMemo(() => {
+    const userId = user?.id;
+    const userRolesArray = isTrader ? ['trader'] : isAdmin ? ['admin', 'buyer', 'quality', 'marketing'] : 
+      ['buyer', 'quality', 'marketing']; // Default for MOR team
+    
+    const myPending = filteredItems.filter(item => {
+      // Check if assigned to current user
+      if (item.assigned_to_users?.includes(userId || '')) return true;
+      // Check if assigned to user's role
+      if (item.assigned_to_role && userRolesArray.includes(item.assigned_to_role)) return true;
+      // Legacy: check pending threads for user's team
+      if (item.pending_threads_count && item.pending_threads_count > 0) return true;
+      return false;
+    });
+    
+    const others = filteredItems.filter(item => {
+      if (item.assigned_to_users?.includes(userId || '')) return false;
+      if (item.assigned_to_role && userRolesArray.includes(item.assigned_to_role)) return false;
+      if (item.pending_threads_count && item.pending_threads_count > 0) return false;
+      return true;
+    });
+    
+    return { myPendingItems: myPending, otherItems: others };
+  }, [filteredItems, user?.id, isTrader, isAdmin]);
 
   // Stabilized event handlers
   const handleCardClick = useCallback((itemId: string) => {
@@ -484,41 +507,10 @@ export default function Development() {
   // Check if user can manage (admin, buyer, or trader)
   const canManage = canManageOrders || isTrader;
 
-  const handleDropToOwner = useCallback(async (e: React.DragEvent, targetOwner: DevelopmentCardOwner) => {
+  const handleDropToSection = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
-    const itemId = e.dataTransfer.getData('itemId');
-    if (!itemId || !canManage) return;
-
-    const item = items.find(i => i.id === itemId);
-    if (!item || item.current_owner === targetOwner) return;
-
-    // Update the owner
-    const { error } = await (supabase.from('development_items') as any)
-      .update({ 
-        current_owner: targetOwner,
-        is_new_for_other_team: true,
-      })
-      .eq('id', itemId);
-
-    if (error) {
-      toast({ title: 'Error', description: 'Failed to move card', variant: 'destructive' });
-      return;
-    }
-
-    // Log the movement
-    if (user?.id) {
-      await supabase.from('development_card_activity').insert({
-        card_id: itemId,
-        user_id: user.id,
-        activity_type: 'ownership_change',
-        content: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}`,
-        metadata: { new_owner: targetOwner },
-      });
-    }
-
-    queryClient.invalidateQueries({ queryKey: ['development-items'] });
-    toast({ title: 'Success', description: `Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}` });
-  }, [items, canManage, user?.id, queryClient]);
+    // No-op for now - cards are moved via assignment, not drag-drop
+  }, []);
 
   const selectedItem = items.find(item => item.id === selectedItemId);
 
@@ -719,36 +711,36 @@ export default function Development() {
 
       {/* Main Content - conditionally render based on view mode */}
       {viewMode === 'cards' ? (
-        /* Two-Section Layout: MOR / ARC */
+        /* Unified Card Layout: My Pending / All Cards */
         <div className="flex-1 min-w-0 overflow-hidden p-4 md:p-6">
           <div className="flex gap-4 md:gap-6 h-full">
-            {/* MOR (Brazil) Section */}
+            {/* My Pending Section */}
             <TeamSection
-              title="MOR (Brazil)"
-              subtitle="Cards waiting for Brazil's input"
-              items={morItems}
-              colorClass="border-blue-300 bg-blue-50/30"
-              flagEmoji="🇧🇷"
+              title="My Pending"
+              subtitle="Cards assigned to you or your role"
+              items={myPendingItems}
+              colorClass="border-amber-300 bg-amber-50/30"
+              flagEmoji="📌"
               onCardClick={handleCardClick}
               onCardClickThread={handleCardClickThread}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
-              onDrop={(e) => handleDropToOwner(e, 'mor')}
+              onDrop={handleDropToSection}
               canManage={canManage}
             />
 
-            {/* ARC (China) Section */}
+            {/* All Other Cards Section */}
             <TeamSection
-              title="ARC (China)"
-              subtitle="Cards waiting for China's action"
-              items={arcItems}
-              colorClass="border-emerald-300 bg-emerald-50/30"
-              flagEmoji="🇨🇳"
+              title="All Cards"
+              subtitle="All development cards"
+              items={otherItems}
+              colorClass="border-slate-300 bg-slate-50/30"
+              flagEmoji="📋"
               onCardClick={handleCardClick}
               onCardClickThread={handleCardClickThread}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
-              onDrop={(e) => handleDropToOwner(e, 'arc')}
+              onDrop={handleDropToSection}
               canManage={canManage}
             />
           </div>
