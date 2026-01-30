@@ -78,6 +78,8 @@ export interface DevelopmentItem {
   pending_action_due_at?: string | null;
   pending_action_snoozed_until?: string | null;
   pending_action_snoozed_by?: string | null;
+  // Pending threads count for current user's team
+  pending_threads_count?: number;
   // Derived status (computed from pending_action_type, is_solved, etc.)
   derived_status?: DevelopmentCardStatus;
 }
@@ -194,8 +196,8 @@ export default function Development() {
       // Get unique creator user IDs
       const creatorIds = [...new Set(data.map(item => item.created_by).filter(Boolean))];
 
-      // Fetch sample counts, product counts, latest activity, user views, creator profiles, unresolved questions, and unacknowledged answers in parallel
-      const [sampleCountsRes, productCountsRes, latestActivitiesRes, userViewsRes, creatorProfilesRes, unresolvedQuestionsRes, unacknowledgedAnswersRes] = await Promise.all([
+      // Fetch sample counts, product counts, latest activity, user views, creator profiles, unresolved questions, unacknowledged answers, and pending threads in parallel
+      const [sampleCountsRes, productCountsRes, latestActivitiesRes, userViewsRes, creatorProfilesRes, unresolvedQuestionsRes, unacknowledgedAnswersRes, pendingThreadsRes] = await Promise.all([
         supabase
           .from('development_item_samples')
           .select('item_id')
@@ -234,6 +236,13 @@ export default function Development() {
           .select('card_id, metadata')
           .eq('activity_type', 'answer')
           .in('card_id', itemIds),
+        // Fetch pending threads (thread roots with pending_for_team set and not resolved)
+        supabase
+          .from('development_card_activity')
+          .select('card_id, pending_for_team')
+          .in('card_id', itemIds)
+          .not('pending_for_team', 'is', null)
+          .is('thread_resolved_at', null),
       ]);
 
       const sampleCountMap = (sampleCountsRes.data || []).reduce((acc, s) => {
@@ -284,6 +293,17 @@ export default function Development() {
         }
       }
 
+      // Compute pending threads count per card for user's team
+      // Determine user's team based on role
+      const userTeam = isTrader ? 'arc' : 'mor';
+      const pendingThreadsCountMap = (pendingThreadsRes.data || []).reduce((acc, pt) => {
+        // Only count threads pending for the user's team
+        if (pt.pending_for_team === userTeam) {
+          acc[pt.card_id] = (acc[pt.card_id] || 0) + 1;
+        }
+        return acc;
+      }, {} as Record<string, number>);
+
       return data.map(item => {
         // Compute effective pending action type
         let effectivePendingActionType = item.pending_action_type;
@@ -322,6 +342,7 @@ export default function Development() {
           last_viewed_at: userViewMap[item.id] || null,
           creator_name: creatorNameMap[item.created_by] || null,
           pending_action_type: effectivePendingActionType,
+          pending_threads_count: pendingThreadsCountMap[item.id] || 0,
           derived_status: derivedStatus,
         };
       }) as DevelopmentItem[];
