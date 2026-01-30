@@ -1,11 +1,15 @@
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
-import { ChevronDown, ChevronRight, MessageCircle, HelpCircle, Reply } from 'lucide-react';
+import { ChevronDown, ChevronRight, MessageCircle, HelpCircle, Reply, Pencil, Check, X } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
+import { toast } from '@/hooks/use-toast';
 import { ThreadMessage } from './ThreadMessage';
 import { InlineReplyBox } from './InlineReplyBox';
 import { UserRoleBadge } from './UserRoleBadge';
@@ -21,6 +25,7 @@ export interface ThreadActivity {
   created_at: string;
   thread_id: string | null;
   thread_root_id: string | null;
+  thread_title: string | null;
   profile?: {
     full_name: string | null;
     email: string | null;
@@ -53,8 +58,11 @@ export function ThreadCard({
   isAcknowledging,
   defaultOpen = false,
 }: ThreadCardProps) {
+  const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState('');
 
   // Sort activities by created_at ascending (oldest first within thread)
   const sortedActivities = [...activities].sort(
@@ -74,8 +82,9 @@ export function ThreadCard({
   const latestActivity = sortedActivities[sortedActivities.length - 1];
   const latestTime = format(parseISO(latestActivity.created_at), 'dd/MM HH:mm');
 
-  // Thread title - use first few words of root message or activity type
+  // Thread title - prioritize custom title, fallback to first few words
   const getThreadTitle = () => {
+    if (rootActivity.thread_title) return rootActivity.thread_title;
     if (rootActivity.content) {
       const words = rootActivity.content.split(' ').slice(0, 6).join(' ');
       return words.length < rootActivity.content.length ? `${words}...` : words;
@@ -83,6 +92,42 @@ export function ThreadCard({
     if (rootActivity.activity_type === 'question') return 'Question';
     if (rootActivity.activity_type === 'comment') return 'Comment';
     return 'Discussion';
+  };
+
+  // Update thread title mutation
+  const updateTitleMutation = useMutation({
+    mutationFn: async (newTitle: string) => {
+      const { error } = await supabase
+        .from('development_card_activity')
+        .update({ thread_title: newTitle.trim() || null })
+        .eq('id', rootActivity.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+      setIsEditingTitle(false);
+      toast({ title: 'Thread title updated' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to update title', variant: 'destructive' });
+    },
+  });
+
+  const handleStartEditTitle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditedTitle(rootActivity.thread_title || '');
+    setIsEditingTitle(true);
+  };
+
+  const handleSaveTitle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    updateTitleMutation.mutate(editedTitle);
+  };
+
+  const handleCancelEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsEditingTitle(false);
+    setEditedTitle('');
   };
 
   // Determine thread icon and color based on root activity
@@ -110,7 +155,7 @@ export function ThreadCard({
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <div className={cn("rounded-lg border", getThreadStyle())}>
+      <div className={cn("rounded-lg border group", getThreadStyle())}>
         {/* Thread Header - Always Visible */}
         <CollapsibleTrigger className="w-full">
           <div className="flex items-center gap-3 p-3 hover:bg-muted/30 transition-colors cursor-pointer">
@@ -130,16 +175,63 @@ export function ThreadCard({
             {/* Thread Title & Meta */}
             <div className="flex-1 min-w-0 text-left">
               <div className="flex items-center gap-2">
-                <span className={cn(
-                  "font-medium text-sm truncate",
-                  isResolved && "line-through opacity-70"
-                )}>
-                  {getThreadTitle()}
-                </span>
-                {isResolved && (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200">
-                    Resolved
-                  </Badge>
+                {isEditingTitle ? (
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <Input
+                      value={editedTitle}
+                      onChange={(e) => setEditedTitle(e.target.value)}
+                      placeholder="Enter thread title..."
+                      className="h-6 text-sm px-2 w-48"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          updateTitleMutation.mutate(editedTitle);
+                        } else if (e.key === 'Escape') {
+                          setIsEditingTitle(false);
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={handleSaveTitle}
+                      disabled={updateTitleMutation.isPending}
+                    >
+                      <Check className="h-3 w-3 text-green-600" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={handleCancelEdit}
+                    >
+                      <X className="h-3 w-3 text-muted-foreground" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <span className={cn(
+                      "font-medium text-sm truncate",
+                      isResolved && "line-through opacity-70"
+                    )}>
+                      {getThreadTitle()}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={handleStartEditTitle}
+                    >
+                      <Pencil className="h-3 w-3 text-muted-foreground" />
+                    </Button>
+                    {isResolved && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200">
+                        Resolved
+                      </Badge>
+                    )}
+                  </>
                 )}
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">

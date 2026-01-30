@@ -74,6 +74,7 @@ export type Database = {
           metadata: Json | null
           thread_id: string | null
           thread_root_id: string | null
+          thread_title: string | null
           user_id: string
         }
         Insert: {
@@ -85,6 +86,7 @@ export type Database = {
           metadata?: Json | null
           thread_id?: string | null
           thread_root_id?: string | null
+          thread_title?: string | null
           user_id: string
         }
         Update: {
@@ -96,6 +98,7 @@ export type Database = {
           metadata?: Json | null
           thread_id?: string | null
           thread_root_id?: string | null
+          thread_title?: string | null
           user_id?: string
         }
         Relationships: [
