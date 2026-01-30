@@ -176,7 +176,7 @@ export function ThreadCard({
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <div className={cn("rounded-lg border group", getThreadStyle())}>
+      <div id={`thread-${rootActivity.id}`} className={cn("rounded-lg border group", getThreadStyle())}>
         {/* Thread Header - Always Visible */}
         <CollapsibleTrigger className="w-full">
           <div className="flex items-center gap-3 p-3 hover:bg-muted/30 transition-colors cursor-pointer">

@@ -32,11 +32,21 @@ Added to `development_card_activity` table:
 - Resolved threads show:
   - Green styling with "Resolved" badge
 
+### UI Display (PendingThreadsBanner)
+- Collapsible banner at the top of the timeline showing all pending threads for current team
+- Each thread shows: icon, title, author, timestamp, content preview
+- Quick action buttons appear on hover for each thread type:
+  - Sample requests: "Add tracking" button
+  - Questions: "Answer question" button
+  - Answers: "Acknowledge" button
+- Clicking a thread scrolls to it in the timeline
+
 ## Files Modified
-- `src/components/development/ThreadCard.tsx` - Display per-thread pending status
+- `src/components/development/ThreadCard.tsx` - Display per-thread pending status, added id for scroll targeting
 - `src/components/development/NewThreadComposer.tsx` - Set pending_for_team on new threads
 - `src/components/development/InlineReplyBox.tsx` - Update thread root pending status on replies
-- `src/components/development/HistoryTimeline.tsx` - Update pending status on resolve/acknowledge
+- `src/components/development/HistoryTimeline.tsx` - Update pending status on resolve/acknowledge, calculate pending threads, render PendingThreadsBanner
+- `src/components/development/PendingThreadsBanner.tsx` - NEW: Banner component showing all pending threads for current team
 
 ## Migration
 ```sql

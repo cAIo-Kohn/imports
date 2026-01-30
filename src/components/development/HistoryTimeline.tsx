@@ -40,6 +40,7 @@ import { AppRole } from '@/hooks/useUserRole';
 import { ThreadedTimeline } from './ThreadedTimeline';
 import { CompactActivityRow } from './CompactActivityRow';
 import { NewThreadComposer } from './NewThreadComposer';
+import { PendingThreadsBanner } from './PendingThreadsBanner';
 
 interface Activity {
   id: string;
@@ -1277,6 +1278,27 @@ export function HistoryTimeline({
   // Filter activities for timeline (exclude ones shown in banners)
   const timelineActivities = allActivities.filter(a => !bannerActivityIds.has(a.id));
 
+  // Calculate pending threads for current team
+  const pendingThreads = allActivities
+    .filter(a => 
+      // Only thread roots (have pending_for_team set)
+      a.pending_for_team && 
+      // Not resolved yet
+      !a.thread_resolved_at &&
+      // Pending for current team
+      a.pending_for_team === currentOwner
+    )
+    .map(a => ({
+      id: a.id,
+      title: a.thread_title || a.content?.split(' ').slice(0, 6).join(' ') || 'Thread',
+      type: a.activity_type as 'question' | 'sample_requested' | 'comment' | 'answer',
+      content: a.content,
+      createdAt: a.created_at,
+      authorName: a.profile?.full_name || null,
+      authorEmail: a.profile?.email || null,
+      pendingForTeam: a.pending_for_team as 'mor' | 'arc',
+    }));
+
   const groupedActivities = groupByDate(timelineActivities);
   const sortedDates = Object.keys(groupedActivities).sort((a, b) => b.localeCompare(a));
 
@@ -1408,6 +1430,23 @@ export function HistoryTimeline({
 
   return (
     <div className="space-y-6 py-4">
+      {/* Pending Threads Banner - shows all threads awaiting current team action */}
+      {pendingThreads.length > 0 && (
+        <PendingThreadsBanner
+          threads={pendingThreads}
+          currentOwner={currentOwner}
+          onThreadClick={(threadId) => {
+            // Scroll to the thread or expand it - handled by ThreadedTimeline
+            const element = document.getElementById(`thread-${threadId}`);
+            element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }}
+          onQuickReply={(threadId) => {
+            // Find the thread and open inline reply for it
+            const element = document.getElementById(`thread-${threadId}`);
+            element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }}
+        />
+      )}
       {/* Sample Approved Banner - for closing the card */}
       {showSampleApprovedBanner && cardCreatedBy && onOpenMessageSection && (
         <SampleApprovedBanner
