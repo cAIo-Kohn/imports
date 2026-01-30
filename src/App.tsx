@@ -116,57 +116,57 @@ const AppRoutes = () => (
     
     {/* Rotas que traders NÃO podem acessar */}
     <Route path="/products" element={
-      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'viewer']}>
+      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'quality', 'marketing', 'viewer']}>
         <Products />
       </RoleProtectedRoute>
     } />
     <Route path="/products/:id" element={
-      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'viewer']}>
+      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'quality', 'marketing', 'viewer']}>
         <ProductDetails />
       </RoleProtectedRoute>
     } />
     <Route path="/units" element={
-      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'viewer']}>
+      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'quality', 'marketing', 'viewer']}>
         <Units />
       </RoleProtectedRoute>
     } />
     <Route path="/suppliers" element={
-      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'viewer']}>
+      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'quality', 'marketing', 'viewer']}>
         <Suppliers />
       </RoleProtectedRoute>
     } />
     <Route path="/suppliers/:id" element={
-      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'viewer']}>
+      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'quality', 'marketing', 'viewer']}>
         <SupplierDetails />
       </RoleProtectedRoute>
     } />
     <Route path="/categories" element={
-      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'viewer']}>
+      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'quality', 'marketing', 'viewer']}>
         <Categories />
       </RoleProtectedRoute>
     } />
     <Route path="/settings" element={
-      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'viewer']}>
+      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'quality', 'marketing', 'viewer']}>
         <Settings />
       </RoleProtectedRoute>
     } />
     <Route path="/demand-planning" element={
-      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'viewer']}>
+      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'quality', 'marketing', 'viewer']}>
         <DemandPlanning />
       </RoleProtectedRoute>
     } />
     <Route path="/demand-planning/:id" element={
-      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'viewer']}>
+      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'quality', 'marketing', 'viewer']}>
         <SupplierPlanning />
       </RoleProtectedRoute>
     } />
     <Route path="/purchase-orders" element={
-      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'viewer']}>
+      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'quality', 'marketing', 'viewer']}>
         <PurchaseOrders />
       </RoleProtectedRoute>
     } />
     <Route path="/purchase-orders/:id" element={
-      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'viewer', 'trader']}>
+      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'quality', 'marketing', 'viewer', 'trader']}>
         <PurchaseOrderDetails />
       </RoleProtectedRoute>
     } />
