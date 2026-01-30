@@ -52,6 +52,8 @@ interface Activity {
   thread_id: string | null;
   thread_root_id: string | null;
   thread_title: string | null;
+  pending_for_team: 'mor' | 'arc' | null;
+  thread_resolved_at: string | null;
   profile?: {
     full_name: string | null;
     email: string | null;
@@ -698,21 +700,32 @@ function useRequestSample(cardId: string, currentOwner: 'mor' | 'arc', onOwnerCh
       
       if (sampleError) throw sampleError;
       
-      // 2. Log sample_requested activity with embedded move info
-      const { error: activityError } = await supabase
+      // 2. Log sample_requested activity with embedded move info - creates its own thread
+      const { data: activityData, error: activityError } = await supabase
         .from('development_card_activity')
         .insert({
           card_id: cardId,
           user_id: user.id,
           activity_type: 'sample_requested',
           content: 'Sample requested',
+          thread_title: 'Sample Request',
           metadata: {
             moved_from: currentOwner,
             moved_to: targetOwner,
           },
-        });
+          pending_for_team: targetOwner, // ARC (China) needs to add tracking
+        })
+        .select('id')
+        .single();
       
       if (activityError) throw activityError;
+
+      // 3. Set thread_id and thread_root_id to itself (new thread root)
+      if (activityData?.id) {
+        await supabase.from('development_card_activity')
+          .update({ thread_id: activityData.id, thread_root_id: activityData.id })
+          .eq('id', activityData.id);
+      }
 
       // 3. Move card to ARC (China) and set pending action for sample tracking
       const { error: moveError } = await (supabase.from('development_items') as any)
@@ -976,10 +989,10 @@ export function HistoryTimeline({
     mutationFn: async (activityId: string) => {
       if (!user?.id) throw new Error('Not authenticated');
       
-      // 1. Fetch existing metadata to preserve attachments
+      // 1. Fetch existing metadata and thread info to preserve attachments
       const { data: currentActivity, error: fetchError } = await supabase
         .from('development_card_activity')
-        .select('metadata')
+        .select('metadata, thread_id, thread_root_id')
         .eq('id', activityId)
         .single();
       
@@ -1002,7 +1015,17 @@ export function HistoryTimeline({
       
       if (error) throw error;
 
-      // 3. Clear pending action on the card if it was a question
+      // 3. Mark the thread root as resolved (clear pending_for_team, set thread_resolved_at)
+      const threadRootId = currentActivity?.thread_root_id || currentActivity?.thread_id || activityId;
+      await supabase
+        .from('development_card_activity')
+        .update({ 
+          pending_for_team: null,
+          thread_resolved_at: new Date().toISOString(),
+        })
+        .eq('id', threadRootId);
+
+      // 4. Clear pending action on the card if it was a question
       await (supabase.from('development_items') as any)
         .update({
           pending_action_type: null,
@@ -1027,10 +1050,10 @@ export function HistoryTimeline({
     mutationFn: async (activityId: string) => {
       if (!user?.id) throw new Error('Not authenticated');
       
-      // 1. Fetch current metadata and merge with acknowledged fields
+      // 1. Fetch current metadata, thread info, and merge with acknowledged fields
       const { data: currentActivity, error: fetchError } = await supabase
         .from('development_card_activity')
-        .select('metadata')
+        .select('metadata, thread_id, thread_root_id')
         .eq('id', activityId)
         .single();
       
@@ -1053,7 +1076,17 @@ export function HistoryTimeline({
       
       if (error) throw error;
 
-      // 3. Clear pending action on the card
+      // 3. Mark the thread root as resolved (clear pending_for_team, set thread_resolved_at)
+      const threadRootId = currentActivity?.thread_root_id || currentActivity?.thread_id || activityId;
+      await supabase
+        .from('development_card_activity')
+        .update({ 
+          pending_for_team: null,
+          thread_resolved_at: new Date().toISOString(),
+        })
+        .eq('id', threadRootId);
+
+      // 4. Clear pending action on the card
       await (supabase.from('development_items') as any)
         .update({
           pending_action_type: null,

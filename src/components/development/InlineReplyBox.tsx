@@ -132,13 +132,15 @@ export function InlineReplyBox({
         },
         thread_id: effectiveThreadId,
         thread_root_id: effectiveThreadId,
+        // Answer goes to the target team, so they have pending action
+        pending_for_team: targetOwner,
       });
       if (insertError) throw insertError;
 
       // 2. Fetch existing metadata from the question to preserve attachments
       const { data: questionActivity, error: fetchError } = await supabase
         .from('development_card_activity')
-        .select('metadata')
+        .select('metadata, thread_id, thread_root_id')
         .eq('id', replyToId)
         .single();
 
@@ -159,6 +161,14 @@ export function InlineReplyBox({
         })
         .eq('id', replyToId);
       if (resolveError) throw resolveError;
+
+      // 4. Update the thread root's pending_for_team to the target (answer receiver)
+      const threadRootId = questionActivity?.thread_root_id || questionActivity?.thread_id || replyToId;
+      const { error: threadRootError } = await supabase
+        .from('development_card_activity')
+        .update({ pending_for_team: targetOwner })
+        .eq('id', threadRootId);
+      if (threadRootError) throw threadRootError;
 
       // 4. Move card to other team and set answer_pending
       const { error: moveError } = await (supabase.from('development_items') as any)
@@ -214,10 +224,19 @@ export function InlineReplyBox({
         },
         thread_id: effectiveThreadId,
         thread_root_id: effectiveThreadId,
+        // Follow-up question goes to the target team
+        pending_for_team: targetOwner,
       });
       if (insertError) throw insertError;
 
-      // 2. Move card to other team and set question pending
+      // 2. Update the thread root's pending_for_team to the target (follow-up question receiver)
+      const { error: threadRootError } = await supabase
+        .from('development_card_activity')
+        .update({ pending_for_team: targetOwner })
+        .eq('id', effectiveThreadId);
+      if (threadRootError) throw threadRootError;
+
+      // 3. Move card to other team and set question pending
       const { error: moveError } = await (supabase.from('development_items') as any)
         .update({ 
           current_owner: targetOwner,

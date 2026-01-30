@@ -72,7 +72,9 @@ export type Database = {
           created_at: string
           id: string
           metadata: Json | null
+          pending_for_team: string | null
           thread_id: string | null
+          thread_resolved_at: string | null
           thread_root_id: string | null
           thread_title: string | null
           user_id: string
@@ -84,7 +86,9 @@ export type Database = {
           created_at?: string
           id?: string
           metadata?: Json | null
+          pending_for_team?: string | null
           thread_id?: string | null
+          thread_resolved_at?: string | null
           thread_root_id?: string | null
           thread_title?: string | null
           user_id: string
@@ -96,7 +100,9 @@ export type Database = {
           created_at?: string
           id?: string
           metadata?: Json | null
+          pending_for_team?: string | null
           thread_id?: string | null
+          thread_resolved_at?: string | null
           thread_root_id?: string | null
           thread_title?: string | null
           user_id?: string

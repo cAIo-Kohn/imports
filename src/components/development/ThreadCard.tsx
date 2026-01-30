@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
-import { ChevronDown, ChevronRight, MessageCircle, HelpCircle, Reply, Pencil, Check, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, MessageCircle, HelpCircle, Reply, Pencil, Check, X, Package, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +26,8 @@ export interface ThreadActivity {
   thread_id: string | null;
   thread_root_id: string | null;
   thread_title: string | null;
+  pending_for_team: 'mor' | 'arc' | null;
+  thread_resolved_at: string | null;
   profile?: {
     full_name: string | null;
     email: string | null;
@@ -132,17 +134,36 @@ export function ThreadCard({
 
   // Determine thread icon and color based on root activity
   const isQuestion = rootActivity.activity_type === 'question';
-  const isResolved = isQuestion && rootActivity.metadata?.resolved;
+  const isSampleRelated = rootActivity.activity_type === 'sample_requested';
+  const isResolved = rootActivity.thread_resolved_at !== null || (isQuestion && rootActivity.metadata?.resolved);
+  
+  // Thread-level pending status (who needs to act on this thread)
+  const pendingForTeam = rootActivity.pending_for_team;
+  const isThreadPending = pendingForTeam && !isResolved;
   
   const getThreadStyle = () => {
     if (isResolved) return 'border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/20';
+    if (isThreadPending && pendingForTeam === currentOwner) {
+      // This team needs to act - highlight more prominently
+      return 'border-amber-300 bg-amber-50/50 dark:border-amber-700 dark:bg-amber-950/20 ring-1 ring-amber-300 dark:ring-amber-700';
+    }
+    if (isSampleRelated) return 'border-cyan-200 bg-cyan-50/50 dark:border-cyan-800 dark:bg-cyan-950/20';
     if (isQuestion) return 'border-purple-200 bg-purple-50/50 dark:border-purple-800 dark:bg-purple-950/20';
     return 'border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20';
   };
 
   const getThreadIcon = () => {
+    if (isSampleRelated) return <Package className="h-4 w-4" />;
     if (isQuestion) return <HelpCircle className="h-4 w-4" />;
     return <MessageCircle className="h-4 w-4" />;
+  };
+  
+  const getThreadIconColor = () => {
+    if (isResolved) return 'text-green-600';
+    if (isThreadPending && pendingForTeam === currentOwner) return 'text-amber-600';
+    if (isSampleRelated) return 'text-cyan-600';
+    if (isQuestion) return 'text-purple-600';
+    return 'text-blue-600';
   };
 
   const getInitials = (profile: ThreadActivity['profile']) => {
@@ -165,10 +186,7 @@ export function ThreadCard({
             </div>
             
             {/* Thread Icon */}
-            <div className={cn(
-              "flex-shrink-0",
-              isResolved ? "text-green-600" : isQuestion ? "text-purple-600" : "text-blue-600"
-            )}>
+            <div className={cn("flex-shrink-0", getThreadIconColor())}>
               {getThreadIcon()}
             </div>
             
@@ -229,6 +247,18 @@ export function ThreadCard({
                     {isResolved && (
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-green-100 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-700 dark:text-green-200">
                         Resolved
+                      </Badge>
+                    )}
+                    {/* Pending for team badge */}
+                    {isThreadPending && (
+                      <Badge variant="outline" className={cn(
+                        "text-[10px] px-1.5 py-0 flex items-center gap-1",
+                        pendingForTeam === currentOwner 
+                          ? "bg-amber-100 border-amber-400 text-amber-700 dark:bg-amber-900 dark:border-amber-600 dark:text-amber-200 animate-pulse"
+                          : "bg-muted border-muted-foreground/30 text-muted-foreground"
+                      )}>
+                        {pendingForTeam === currentOwner && <AlertCircle className="h-2.5 w-2.5" />}
+                        {pendingForTeam === 'mor' ? '🇧🇷' : '🇨🇳'} {pendingForTeam === currentOwner ? 'Your turn' : 'Waiting'}
                       </Badge>
                     )}
                   </>
