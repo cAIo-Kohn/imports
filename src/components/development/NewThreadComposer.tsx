@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { MessageCircle, HelpCircle, ArrowRight, X } from 'lucide-react';
+import { MessageCircle, X, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,6 +10,14 @@ import { toast } from '@/hooks/use-toast';
 import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton';
 import { MentionInput } from '@/components/notifications/MentionInput';
 import { createMentionNotifications } from '@/hooks/useNotifications';
+import { ThreadAssignmentSelect } from './ThreadAssignmentSelect';
+import { AppRole } from '@/hooks/useUserRole';
+
+interface AssignedUser {
+  id: string;
+  name: string;
+  email: string;
+}
 
 interface NewThreadComposerProps {
   cardId: string;
@@ -33,6 +41,8 @@ export function NewThreadComposer({
   const [threadTitle, setThreadTitle] = useState('');
   const [messageContent, setMessageContent] = useState('');
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
+  const [assignedUsers, setAssignedUsers] = useState<AssignedUser[]>([]);
+  const [assignedRole, setAssignedRole] = useState<AppRole | null>(null);
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -56,8 +66,8 @@ export function NewThreadComposer({
     },
   });
 
-  // Post as comment (no move)
-  const postCommentMutation = useMutation({
+  // Post thread with assignment
+  const postThreadMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id || (!messageContent.trim() && attachments.length === 0)) return;
 
@@ -66,7 +76,12 @@ export function NewThreadComposer({
         metadata.attachments = attachments.map(a => ({ id: a.id, name: a.name, url: a.url, type: a.type }));
       }
 
-      // Insert the comment (no pending_for_team since comments don't require action)
+      // Store assigned user names for display
+      if (assignedUsers.length > 0) {
+        metadata.assigned_user_names = assignedUsers.map(u => u.name);
+      }
+
+      // Insert the thread root with assignment info
       const { data, error } = await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
@@ -74,7 +89,10 @@ export function NewThreadComposer({
         content: messageContent.trim() || null,
         thread_title: threadTitle.trim() || null,
         metadata: Object.keys(metadata).length > 0 ? metadata : null,
-        pending_for_team: null, // Comments don't require action from either team
+        assigned_to_users: assignedUsers.map(u => u.id),
+        assigned_to_role: assignedRole,
+        thread_creator_id: user.id,
+        thread_status: 'open',
       }).select('id').single();
       if (error) throw error;
 
@@ -84,7 +102,22 @@ export function NewThreadComposer({
           .update({ thread_id: data.id, thread_root_id: data.id })
           .eq('id', data.id);
 
-        // Create mention notifications
+        // Create mention notifications for assigned users
+        for (const assignedUser of assignedUsers) {
+          if (assignedUser.id !== user.id) {
+            await supabase.from('notifications').insert({
+              user_id: assignedUser.id,
+              triggered_by: user.id,
+              type: 'thread_assigned',
+              title: `You were assigned to a thread`,
+              content: threadTitle.trim() || messageContent.trim().slice(0, 100) || 'New thread',
+              card_id: cardId,
+              activity_id: data.id,
+            });
+          }
+        }
+
+        // Also create @mention notifications from content
         if (messageContent.trim()) {
           await createMentionNotifications({
             text: messageContent,
@@ -108,83 +141,12 @@ export function NewThreadComposer({
     },
   });
 
-  // Post as question (moves card)
-  const postQuestionMutation = useMutation({
-    mutationFn: async () => {
-      if (!user?.id || (!messageContent.trim() && attachments.length === 0)) return;
-
-      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
-
-      const metadata: Record<string, any> = {
-        moved_from: currentOwner,
-        moved_to: targetOwner,
-      };
-      if (attachments.length > 0) {
-        metadata.attachments = attachments.map(a => ({ id: a.id, name: a.name, url: a.url, type: a.type }));
-      }
-
-      // Insert the question with pending_for_team set to target team
-      const { data, error } = await supabase.from('development_card_activity').insert({
-        card_id: cardId,
-        user_id: user.id,
-        activity_type: 'question',
-        content: messageContent.trim() || null,
-        thread_title: threadTitle.trim() || null,
-        metadata,
-        pending_for_team: targetOwner, // The receiving team needs to act
-      }).select('id').single();
-      if (error) throw error;
-
-      // Set thread_id and thread_root_id to itself (new thread root)
-      if (data?.id) {
-        await supabase.from('development_card_activity')
-          .update({ thread_id: data.id, thread_root_id: data.id })
-          .eq('id', data.id);
-
-        // Create mention notifications
-        if (messageContent.trim()) {
-          await createMentionNotifications({
-            text: messageContent,
-            cardId,
-            activityId: data.id,
-            triggeredBy: user.id,
-            cardTitle: cardData?.title || 'Development Card',
-          });
-        }
-      }
-
-      // Update card: set pending action and move to other team
-      const { error: cardError } = await (supabase.from('development_items') as any)
-        .update({
-          current_owner: targetOwner,
-          is_new_for_other_team: true,
-          pending_action_type: 'question',
-          pending_action_due_at: null,
-          pending_action_snoozed_until: null,
-          pending_action_snoozed_by: null,
-        })
-        .eq('id', cardId);
-      if (cardError) throw cardError;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
-      queryClient.invalidateQueries({ queryKey: ['development-items'] });
-      const targetOwner = currentOwner === 'arc' ? 'mor' : 'arc';
-      toast({ title: `Question posted. Card moved to ${targetOwner === 'mor' ? 'MOR (Brazil)' : 'ARC (China)'}` });
-      resetForm();
-      onActionComplete?.();
-      onClose();
-      onCardMove?.();
-    },
-    onError: () => {
-      toast({ title: 'Error', description: 'Failed to post question', variant: 'destructive' });
-    },
-  });
-
   const resetForm = () => {
     setThreadTitle('');
     setMessageContent('');
     setAttachments([]);
+    setAssignedUsers([]);
+    setAssignedRole(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -193,9 +155,9 @@ export function NewThreadComposer({
     }
   };
 
-  const isPending = postCommentMutation.isPending || postQuestionMutation.isPending;
-  const canSubmit = messageContent.trim() || attachments.length > 0;
-  const targetTeam = currentOwner === 'arc' ? 'MOR' : 'ARC';
+  const isPending = postThreadMutation.isPending;
+  const hasAssignment = assignedUsers.length > 0 || assignedRole !== null;
+  const canSubmit = (messageContent.trim() || attachments.length > 0) && hasAssignment;
 
   // Color scheme classes
   const bgClasses: Record<string, string> = {
@@ -239,8 +201,23 @@ export function NewThreadComposer({
         disabled={isPending}
       />
 
+      {/* Assignment Section */}
+      <div className="mt-3">
+        <Label className="text-xs text-muted-foreground mb-1.5 block">
+          Assign to (required)
+        </Label>
+        <ThreadAssignmentSelect
+          assignedUsers={assignedUsers}
+          assignedRole={assignedRole}
+          onAssignedUsersChange={setAssignedUsers}
+          onAssignedRoleChange={setAssignedRole}
+          disabled={isPending}
+          required
+        />
+      </div>
+
       {/* Attachments */}
-      <div className="mt-2">
+      <div className="mt-3">
         <TimelineUploadButton
           attachments={attachments}
           onAttachmentsChange={setAttachments}
@@ -250,7 +227,7 @@ export function NewThreadComposer({
       </div>
 
       {/* Action Buttons */}
-      <div className="flex gap-2 mt-3 justify-end flex-wrap">
+      <div className="flex gap-2 mt-4 justify-end flex-wrap">
         <Button
           variant="ghost"
           size="sm"
@@ -261,26 +238,13 @@ export function NewThreadComposer({
         </Button>
 
         <Button
-          variant="outline"
           size="sm"
-          onClick={() => postCommentMutation.mutate()}
+          onClick={() => postThreadMutation.mutate()}
           disabled={!canSubmit || isPending}
         >
-          <MessageCircle className="h-3 w-3 mr-1" />
-          {postCommentMutation.isPending ? 'Posting...' : 'Post as Comment'}
+          <Send className="h-3 w-3 mr-1" />
+          {postThreadMutation.isPending ? 'Posting...' : 'Post Thread'}
         </Button>
-
-        {currentOwner && (
-          <Button
-            size="sm"
-            onClick={() => postQuestionMutation.mutate()}
-            disabled={!canSubmit || isPending}
-          >
-            <HelpCircle className="h-3 w-3 mr-1" />
-            {postQuestionMutation.isPending ? 'Posting...' : `Ask ${targetTeam}`}
-            <ArrowRight className="h-3 w-3 ml-1" />
-          </Button>
-        )}
       </div>
     </div>
   );

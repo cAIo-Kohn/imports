@@ -67,43 +67,55 @@ export type Database = {
       development_card_activity: {
         Row: {
           activity_type: string
+          assigned_to_role: string | null
+          assigned_to_users: string[] | null
           card_id: string
           content: string | null
           created_at: string
           id: string
           metadata: Json | null
           pending_for_team: string | null
+          thread_creator_id: string | null
           thread_id: string | null
           thread_resolved_at: string | null
           thread_root_id: string | null
+          thread_status: string | null
           thread_title: string | null
           user_id: string
         }
         Insert: {
           activity_type: string
+          assigned_to_role?: string | null
+          assigned_to_users?: string[] | null
           card_id: string
           content?: string | null
           created_at?: string
           id?: string
           metadata?: Json | null
           pending_for_team?: string | null
+          thread_creator_id?: string | null
           thread_id?: string | null
           thread_resolved_at?: string | null
           thread_root_id?: string | null
+          thread_status?: string | null
           thread_title?: string | null
           user_id: string
         }
         Update: {
           activity_type?: string
+          assigned_to_role?: string | null
+          assigned_to_users?: string[] | null
           card_id?: string
           content?: string | null
           created_at?: string
           id?: string
           metadata?: Json | null
           pending_for_team?: string | null
+          thread_creator_id?: string | null
           thread_id?: string | null
           thread_resolved_at?: string | null
           thread_root_id?: string | null
+          thread_status?: string | null
           thread_title?: string | null
           user_id?: string
         }

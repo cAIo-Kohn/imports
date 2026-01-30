@@ -1,5 +1,5 @@
 import { format, parseISO } from 'date-fns';
-import { Reply, Check, HelpCircle, MessageCircle } from 'lucide-react';
+import { Reply, Check, HelpCircle, MessageCircle, RotateCcw, Users, Briefcase } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,9 @@ interface ThreadMessageProps {
   replyingToId: string | null;
   onCloseReply: () => void;
   onOwnerChange?: () => void;
+  threadCreatorId?: string | null;
+  assignedToUsers?: string[];
+  assignedToRole?: AppRole | null;
 }
 
 const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
@@ -70,6 +73,9 @@ export function ThreadMessage({
   replyingToId,
   onCloseReply,
   onOwnerChange,
+  threadCreatorId,
+  assignedToUsers,
+  assignedToRole,
 }: ThreadMessageProps) {
   const isQuestion = activity.activity_type === 'question';
   const isAnswer = activity.activity_type === 'answer';
@@ -238,6 +244,9 @@ export function ThreadMessage({
               threadId={activity.thread_root_id || activity.thread_id || activity.id}
               onClose={onCloseReply}
               onCardMove={onOwnerChange}
+              threadCreatorId={threadCreatorId}
+              assignedToUsers={assignedToUsers}
+              assignedToRole={assignedToRole}
             />
           </div>
         )}

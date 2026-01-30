@@ -40,7 +40,7 @@ import { AppRole } from '@/hooks/useUserRole';
 import { ThreadedTimeline } from './ThreadedTimeline';
 import { CompactActivityRow } from './CompactActivityRow';
 import { NewThreadComposer } from './NewThreadComposer';
-import { PendingThreadsBanner } from './PendingThreadsBanner';
+// PendingThreadsBanner removed - replaced by assignment-based system in ThreadCard
 
 interface Activity {
   id: string;
@@ -1303,28 +1303,7 @@ export function HistoryTimeline({
   // Filter activities for timeline (exclude ones shown in banners)
   const timelineActivities = allActivities.filter(a => !bannerActivityIds.has(a.id));
 
-  // Calculate pending threads for current team - only thread roots
-  const pendingThreads = allActivities
-    .filter(a => 
-      // Only actual thread roots (thread_id equals its own id)
-      a.thread_id === a.id &&
-      // Has pending action for a team
-      a.pending_for_team && 
-      // Not resolved yet
-      !a.thread_resolved_at &&
-      // Pending for current team
-      a.pending_for_team === currentOwner
-    )
-    .map(a => ({
-      id: a.id,
-      title: a.thread_title || a.content?.split(' ').slice(0, 6).join(' ') || 'Thread',
-      type: a.activity_type as 'question' | 'sample_requested' | 'comment' | 'answer',
-      content: a.content,
-      createdAt: a.created_at,
-      authorName: a.profile?.full_name || null,
-      authorEmail: a.profile?.email || null,
-      pendingForTeam: a.pending_for_team as 'mor' | 'arc',
-    }));
+  // Note: Pending threads calculation removed - now handled by assignment-based system in ThreadCard
 
   const groupedActivities = groupByDate(timelineActivities);
   const sortedDates = Object.keys(groupedActivities).sort((a, b) => b.localeCompare(a));
@@ -1457,24 +1436,6 @@ export function HistoryTimeline({
 
   return (
     <div className="space-y-6 py-4">
-      {/* Pending Threads Banner - shows all threads awaiting current team action */}
-      {pendingThreads.length > 0 && (
-        <PendingThreadsBanner
-          threads={pendingThreads}
-          currentOwner={currentOwner}
-          onThreadClick={(threadId) => {
-            // Scroll to the thread or expand it - handled by ThreadedTimeline
-            const element = document.getElementById(`thread-${threadId}`);
-            element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }}
-          onQuickReply={(threadId) => {
-            // Set focus state to trigger ThreadCard to expand and focus reply input
-            setFocusReplyThreadId(threadId);
-            // Clear after a delay to allow re-clicking the same thread
-            setTimeout(() => setFocusReplyThreadId(null), 500);
-          }}
-        />
-      )}
       {/* Sample Approved Banner - for closing the card */}
       {showSampleApprovedBanner && cardCreatedBy && onOpenMessageSection && (
         <SampleApprovedBanner

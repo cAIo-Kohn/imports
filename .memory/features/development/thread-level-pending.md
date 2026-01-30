@@ -2,62 +2,64 @@
 Updated: 2026-01-30
 
 ## Overview
-Thread-level pending status tracks which team needs to act on each individual thread, rather than having a single card-level pending action. This allows multiple concurrent threads with different ownership requirements.
+Thread assignment system tracks who needs to act on each individual thread using user IDs and/or department roles, replacing the previous team-based (`pending_for_team`) approach. This allows multiple concurrent threads on a card with different assignees.
 
 ## Database Schema
-Added to `development_card_activity` table:
-- `pending_for_team` (TEXT, nullable): 'mor' or 'arc' - which team needs to act on this thread. Only set on thread root activities.
-- `thread_resolved_at` (TIMESTAMPTZ, nullable): When the thread's pending action was completed/resolved.
+Columns on `development_card_activity` table (thread roots only):
+- `assigned_to_users` (UUID[]): Array of user IDs assigned to this thread
+- `assigned_to_role` (TEXT): Department role assigned ('buyer', 'marketing', 'quality', 'trader', 'admin')
+- `thread_creator_id` (UUID): Who created this thread (only they can close it)
+- `thread_status` (TEXT): 'open' or 'resolved'
+- `thread_resolved_at` (TIMESTAMPTZ): When the thread was closed
+
+Legacy column (deprecated):
+- `pending_for_team` - replaced by assignment system, migrated to assigned_to_role
 
 ## Key Behaviors
 
 ### Thread Creation
-- **Comments**: Set `pending_for_team: null` (no action required)
-- **Questions**: Set `pending_for_team: targetOwner` (receiving team must respond)
-- **Sample Requests**: Set `pending_for_team: 'arc'` (China must add tracking)
+- Thread creator MUST assign to users (via picker) or a department role (or both)
+- `thread_creator_id` is set to the creating user
+- `thread_status` starts as 'open'
+- Notifications sent to all assigned users
 
-### Sample Flow Thread Updates
-- **Tracking Added**: Update sample_requested thread to `pending_for_team: 'mor'` (Brazil waits for arrival)
-- **Sample Arrived**: Keep `pending_for_team: 'mor'` (Brazil needs to review)
-- **Sample Reviewed**: Clear `pending_for_team` and set `thread_resolved_at` (thread complete)
+### Thread Display (ThreadCard)
+- Threads assigned to current user OR their role show "Your turn" badge with amber highlight
+- Resolved threads show grey/faded styling with "Resolved" badge and are collapsed by default
+- "Close Thread" button visible only to thread creator
 
-### Thread Updates (Questions/Answers)
-- When replying to a question with an **answer**: Update thread root's `pending_for_team` to the answer receiver
-- When posting a **follow-up question**: Update thread root's `pending_for_team` to the question receiver
-- When **resolving** a question: Clear `pending_for_team` and set `thread_resolved_at`
-- When **acknowledging** an answer: Clear `pending_for_team` and set `thread_resolved_at`
+### Thread Replies (InlineReplyBox)
+- "Reply" - Just adds comment, no assignment change
+- "Reply to [Creator]" - Reassigns thread back to creator
+- "Reassign..." - Opens picker to reassign to different users/role
 
-### UI Display (ThreadCard)
-- Threads with `pending_for_team` matching current user's team show:
-  - Amber highlight with ring
-  - "Your turn" badge with pulsing animation
-  - AlertCircle icon
-- Threads waiting on the other team show:
-  - Muted "Waiting" badge with team flag
-- Resolved threads show:
-  - Green styling with "Resolved" badge
+### Thread Resolution
+- Only the `thread_creator_id` can resolve/close a thread
+- Sets `thread_status = 'resolved'` and `thread_resolved_at = now()`
+- Thread remains visible (collapsed) for audit purposes
 
-### UI Display (PendingThreadsBanner)
-- Collapsible banner at the top of the timeline showing all pending threads for current team
-- Each thread shows: icon, title, author, timestamp, content preview
-- Quick action buttons appear on hover for each thread type:
-  - Sample requests: "Add tracking" button
-  - Questions: "Answer question" button
-  - Answers: "Acknowledge" button
-- Clicking a thread scrolls to it in the timeline
+## Components
 
-## Files Modified
-- `src/components/development/ThreadCard.tsx` - Display per-thread pending status, added id for scroll targeting
-- `src/components/development/NewThreadComposer.tsx` - Set pending_for_team on new threads
-- `src/components/development/InlineReplyBox.tsx` - Update thread root pending status on replies
-- `src/components/development/HistoryTimeline.tsx` - Update pending status on resolve/acknowledge, calculate pending threads, render PendingThreadsBanner
-- `src/components/development/PendingThreadsBanner.tsx` - NEW: Banner component showing all pending threads for current team
+| Component | Purpose |
+|-----------|---------|
+| `ThreadAssignmentSelect.tsx` | Picker for selecting users and/or department roles |
+| `NewThreadComposer.tsx` | Creates threads with mandatory assignment |
+| `ThreadCard.tsx` | Displays thread with assignment badges, "Your turn" highlight, resolve button |
+| `InlineReplyBox.tsx` | Reply with reassignment options |
+| `ThreadMessage.tsx` | Individual message within thread |
 
-## Migration
+## Removed Components
+- `PendingThreadsBanner.tsx` - Replaced by per-thread highlighting in ThreadCard
+
+## Migration Applied
 ```sql
 ALTER TABLE public.development_card_activity
-ADD COLUMN pending_for_team TEXT NULL;
+ADD COLUMN assigned_to_users UUID[] DEFAULT '{}'::UUID[],
+ADD COLUMN assigned_to_role TEXT NULL,
+ADD COLUMN thread_creator_id UUID NULL,
+ADD COLUMN thread_status TEXT DEFAULT 'open';
 
-ALTER TABLE public.development_card_activity
-ADD COLUMN thread_resolved_at TIMESTAMPTZ NULL;
+-- Migrated existing pending_for_team data:
+-- 'mor' -> assigned_to_role = 'buyer'
+-- 'arc' -> assigned_to_role = 'trader'
 ```
