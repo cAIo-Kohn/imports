@@ -734,7 +734,7 @@ function useRequestSample(cardId: string, currentOwner: 'mor' | 'arc', onOwnerCh
       
       if (sampleError) throw sampleError;
       
-      // 2. Log sample_requested activity with embedded move info - creates its own thread
+      // 2. Log sample_requested activity with embedded move info - creates its own thread with assignment
       const { data: activityData, error: activityError } = await supabase
         .from('development_card_activity')
         .insert({
@@ -748,6 +748,10 @@ function useRequestSample(cardId: string, currentOwner: 'mor' | 'arc', onOwnerCh
             moved_to: targetOwner,
           },
           pending_for_team: targetOwner, // ARC (China) needs to add tracking
+          // Thread assignment columns - assigned to traders (China team)
+          assigned_to_role: 'trader',
+          thread_creator_id: user.id,
+          thread_status: 'open',
         })
         .select('id')
         .single();
@@ -1293,12 +1297,9 @@ export function HistoryTimeline({
     new Date(a.created_at) > new Date(sampleRequestedActivity.created_at)
   );
   
-  // Show sample requested banner only if sample wasn't shipped yet and card is with ARC
-  const showSampleRequestedBanner = 
-    showAttentionBanner && 
-    sampleRequestedActivity && 
-    !sampleShippedAfterRequest &&
-    currentOwner === 'arc';
+  // Sample requested banner removed - sample_requested now appears as auto-threaded in timeline
+  // Users can reply, snooze, and add tracking directly from the ThreadCard
+  const showSampleRequestedBanner = false; // Disabled - sample requests are now threads
 
   // Show answer pending banner when there's an unacknowledged answer and no unresolved question
   const showAnswerPendingBanner = 

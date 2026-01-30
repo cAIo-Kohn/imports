@@ -23,7 +23,7 @@ interface AssignedUser {
 
 interface InlineReplyBoxProps {
   replyToId: string;
-  replyToType: 'question' | 'answer' | 'comment';
+  replyToType: 'question' | 'answer' | 'comment' | 'sample_requested';
   cardId: string;
   currentOwner?: 'mor' | 'arc';
   pendingActionType?: string | null;
