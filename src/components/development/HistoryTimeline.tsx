@@ -1396,6 +1396,8 @@ export function HistoryTimeline({
           cardId={cardId}
           onReviewSample={(sampleId) => onOpenSampleSection?.(sampleId)}
           onStartThread={() => setShowInlineThreadComposer(true)}
+          onAddComment={() => setShowInlineThreadComposer(true)}
+          onAskQuestion={() => setShowInlineThreadComposer(true)}
         />
       )}
 
@@ -1408,6 +1410,8 @@ export function HistoryTimeline({
             queryClient.invalidateQueries({ queryKey: ['development-item-samples-timeline', cardId] });
           }}
           onStartThread={() => setShowInlineThreadComposer(true)}
+          onAddComment={() => setShowInlineThreadComposer(true)}
+          onAskQuestion={() => setShowInlineThreadComposer(true)}
         />
       )}
       
@@ -1421,6 +1425,8 @@ export function HistoryTimeline({
           updatedAt={commercialUpdatedAt}
           onRequestSample={handleRequestSample}
           onStartThread={() => setShowInlineThreadComposer(true)}
+          onAddComment={() => setShowInlineThreadComposer(true)}
+          onAskQuestion={() => setShowInlineThreadComposer(true)}
           onUpload={() => onOpenUploadSection?.()}
         />
       )}
@@ -1434,6 +1440,14 @@ export function HistoryTimeline({
           cardId={cardId}
           pendingActionType={pendingActionType}
           onStartThread={() => {
+            dismissNewCardBanner();
+            setShowInlineThreadComposer(true);
+          }}
+          onAddComment={() => {
+            dismissNewCardBanner();
+            setShowInlineThreadComposer(true);
+          }}
+          onAskQuestion={() => {
             dismissNewCardBanner();
             setShowInlineThreadComposer(true);
           }}

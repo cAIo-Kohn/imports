@@ -12,6 +12,7 @@ import {
   Upload, 
   Plus,
   Package,
+  HelpCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -19,6 +20,8 @@ export type BannerColorScheme = 'violet' | 'emerald' | 'blue' | 'amber';
 
 export interface BannerQuickActionsProps {
   onStartThread?: () => void;
+  onAddComment?: () => void;
+  onAskQuestion?: () => void;
   onUpload?: () => void;
   onRequestSample?: () => void;
   colorScheme?: BannerColorScheme;
@@ -34,12 +37,14 @@ const colorClasses: Record<BannerColorScheme, string> = {
 
 export function BannerQuickActions({ 
   onStartThread,
+  onAddComment,
+  onAskQuestion,
   onUpload,
   onRequestSample,
   colorScheme = 'violet',
   className,
 }: BannerQuickActionsProps) {
-  const hasActions = onStartThread || onUpload || onRequestSample;
+  const hasActions = onStartThread || onAddComment || onAskQuestion || onUpload || onRequestSample;
 
   // Don't render if no actions available
   if (!hasActions) {
@@ -69,8 +74,20 @@ export function BannerQuickActions({
             New Thread
           </DropdownMenuItem>
         )}
+        {onAddComment && (
+          <DropdownMenuItem onClick={onAddComment}>
+            <MessageCircle className="h-4 w-4 mr-2" />
+            Add Comment
+          </DropdownMenuItem>
+        )}
+        {onAskQuestion && (
+          <DropdownMenuItem onClick={onAskQuestion}>
+            <HelpCircle className="h-4 w-4 mr-2" />
+            Ask Question
+          </DropdownMenuItem>
+        )}
         
-        {onStartThread && (onUpload || onRequestSample) && (
+        {(onStartThread || onAddComment || onAskQuestion) && (onUpload || onRequestSample) && (
           <DropdownMenuSeparator />
         )}
         

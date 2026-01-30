@@ -69,6 +69,8 @@ interface NewCardBannerProps {
   cardId: string;
   pendingActionType?: string | null;
   onStartThread: () => void;
+  onAddComment: () => void;
+  onAskQuestion: () => void;
   onSnooze?: () => void;
   onUpload: () => void;
 }
@@ -80,6 +82,8 @@ export function NewCardBanner({
   cardId,
   pendingActionType,
   onStartThread,
+  onAddComment,
+  onAskQuestion,
   onSnooze,
   onUpload,
 }: NewCardBannerProps) {
@@ -120,6 +124,8 @@ export function NewCardBanner({
       <div className="flex flex-wrap gap-2">
         <BannerQuickActions
           onStartThread={onStartThread}
+          onAddComment={onAddComment}
+          onAskQuestion={onAskQuestion}
           onUpload={onUpload}
           colorScheme="violet"
         />
@@ -145,6 +151,8 @@ interface CommercialDataBannerProps {
   updatedAt?: string;
   onRequestSample: () => void;
   onStartThread: () => void;
+  onAddComment: () => void;
+  onAskQuestion: () => void;
   onUpload: () => void;
 }
 
@@ -156,6 +164,8 @@ export function CommercialDataBanner({
   updatedAt,
   onRequestSample,
   onStartThread,
+  onAddComment,
+  onAskQuestion,
   onUpload,
 }: CommercialDataBannerProps) {
   const [isRequesting, setIsRequesting] = useState(false);
@@ -206,6 +216,8 @@ export function CommercialDataBanner({
         </Button>
         <BannerQuickActions
           onStartThread={onStartThread}
+          onAddComment={onAddComment}
+          onAskQuestion={onAskQuestion}
           onUpload={onUpload}
           colorScheme="emerald"
         />
@@ -220,6 +232,8 @@ interface SampleInTransitBannerProps {
   cardId: string;
   onMarkArrived: () => void;
   onStartThread: () => void;
+  onAddComment: () => void;
+  onAskQuestion: () => void;
 }
 
 export function SampleInTransitBanner({ 
@@ -227,6 +241,8 @@ export function SampleInTransitBanner({
   cardId,
   onMarkArrived,
   onStartThread,
+  onAddComment,
+  onAskQuestion,
 }: SampleInTransitBannerProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -333,6 +349,8 @@ export function SampleInTransitBanner({
         </Button>
         <BannerQuickActions
           onStartThread={onStartThread}
+          onAddComment={onAddComment}
+          onAskQuestion={onAskQuestion}
           colorScheme="blue"
         />
       </div>
@@ -346,6 +364,8 @@ interface SampleDeliveredBannerProps {
   cardId: string;
   onReviewSample: (sampleId: string) => void;
   onStartThread: () => void;
+  onAddComment: () => void;
+  onAskQuestion: () => void;
 }
 
 export function SampleDeliveredBanner({ 
@@ -353,6 +373,8 @@ export function SampleDeliveredBanner({
   cardId,
   onReviewSample,
   onStartThread,
+  onAddComment,
+  onAskQuestion,
 }: SampleDeliveredBannerProps) {
   const daysWaiting = sample.actual_arrival 
     ? differenceInDays(new Date(), parseISO(sample.actual_arrival))
@@ -404,6 +426,8 @@ export function SampleDeliveredBanner({
         </Button>
         <BannerQuickActions
           onStartThread={onStartThread}
+          onAddComment={onAddComment}
+          onAskQuestion={onAskQuestion}
           colorScheme="amber"
         />
       </div>
