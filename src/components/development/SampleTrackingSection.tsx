@@ -25,8 +25,10 @@ import { SampleReviewSection } from './SampleReviewSection';
 
 interface SampleTrackingSectionProps {
   cardId: string;
+  cardTitle?: string;
   currentOwner: 'mor' | 'arc';
   canEdit: boolean;
+  onRequestSample?: () => void;
 }
 
 interface Sample {
@@ -79,7 +81,7 @@ function getTrackingUrl(courier: string | null, trackingNumber: string | null): 
   return null;
 }
 
-export function SampleTrackingSection({ cardId, currentOwner, canEdit }: SampleTrackingSectionProps) {
+export function SampleTrackingSection({ cardId, cardTitle, currentOwner, canEdit, onRequestSample }: SampleTrackingSectionProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [showAddForm, setShowAddForm] = useState(false);
@@ -235,15 +237,28 @@ export function SampleTrackingSection({ cardId, currentOwner, canEdit }: SampleT
     <div className="space-y-3">
       {/* Add Sample Button */}
       {canEdit && !showAddForm && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full"
-          onClick={() => setShowAddForm(true)}
-        >
-          <Plus className="h-3 w-3 mr-1" />
-          Add Sample
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            onClick={() => setShowAddForm(true)}
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Add Sample
+          </Button>
+          {onRequestSample && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="flex-1"
+              onClick={onRequestSample}
+            >
+              <Send className="h-3 w-3 mr-1" />
+              Request Sample
+            </Button>
+          )}
+        </div>
       )}
 
       {/* Add Sample Form */}

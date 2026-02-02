@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCardTasks, sendTaskNotification } from '@/hooks/useCardTasks';
+import type { CardTask } from '@/hooks/useCardTasks';
 import { format } from 'date-fns';
-import { Trash2, RotateCcw, DollarSign, Package, ChevronDown } from 'lucide-react';
+import { Trash2, RotateCcw, DollarSign, Package } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -31,6 +33,11 @@ import { ChatTimeline } from './ChatTimeline';
 import { DeleteCardDialog } from './DeleteCardDialog';
 import { CommercialDataSection } from './CommercialDataSection';
 import { SampleTrackingSection } from './SampleTrackingSection';
+import { PendingTasksBanner } from './PendingTasksBanner';
+import { RequestCommercialDataModal } from './RequestCommercialDataModal';
+import { FillCommercialDataModal } from './FillCommercialDataModal';
+import { RequestSampleModal } from './RequestSampleModal';
+import { AddTrackingModal } from './AddTrackingModal';
 
 interface ItemDetailDrawerProps {
   item: DevelopmentItem | null;
@@ -55,10 +62,20 @@ const mapNewToOldStatus = (newStatus: DevelopmentCardStatus): string => {
 };
 
 export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerProps) {
-  const { canManageOrders, isTrader, isBuyer, isAdmin } = useUserRole();
+  const { canManageOrders, isTrader, isBuyer, isAdmin, roles } = useUserRole();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  
+  // Modal state
+  const [showRequestCommercialModal, setShowRequestCommercialModal] = useState(false);
+  const [showFillCommercialModal, setShowFillCommercialModal] = useState(false);
+  const [showRequestSampleModal, setShowRequestSampleModal] = useState(false);
+  const [showAddTrackingModal, setShowAddTrackingModal] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<CardTask | null>(null);
+
+  // Fetch card tasks
+  const { pendingTasks, updateTask } = useCardTasks(item?.id || '');
 
   const canManage = canManageOrders || isTrader;
   const canInteract = !!user; // Any authenticated user can message
@@ -138,36 +155,6 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
     },
   });
 
-  // Update image mutation
-  const updateImageMutation = useMutation({
-    mutationFn: async (imageUrl: string | null) => {
-      if (!item?.id) return;
-      
-      const { error } = await (supabase.from('development_items') as any)
-        .update({ image_url: imageUrl })
-        .eq('id', item.id);
-      if (error) throw error;
-
-      // Log image update
-      if (user?.id) {
-        await supabase.from('development_card_activity').insert({
-          card_id: item.id,
-          user_id: user.id,
-          activity_type: 'image_updated',
-          content: imageUrl ? 'Image updated' : 'Image removed',
-        });
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['development-items'] });
-      queryClient.invalidateQueries({ queryKey: ['development-card-activity', item?.id] });
-      toast({ title: 'Image updated' });
-    },
-    onError: () => {
-      toast({ title: 'Error', description: 'Failed to update image', variant: 'destructive' });
-    },
-  });
-
   // Soft delete mutation
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -230,6 +217,104 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
     },
   });
 
+  // Handle task actions from banner
+  const handleFillCommercial = (task: CardTask) => {
+    setSelectedTask(task);
+    setShowFillCommercialModal(true);
+  };
+
+  const handleAddTracking = (task: CardTask) => {
+    setSelectedTask(task);
+    setShowAddTrackingModal(true);
+  };
+
+  const handleConfirmData = async (task: CardTask) => {
+    if (!user?.id || !item) return;
+    
+    try {
+      await updateTask({
+        taskId: task.id,
+        status: 'completed',
+        completed_by: user.id,
+      });
+
+      // Log to timeline
+      await supabase.from('development_card_activity').insert({
+        card_id: task.card_id,
+        user_id: user.id,
+        activity_type: 'message',
+        content: '✅ Commercial data confirmed',
+        metadata: { task_id: task.id, task_type: 'commercial_confirmed' },
+      });
+
+      // Notify the person who filled the data
+      const filledBy = task.metadata?.filled_by as string | undefined;
+      if (filledBy && filledBy !== user.id) {
+        await sendTaskNotification({
+          recipientUserIds: [filledBy],
+          triggeredBy: user.id,
+          cardId: task.card_id,
+          taskId: task.id,
+          type: 'commercial_confirmed',
+          title: '{name} confirmed the commercial data',
+          content: `Commercial data for "${item.title}" has been confirmed`,
+        });
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['card-tasks', task.card_id] });
+      queryClient.invalidateQueries({ queryKey: ['development-card-activity', task.card_id] });
+      toast({ title: 'Data confirmed' });
+    } catch (error) {
+      console.error('Failed to confirm data:', error);
+      toast({ title: 'Error', description: 'Failed to confirm data', variant: 'destructive' });
+    }
+  };
+
+  const handleMarkArrived = async (task: CardTask) => {
+    if (!user?.id || !item) return;
+    
+    try {
+      // Update sample status
+      if (task.sample_id) {
+        await supabase
+          .from('development_item_samples')
+          .update({ 
+            status: 'delivered',
+            actual_arrival: new Date().toISOString().split('T')[0],
+          })
+          .eq('id', task.sample_id);
+      }
+
+      // Update task - reassign to requester for review
+      await updateTask({
+        taskId: task.id,
+        status: 'in_progress',
+        metadata: {
+          ...task.metadata,
+          actual_arrival: new Date().toISOString().split('T')[0],
+          marked_arrived_by: user.id,
+        },
+      });
+
+      // Log to timeline
+      await supabase.from('development_card_activity').insert({
+        card_id: task.card_id,
+        user_id: user.id,
+        activity_type: 'message',
+        content: '📬 Sample arrived - ready for review',
+        metadata: { task_id: task.id, sample_id: task.sample_id, task_type: 'sample_arrived' },
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['card-tasks', task.card_id] });
+      queryClient.invalidateQueries({ queryKey: ['development-card-activity', task.card_id] });
+      queryClient.invalidateQueries({ queryKey: ['development-item-samples', task.card_id] });
+      toast({ title: 'Sample marked as arrived' });
+    } catch (error) {
+      console.error('Failed to mark arrived:', error);
+      toast({ title: 'Error', description: 'Failed to update sample', variant: 'destructive' });
+    }
+  };
+
   if (!item) return null;
 
   const itemWithNewFields = item as any;
@@ -254,11 +339,6 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
 
   // Determine user's team affiliation
   const userTeam: 'mor' | 'arc' = isTrader ? 'arc' : 'mor';
-
-  // Show attention banners only to the team that currently owns the card (admins see all)
-  // NOTE: this must NOT depend on `is_new_for_other_team`, otherwise banners can disappear
-  // immediately after we clear the flag in the background.
-  const shouldShowAttentionBanner = isAdmin || itemWithNewFields.current_owner === userTeam;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -350,12 +430,14 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               <AccordionContent className="px-4 pb-3">
                 <CommercialDataSection
                   cardId={item.id}
+                  cardTitle={item.title}
                   fobPriceUsd={itemWithNewFields.fob_price_usd}
                   moq={itemWithNewFields.moq}
                   qtyPerContainer={itemWithNewFields.qty_per_container}
                   containerType={itemWithNewFields.container_type}
                   currentOwner={itemWithNewFields.current_owner || 'mor'}
                   canEdit={canManage}
+                  onRequestCommercialData={() => setShowRequestCommercialModal(true)}
                 />
               </AccordionContent>
             </AccordionItem>
@@ -371,12 +453,27 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               <AccordionContent className="px-4 pb-3">
                 <SampleTrackingSection
                   cardId={item.id}
+                  cardTitle={item.title}
                   currentOwner={itemWithNewFields.current_owner || 'mor'}
                   canEdit={canManage}
+                  onRequestSample={() => setShowRequestSampleModal(true)}
                 />
               </AccordionContent>
             </AccordionItem>
           </Accordion>
+        )}
+
+        {/* Pending Tasks Banner - before chat */}
+        {!isDeleted && pendingTasks.length > 0 && (
+          <div className="px-4 pt-3">
+            <PendingTasksBanner
+              tasks={pendingTasks}
+              onFillCommercial={handleFillCommercial}
+              onAddTracking={handleAddTracking}
+              onConfirmData={handleConfirmData}
+              onMarkArrived={handleMarkArrived}
+            />
+          </div>
         )}
 
         {/* WhatsApp-style Chat Timeline */}
@@ -395,6 +492,48 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
           cardTitle={item.title}
           isDeleting={deleteMutation.isPending}
         />
+
+        {/* Request Commercial Data Modal */}
+        <RequestCommercialDataModal
+          open={showRequestCommercialModal}
+          onOpenChange={setShowRequestCommercialModal}
+          cardId={item.id}
+          cardTitle={item.title}
+        />
+
+        {/* Fill Commercial Data Modal */}
+        {selectedTask && (
+          <FillCommercialDataModal
+            open={showFillCommercialModal}
+            onOpenChange={(open) => {
+              setShowFillCommercialModal(open);
+              if (!open) setSelectedTask(null);
+            }}
+            task={selectedTask}
+            cardTitle={item.title}
+          />
+        )}
+
+        {/* Request Sample Modal */}
+        <RequestSampleModal
+          open={showRequestSampleModal}
+          onOpenChange={setShowRequestSampleModal}
+          cardId={item.id}
+          cardTitle={item.title}
+        />
+
+        {/* Add Tracking Modal */}
+        {selectedTask && (
+          <AddTrackingModal
+            open={showAddTrackingModal}
+            onOpenChange={(open) => {
+              setShowAddTrackingModal(open);
+              if (!open) setSelectedTask(null);
+            }}
+            task={selectedTask}
+            cardTitle={item.title}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );

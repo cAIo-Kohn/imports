@@ -1,231 +1,109 @@
-import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useUserRole } from '@/hooks/useUserRole';
-import { useAuth } from '@/contexts/AuthContext';
-import { DollarSign, Package, Container } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from '@/hooks/use-toast';
-import { MoveCardModal } from './MoveCardModal';
+import { DollarSign, Package } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 interface CommercialDataSectionProps {
   cardId: string;
+  cardTitle: string;
   fobPriceUsd: number | null;
   moq: number | null;
   qtyPerContainer: number | null;
   containerType: string | null;
   currentOwner: 'mor' | 'arc';
   canEdit: boolean;
-  onOwnerChange?: (newOwner: 'mor' | 'arc') => void;
+  onRequestCommercialData?: () => void;
 }
 
-const CONTAINER_TYPES = [
-  { value: '20ft', label: '20ft Container' },
-  { value: '40ft', label: '40ft Container' },
-  { value: '40hq', label: '40ft High Cube' },
-];
+const CONTAINER_LABELS: Record<string, string> = {
+  '20ft': '20ft Container',
+  '40ft': '40ft Container',
+  '40hq': '40ft High Cube',
+};
 
 export function CommercialDataSection({
   cardId,
+  cardTitle,
   fobPriceUsd,
   moq,
   qtyPerContainer,
   containerType,
   currentOwner,
   canEdit,
-  onOwnerChange,
+  onRequestCommercialData,
 }: CommercialDataSectionProps) {
-  const { isTrader } = useUserRole();
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const [localFobPrice, setLocalFobPrice] = useState(fobPriceUsd?.toString() || '');
-  const [localMoq, setLocalMoq] = useState(moq?.toString() || '');
-  const [localQtyPerContainer, setLocalQtyPerContainer] = useState(qtyPerContainer?.toString() || '');
-  const [localContainerType, setLocalContainerType] = useState(containerType || '');
-  const [showMoveModal, setShowMoveModal] = useState(false);
-  const [pendingField, setPendingField] = useState<string | null>(null);
+  const hasData = fobPriceUsd || moq || qtyPerContainer || containerType;
+  const isComplete = fobPriceUsd && moq && qtyPerContainer && containerType;
 
-  useEffect(() => {
-    setLocalFobPrice(fobPriceUsd?.toString() || '');
-    setLocalMoq(moq?.toString() || '');
-    setLocalQtyPerContainer(qtyPerContainer?.toString() || '');
-    setLocalContainerType(containerType || '');
-  }, [fobPriceUsd, moq, qtyPerContainer, containerType]);
-
-  const updateMutation = useMutation({
-    mutationFn: async (field: { name: string; value: string | number | null }) => {
-      const { error } = await (supabase.from('development_items') as any)
-        .update({ [field.name]: field.value })
-        .eq('id', cardId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['development-items'] });
-    },
-    onError: () => {
-      toast({
-        title: 'Error',
-        description: 'Failed to update commercial data',
-        variant: 'destructive',
-      });
-    },
-  });
-
-  const moveCardMutation = useMutation({
-    mutationFn: async () => {
-      if (!user?.id) return;
-      
-      const targetOwner = 'mor';
-      
-      const { error } = await (supabase.from('development_items') as any)
-        .update({ 
-          current_owner: targetOwner,
-          is_new_for_other_team: true,
-        })
-        .eq('id', cardId);
-      if (error) throw error;
-
-      // Log commercial update activity with embedded move info (NO separate ownership_change)
-      await supabase.from('development_card_activity').insert({
-        card_id: cardId,
-        user_id: user.id,
-        activity_type: 'commercial_update',
-        content: 'Commercial data updated',
-        metadata: { 
-          trigger: 'commercial_data',
-          moved_from: currentOwner,
-          moved_to: targetOwner,
-        },
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['development-items'] });
-      queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
-      onOwnerChange?.('mor');
-      toast({ title: 'Card moved to MOR (Brazil)' });
-    },
-  });
-
-  // Significant fields that might require buyer input
-  const isSignificantField = (fieldName: string) => {
-    return ['fob_price_usd'].includes(fieldName);
-  };
-
-  const handleBlur = (fieldName: string, value: string, isNumeric: boolean = false) => {
-    const parsedValue = isNumeric ? (value ? parseFloat(value) : null) : (value || null);
-    updateMutation.mutate({ name: fieldName, value: parsedValue });
-
-    // If trader is filling significant field and card is with ARC, prompt to move
-    if (isTrader && currentOwner === 'arc' && isSignificantField(fieldName) && parsedValue) {
-      setPendingField(fieldName);
-      setShowMoveModal(true);
-    }
-  };
-
-  const handleContainerTypeChange = (value: string) => {
-    setLocalContainerType(value);
-    updateMutation.mutate({ name: 'container_type', value: value || null });
-  };
-
-  const handleMoveConfirm = () => {
-    moveCardMutation.mutate();
-    setPendingField(null);
-    setShowMoveModal(false);
-  };
-
-  const handleMoveCancel = () => {
-    setPendingField(null);
-    setShowMoveModal(false);
-  };
+  if (!hasData) {
+    // No data yet - show request button
+    return (
+      <div className="flex flex-col items-center justify-center py-6 text-center">
+        <DollarSign className="h-8 w-8 text-muted-foreground/50 mb-2" />
+        <p className="text-sm text-muted-foreground mb-3">
+          No commercial data available
+        </p>
+        {onRequestCommercialData && (
+          <Button variant="outline" size="sm" onClick={onRequestCommercialData}>
+            Request Commercial Data
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="fob-price" className="text-xs">FOB Price (USD)</Label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-            <Input
-              id="fob-price"
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0.00"
-              value={localFobPrice}
-              onChange={(e) => setLocalFobPrice(e.target.value)}
-              onBlur={() => handleBlur('fob_price_usd', localFobPrice, true)}
-              disabled={!canEdit}
-              className="pl-7"
-            />
-          </div>
+    <div className="space-y-3">
+      {/* Display current data */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">FOB Price (USD)</p>
+          <p className="text-sm font-medium">
+            {fobPriceUsd ? `$${fobPriceUsd.toFixed(2)}` : '—'}
+          </p>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="moq" className="text-xs flex items-center gap-1">
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground flex items-center gap-1">
             <Package className="h-3 w-3" />
             MOQ
-          </Label>
-          <Input
-            id="moq"
-            type="number"
-            min="0"
-            placeholder="Minimum order qty"
-            value={localMoq}
-            onChange={(e) => setLocalMoq(e.target.value)}
-            onBlur={() => handleBlur('moq', localMoq, true)}
-            disabled={!canEdit}
-          />
+          </p>
+          <p className="text-sm font-medium">
+            {moq ? moq.toLocaleString() : '—'}
+          </p>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="qty-container" className="text-xs flex items-center gap-1">
-            <Container className="h-3 w-3" />
-            Qty / Container
-          </Label>
-          <Input
-            id="qty-container"
-            type="number"
-            min="0"
-            placeholder="Quantity per container"
-            value={localQtyPerContainer}
-            onChange={(e) => setLocalQtyPerContainer(e.target.value)}
-            onBlur={() => handleBlur('qty_per_container', localQtyPerContainer, true)}
-            disabled={!canEdit}
-          />
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Qty / Container</p>
+          <p className="text-sm font-medium">
+            {qtyPerContainer ? qtyPerContainer.toLocaleString() : '—'}
+          </p>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="container-type" className="text-xs">Container Type</Label>
-          <Select
-            value={localContainerType}
-            onValueChange={handleContainerTypeChange}
-            disabled={!canEdit}
-          >
-            <SelectTrigger id="container-type">
-              <SelectValue placeholder="Select type" />
-            </SelectTrigger>
-            <SelectContent>
-              {CONTAINER_TYPES.map((type) => (
-                <SelectItem key={type.value} value={type.value}>
-                  {type.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Container Type</p>
+          <p className="text-sm font-medium">
+            {containerType ? CONTAINER_LABELS[containerType] || containerType : '—'}
+          </p>
         </div>
       </div>
 
-      {/* Move Card Modal */}
-      <MoveCardModal
-        open={showMoveModal}
-        onOpenChange={setShowMoveModal}
-        targetOwner="mor"
-        onConfirm={handleMoveConfirm}
-        onCancel={handleMoveCancel}
-        triggerAction="added commercial data"
-      />
+      {/* Show request button if data is incomplete */}
+      {!isComplete && onRequestCommercialData && (
+        <div className="pt-2 border-t">
+          <Button variant="outline" size="sm" onClick={onRequestCommercialData} className="w-full">
+            Request Missing Data
+          </Button>
+        </div>
+      )}
+
+      {/* Completion badge */}
+      {isComplete && (
+        <div className="pt-2 border-t">
+          <Badge variant="secondary" className="text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+            ✓ Commercial data complete
+          </Badge>
+        </div>
+      )}
     </div>
   );
 }
