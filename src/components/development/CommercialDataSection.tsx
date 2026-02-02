@@ -141,12 +141,7 @@ export function CommercialDataSection({
   };
 
   return (
-    <div className="space-y-4 border-t pt-4 mt-4">
-      <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-        <DollarSign className="h-4 w-4" />
-        Commercial Data
-      </h4>
-
+    <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="fob-price" className="text-xs">FOB Price (USD)</Label>

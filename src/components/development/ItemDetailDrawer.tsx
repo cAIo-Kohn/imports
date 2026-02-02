@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
-import { Trash2, RotateCcw } from 'lucide-react';
+import { Trash2, RotateCcw, DollarSign, Package, ChevronDown } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -18,11 +18,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 import { toast } from '@/hooks/use-toast';
 import { DevelopmentItem, DevelopmentCardStatus, deriveCardStatus } from '@/pages/Development';
 import { CardInfoSection } from './CardInfoSection';
 import { ChatTimeline } from './ChatTimeline';
 import { DeleteCardDialog } from './DeleteCardDialog';
+import { CommercialDataSection } from './CommercialDataSection';
+import { SampleTrackingSection } from './SampleTrackingSection';
 
 interface ItemDetailDrawerProps {
   item: DevelopmentItem | null;
@@ -320,6 +328,56 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
           item={item}
           canEdit={canManage && !isDeleted}
         />
+
+        {/* Collapsible Sections for Commercial Data & Samples */}
+        {!isDeleted && (
+          <Accordion type="multiple" className="border-b">
+            {/* Commercial Data Section */}
+            <AccordionItem value="commercial" className="border-0">
+              <AccordionTrigger className="px-4 py-2 hover:no-underline text-sm">
+                <span className="flex items-center gap-2 text-muted-foreground">
+                  <DollarSign className="h-4 w-4" />
+                  Commercial Data
+                  {(itemWithNewFields.fob_price_usd || itemWithNewFields.moq) && (
+                    <Badge variant="secondary" className="text-[10px] h-4 ml-2">
+                      {itemWithNewFields.fob_price_usd ? `$${itemWithNewFields.fob_price_usd}` : ''}
+                      {itemWithNewFields.fob_price_usd && itemWithNewFields.moq ? ' • ' : ''}
+                      {itemWithNewFields.moq ? `MOQ: ${itemWithNewFields.moq}` : ''}
+                    </Badge>
+                  )}
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="px-4 pb-3">
+                <CommercialDataSection
+                  cardId={item.id}
+                  fobPriceUsd={itemWithNewFields.fob_price_usd}
+                  moq={itemWithNewFields.moq}
+                  qtyPerContainer={itemWithNewFields.qty_per_container}
+                  containerType={itemWithNewFields.container_type}
+                  currentOwner={itemWithNewFields.current_owner || 'mor'}
+                  canEdit={canManage}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Sample Tracking Section */}
+            <AccordionItem value="samples" className="border-0">
+              <AccordionTrigger className="px-4 py-2 hover:no-underline text-sm">
+                <span className="flex items-center gap-2 text-muted-foreground">
+                  <Package className="h-4 w-4" />
+                  Sample Tracking
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="px-4 pb-3">
+                <SampleTrackingSection
+                  cardId={item.id}
+                  currentOwner={itemWithNewFields.current_owner || 'mor'}
+                  canEdit={canManage}
+                />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
 
         {/* WhatsApp-style Chat Timeline */}
         {!isDeleted && (
