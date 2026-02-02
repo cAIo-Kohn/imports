@@ -1,240 +1,364 @@
 
 
-# WhatsApp-Style Card System Simplification
+# Task-Based Workflow for Commercial Data & Samples
 
-## Vision
+## Overview
 
-Transform the complex thread-based card system into a simple, WhatsApp-like conversation interface where users can focus on communication rather than system mechanics.
+Transform Commercial Data and Sample Tracking into a task-based workflow where:
+1. Users **request** information/samples and **assign** to a team or user
+2. The assignee sees a **pending task banner** at the top of the timeline
+3. Upon completion, the assignee can **reassign** responsibility back
+4. All pending tasks are visible to everyone via colorful, collapsible banners
 
-## Key Differences
+---
 
-| Current (Complex) | New (Simple) |
-|------------------|--------------|
-| Multiple activity types (question, answer, comment, etc.) | Just "messages" |
-| Thread-based with collapsible cards | Flat chronological timeline |
-| Multiple buttons (Comment, Ask Question, Answer, Reassign) | One text box + send |
-| "Ball-in-court" handoffs between users/roles | No handoffs - just conversation |
-| Dashboard: "My Pending" vs "All Cards" | Dashboard: Sections by creator's department |
-| Newest messages at TOP | Newest messages at BOTTOM (WhatsApp-style) |
-| Complex InlineReplyBox with 4 mutations | Simple message input with optional quote |
+## Current State vs New State
 
-## Dashboard Redesign
+| Feature | Current | New |
+|---------|---------|-----|
+| Commercial Data | Individual field edits, no validation | All 4 fields required together, confirm to save |
+| Commercial Request | None | Request commercial data → assign to team → fills data → assigns back for confirmation |
+| Sample Request | Simple request with quantity/notes | Request → assign to team/user → add tracking → assign back |
+| Pending Tasks | Per-card pending_action_type | Per-request tasks with assignee visible to all |
+| Notifications | Only @mentions | Team/role assignment triggers notifications |
 
-```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Development Cards                                    [+ New Card]        │
-├──────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  ┌─ BUYER ────────────────────────────────────────────────────────────┐  │
-│  │ [Card 1] [Card 2] [Card 3]                                         │  │
-│  └────────────────────────────────────────────────────────────────────┘  │
-│                                                                          │
-│  ┌─ QUALITY ──────────────────────────────────────────────────────────┐  │
-│  │ [Card 4] [Card 5]                                                  │  │
-│  └────────────────────────────────────────────────────────────────────┘  │
-│                                                                          │
-│  ┌─ TRADER ───────────────────────────────────────────────────────────┐  │
-│  │ [Card 6] [Card 7] [Card 8]                                         │  │
-│  └────────────────────────────────────────────────────────────────────┘  │
-│                                                                          │
-│  ┌─ MARKETING ────────────────────────────────────────────────────────┐  │
-│  │ [Card 9]                                                           │  │
-│  └────────────────────────────────────────────────────────────────────┘  │
-│                                                                          │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
-## Card Detail - WhatsApp Timeline
-
-```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│  PE Strap Development                                      [x] Close     │
-│  Created by Vitória (Buyer) • Assigned to: Trader                        │
-├──────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  ┌───────────────────────────────────────────────────────────────────┐   │
-│  │  [Vitória avatar]                                                 │   │
-│  │  Vitória (Buyer)                               Jan 30, 10:15      │   │
-│  │  ┌─────────────────────────────────────────────────────────────┐  │   │
-│  │  │ We need to develop a new supplier for PE Strap in China.   │  │   │
-│  │  │ Target price: $2.50 FOB                                     │  │   │
-│  │  │ [Image attachment]                                          │  │   │
-│  │  └─────────────────────────────────────────────────────────────┘  │   │
-│  └───────────────────────────────────────────────────────────────────┘   │
-│                                                                          │
-│  ┌───────────────────────────────────────────────────────────────────┐   │
-│  │  [Jin avatar]                                                     │   │
-│  │  Jin (Trader)                                  Jan 30, 14:30      │   │
-│  │  ┌─────────────────────────────────────────────────────────────┐  │   │
-│  │  │ I'll check with 3 suppliers and get quotes by Friday.      │  │   │
-│  │  └─────────────────────────────────────────────────────────────┘  │   │
-│  └───────────────────────────────────────────────────────────────────┘   │
-│                                                                          │
-│  ┌───────────────────────────────────────────────────────────────────┐   │
-│  │  [Jin avatar]                                                     │   │
-│  │  Jin (Trader)                                  Jan 31, 09:00      │   │
-│  │  ┌ Replying to Vitória ──────────────────────────────────────┐    │   │
-│  │  │ "Target price: $2.50 FOB"                                  │    │   │
-│  │  └────────────────────────────────────────────────────────────┘    │   │
-│  │  ┌─────────────────────────────────────────────────────────────┐  │   │
-│  │  │ Best quote I got: $2.35 from Supplier A. Want me to        │  │   │
-│  │  │ request samples?                                            │  │   │
-│  │  └─────────────────────────────────────────────────────────────┘  │   │
-│  └───────────────────────────────────────────────────────────────────┘   │
-│                                                                          │
-├──────────────────────────────────────────────────────────────────────────┤
-│  ┌────────────────────────────────────────────────────────────────┐      │
-│  │ [📷] Type a message...                               [Send ➤] │      │
-│  └────────────────────────────────────────────────────────────────┘      │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
-## Technical Implementation
-
-### Phase 1: Simplify Activity Types
-
-Keep using `development_card_activity` table but simplify:
-- All messages use `activity_type: 'message'`
-- Quote references stored in `metadata.quoted_message_id`
-- Attachments stored in `metadata.attachments`
-
-```typescript
-// New simplified message insert
-await supabase.from('development_card_activity').insert({
-  card_id: cardId,
-  user_id: user.id,
-  activity_type: 'message', // Always 'message'
-  content: messageText,
-  metadata: {
-    quoted_message_id: quotedId || null,  // Optional quote
-    attachments: attachments || [],        // Optional attachments
-  },
-});
-```
-
-### Phase 2: New Component - ChatTimeline
-
-Create a new `ChatTimeline.tsx` component (~200-300 lines vs 1600):
-
-```typescript
-interface ChatTimelineProps {
-  cardId: string;
-  cardCreatedBy: string;
-  cardTitle: string;
-}
-
-// Features:
-// 1. Fetch all activities ordered by created_at ASC
-// 2. Render as chat bubbles (sender on left or right based on user)
-// 3. Display quoted message above the bubble if present
-// 4. Auto-scroll to bottom on new messages
-// 5. Simple input box at bottom with attachment support
-```
-
-### Phase 3: New Component - ChatMessageInput
-
-Simple input component:
-
-```typescript
-interface ChatMessageInputProps {
-  cardId: string;
-  quotedMessage?: { id: string; content: string; author: string } | null;
-  onClearQuote: () => void;
-}
-
-// Features:
-// 1. Textarea with @ mention support
-// 2. Attachment button (images, PDFs)
-// 3. Send button
-// 4. Optional quote preview above input
-```
-
-### Phase 4: Dashboard by Creator Department
-
-Update `Development.tsx`:
-
-```typescript
-// Group items by creator's department
-const itemsByCreatorRole = useMemo(() => {
-  const grouped: Record<string, DevelopmentItem[]> = {
-    buyer: [],
-    quality: [],
-    trader: [],
-    marketing: [],
-  };
-  
-  for (const item of filteredItems) {
-    const role = item.created_by_role || 'buyer'; // Default to buyer
-    if (grouped[role]) {
-      grouped[role].push(item);
-    }
-  }
-  
-  return grouped;
-}, [filteredItems]);
-```
-
-### Phase 5: Remove Complexity
-
-Files to simplify or remove:
-- `ThreadCard.tsx` - Remove (no more threads)
-- `ThreadedTimeline.tsx` - Remove
-- `NewThreadComposer.tsx` - Remove
-- `BannerQuickActions.tsx` - Remove
-- `TimelineBanners.tsx` - Remove most banners
-- `InlineReplyBox.tsx` - Replace with simple input
-- `HistoryTimeline.tsx` - Replace with ChatTimeline
-
-### Phase 6: CreateCardModal Simplification
-
-Keep the assignment field but simplify:
-- Title
-- Description
-- Image
-- Assign to (required) - still needed to know who should action it
+---
 
 ## Database Changes
 
-No schema changes needed. We'll continue using `development_card_activity` but with simplified usage:
-- `activity_type` = 'message' for all user messages
-- Keep existing types for system events (status_change, sample_added)
+### New Table: `development_card_tasks`
+
+```sql
+CREATE TABLE development_card_tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  card_id UUID NOT NULL REFERENCES development_items(id),
+  
+  -- Task type and status
+  task_type TEXT NOT NULL, -- 'sample_request', 'commercial_request'
+  status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'in_progress', 'completed', 'cancelled'
+  
+  -- Assignment
+  assigned_to_users UUID[] DEFAULT '{}',
+  assigned_to_role TEXT, -- 'buyer', 'trader', 'quality', 'marketing'
+  
+  -- Who created the task (to reassign back to)
+  created_by UUID NOT NULL,
+  
+  -- Task-specific data (JSON)
+  metadata JSONB DEFAULT '{}',
+  -- For sample: { quantity: 2, notes: "Need 2 colors" }
+  -- For commercial: { requested_by: uuid }
+  -- After completion: { fob_price: 2.50, moq: 1000, ... } or { courier: "DHL", tracking: "123" }
+  
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at TIMESTAMPTZ,
+  completed_by UUID,
+  
+  -- Links to related records
+  sample_id UUID REFERENCES development_item_samples(id), -- For sample tasks
+  
+  CONSTRAINT valid_task_type CHECK (task_type IN ('sample_request', 'commercial_request'))
+);
+
+-- Index for efficient queries
+CREATE INDEX idx_card_tasks_card_id ON development_card_tasks(card_id);
+CREATE INDEX idx_card_tasks_assigned_role ON development_card_tasks(assigned_to_role) WHERE status = 'pending';
+
+-- Enable RLS
+ALTER TABLE development_card_tasks ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+CREATE POLICY "Authenticated users can view all tasks" ON development_card_tasks
+  FOR SELECT USING (true);
+
+CREATE POLICY "Authenticated users can create tasks" ON development_card_tasks
+  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+CREATE POLICY "Assigned users can update tasks" ON development_card_tasks
+  FOR UPDATE USING (
+    auth.uid() = ANY(assigned_to_users) OR
+    has_role(auth.uid(), assigned_to_role::app_role) OR
+    has_role(auth.uid(), 'admin'::app_role)
+  );
+```
+
+---
+
+## New Components
+
+### 1. `PendingTasksBanner.tsx`
+Collapsible banner showing all pending tasks on a card.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ 🔔 2 Pending Tasks                                        [▼ Collapse] │
+├────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │ 📦 SAMPLE REQUEST                      Assigned to: Trader 🏷️   │  │
+│  │ 2 pcs needed • "Need blue and red colors"                        │  │
+│  │ Requested by Vitória • 2 hours ago                               │  │
+│  │                                                                   │  │
+│  │ [Add Tracking & Reassign ▶]                                      │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+│                                                                        │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │ 💰 COMMERCIAL DATA REQUEST             Assigned to: Trader 🏷️   │  │
+│  │ Price, MOQ, Container info requested                             │  │
+│  │ Requested by Pedro • 1 day ago                                   │  │
+│  │                                                                   │  │
+│  │ [Fill Commercial Data ▶]                                         │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 2. `TaskCard.tsx`
+Individual task card within the banner.
+
+### 3. `RequestCommercialDataModal.tsx`
+Modal to request commercial data and assign to a team.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  Request Commercial Data                                     [X]      │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│  Assign to:                                                           │
+│  ┌────────────────────────────────────────────────────────────────┐   │
+│  │ [👤 Select user or team...]                                    │   │
+│  │ • Trader (Team)                                                │   │
+│  │ • Jin Wei                                                      │   │
+│  │ • Marketing (Team)                                             │   │
+│  └────────────────────────────────────────────────────────────────┘   │
+│                                                                        │
+│  Optional note:                                                        │
+│  ┌────────────────────────────────────────────────────────────────┐   │
+│  │ Please provide FOB price for 40HQ container                    │   │
+│  └────────────────────────────────────────────────────────────────┘   │
+│                                                                        │
+│                                      [Cancel]  [Request & Assign ▶]   │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4. `FillCommercialDataModal.tsx`
+Modal for filling all 4 commercial data fields together.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  Fill Commercial Data                                        [X]      │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│  FOB Price (USD) *           MOQ *                                    │
+│  ┌──────────────────┐        ┌──────────────────┐                     │
+│  │ $ 2.50           │        │ 1000             │                     │
+│  └──────────────────┘        └──────────────────┘                     │
+│                                                                        │
+│  Qty per Container *         Container Type *                         │
+│  ┌──────────────────┐        ┌──────────────────┐                     │
+│  │ 50000            │        │ 40HQ          ▼  │                     │
+│  └──────────────────┘        └──────────────────┘                     │
+│                                                                        │
+│  ⓘ All fields are required. The requester will be notified.          │
+│                                                                        │
+│                              [Cancel]  [Confirm & Notify Requester ▶] │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 5. `RequestSampleModal.tsx`
+Enhanced sample request with team assignment.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  Request Sample                                              [X]      │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│  Quantity:              Assign to: *                                  │
+│  ┌──────────┐           ┌────────────────────────────────────────┐    │
+│  │ 2        │           │ 🏷️ Trader                           ▼  │    │
+│  └──────────┘           └────────────────────────────────────────┘    │
+│                                                                        │
+│  Notes (optional):                                                     │
+│  ┌────────────────────────────────────────────────────────────────┐   │
+│  │ Need blue and red color samples for quality check              │   │
+│  └────────────────────────────────────────────────────────────────┘   │
+│                                                                        │
+│  ⓘ The assigned team will be notified to send the sample.            │
+│                                                                        │
+│                                    [Cancel]  [Request & Assign ▶]     │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 6. `AddTrackingAndReassignModal.tsx`
+Modal for adding tracking and reassigning back to requester.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  Add Tracking & Complete Task                                [X]      │
+├────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │ Task: Sample Request (2 pcs)                                    │  │
+│  │ Requested by: Vitória                                           │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+│                                                                        │
+│  Courier *                   Tracking Number *                        │
+│  ┌──────────────────┐        ┌──────────────────────────────────┐     │
+│  │ DHL           ▼  │        │ 1234567890                       │     │
+│  └──────────────────┘        └──────────────────────────────────┘     │
+│                                                                        │
+│  Shipped Date               ETA                   Quantity            │
+│  ┌──────────────────┐       ┌──────────────────┐  ┌──────────┐        │
+│  │ 2026-02-02       │       │ 2026-02-10       │  │ 2        │        │
+│  └──────────────────┘       └──────────────────┘  └──────────┘        │
+│                                                                        │
+│  ⓘ Vitória will be notified that the sample is on its way.           │
+│                                                                        │
+│                                    [Cancel]  [Ship & Notify ▶]        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Modified Components
+
+### `ItemDetailDrawer.tsx`
+- Add `PendingTasksBanner` at the top (before chat timeline)
+- Update accordion sections with "Request" buttons
+
+### `CommercialDataSection.tsx`
+- Remove individual field blur-save
+- Add "Request Commercial Data" button for non-assignees
+- Add "Fill All Data" button that opens modal with all 4 required fields
+- Show read-only display if data is confirmed
+
+### `SampleTrackingSection.tsx`
+- Replace "Request" form with modal that includes assignment
+- Show pending sample requests with action buttons
+
+---
+
+## Workflow Diagrams
+
+### Sample Request Flow
+
+```
+┌───────────────┐     ┌──────────────────┐     ┌────────────────────┐
+│   BUYER       │     │    TRADER        │     │     BUYER          │
+│  (Requester)  │     │   (Assigned)     │     │  (Confirm Arrival) │
+└───────┬───────┘     └────────┬─────────┘     └─────────┬──────────┘
+        │                      │                         │
+        │  Request Sample      │                         │
+        │  [Assign to Trader]  │                         │
+        │─────────────────────>│                         │
+        │                      │                         │
+        │                      │ 🔔 Notification         │
+        │                      │ "Sample requested"      │
+        │                      │                         │
+        │                      │ Add Tracking            │
+        │                      │ [Reassign to Buyer]     │
+        │                      │────────────────────────>│
+        │                      │                         │
+        │                      │              🔔 Notification
+        │                      │              "Sample shipped"
+        │                      │                         │
+        │                      │              Mark Arrived
+        │                      │              [Review Sample]
+        │<─────────────────────────────────────────────────
+        │                      │                         │
+```
+
+### Commercial Data Request Flow
+
+```
+┌───────────────┐     ┌──────────────────┐     ┌────────────────────┐
+│   BUYER       │     │    TRADER        │     │     BUYER          │
+│  (Requester)  │     │   (Assigned)     │     │   (Confirmer)      │
+└───────┬───────┘     └────────┬─────────┘     └─────────┬──────────┘
+        │                      │                         │
+        │  Request Commercial  │                         │
+        │  [Assign to Trader]  │                         │
+        │─────────────────────>│                         │
+        │                      │                         │
+        │                      │ 🔔 Notification         │
+        │                      │ "Commercial data needed"│
+        │                      │                         │
+        │                      │ Fill All 4 Fields       │
+        │                      │ [Confirm & Notify]      │
+        │                      │────────────────────────>│
+        │                      │                         │
+        │                      │              🔔 Notification
+        │                      │              "Data provided, 
+        │                      │               please confirm"
+        │                      │                         │
+        │                      │              [Confirm] or
+        │                      │              [Request Changes]
+        │<─────────────────────────────────────────────────
+```
+
+---
+
+## Notification System Integration
+
+### Trigger Notifications
+
+| Event | Recipients | Notification Title |
+|-------|------------|-------------------|
+| Sample requested | All users with assigned role | "{Name} requested a sample" |
+| Sample shipped | Task creator | "{Name} shipped the sample via {Courier}" |
+| Sample arrived | Task creator | "Sample has arrived, please review" |
+| Commercial data requested | All users with assigned role | "{Name} requested commercial data" |
+| Commercial data filled | Task creator | "{Name} provided commercial data" |
+| Commercial data confirmed | Task completer | "{Name} confirmed the commercial data" |
+
+### Implementation
+
+Use existing `notifications` table with new types:
+- `sample_request`
+- `sample_shipped`
+- `sample_arrived`
+- `commercial_request`
+- `commercial_filled`
+- `commercial_confirmed`
+
+---
 
 ## Files to Create
 
 | File | Purpose |
 |------|---------|
-| `ChatTimeline.tsx` | WhatsApp-style message list |
-| `ChatMessage.tsx` | Single message bubble with quote support |
-| `ChatMessageInput.tsx` | Simple input with attachments |
-| `DepartmentSection.tsx` | Dashboard section for a department |
+| `PendingTasksBanner.tsx` | Collapsible banner showing all pending tasks |
+| `TaskCard.tsx` | Individual task display with actions |
+| `RequestCommercialDataModal.tsx` | Modal for requesting commercial data |
+| `FillCommercialDataModal.tsx` | Modal for filling all 4 fields together |
+| `RequestSampleModal.tsx` | Modal for requesting sample with assignment |
+| `AddTrackingModal.tsx` | Modal for adding tracking and reassigning |
+| `useCardTasks.ts` | Hook for fetching/managing card tasks |
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `Development.tsx` | Replace My Pending/All with department sections |
-| `ItemDetailDrawer.tsx` | Use ChatTimeline instead of HistoryTimeline |
-| `CreateCardModal.tsx` | Simplify but keep assignment |
+| `ItemDetailDrawer.tsx` | Add PendingTasksBanner before chat |
+| `CommercialDataSection.tsx` | Replace field-by-field with request/fill workflow |
+| `SampleTrackingSection.tsx` | Add assignment to sample requests |
+| `useNotifications.ts` | Add new notification types |
 
-## Files to Remove/Deprecate
+## Database Migration
 
-- `ThreadCard.tsx`
-- `ThreadedTimeline.tsx`  
-- `NewThreadComposer.tsx`
-- `BannerQuickActions.tsx`
-- `AttentionBanner` component
-- Complex handoff logic in `InlineReplyBox.tsx`
+1. Create `development_card_tasks` table
+2. Add RLS policies
+3. Add indexes for performance
+
+---
 
 ## Summary
 
-| Aspect | Before | After |
-|--------|--------|-------|
-| Lines of code in timeline | ~1600 | ~300 |
-| Activity types users interact with | 5+ (question, answer, comment, etc.) | 1 (message) |
-| Buttons to send a message | 4-5 (Comment, Ask Question, Answer, Reassign) | 1 (Send) |
-| Dashboard organization | My Pending / All | Buyer / Quality / Trader / Marketing |
-| Message order | Newest first (top) | Newest last (bottom) like WhatsApp |
-| Reply mechanism | Complex thread system | Simple quote |
+This implementation creates a clear task-based workflow where:
 
-This simplification dramatically reduces complexity while maintaining the core functionality: tracking development items and enabling communication between teams.
+1. **Visibility**: All pending tasks are shown prominently at the top of the card
+2. **Accountability**: Every task has a clear owner (user or team)
+3. **Notifications**: Team members are notified when assigned tasks
+4. **Completion**: Tasks naturally flow back to the requester for confirmation
+5. **Simplicity**: Commercial data requires all 4 fields together - no partial saves
+
+The colorful, collapsible banners make it immediately obvious what needs attention, and the assignment/reassignment flow ensures clear handoffs between team members.
 
