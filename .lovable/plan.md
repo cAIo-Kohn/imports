@@ -1,88 +1,75 @@
 
-# Fix Task Action Button Click Handlers
+## Diagnosis (why “Notify” / “Confirm & Notify” does nothing)
+This is not primarily a “team membership not being read” problem in the UI. The core blocker is in the database Row Level Security (RLS) for `development_card_tasks`:
 
-## Problem
+- The UPDATE policy on `development_card_tasks` has a **USING** clause but **no WITH CHECK** clause.
+- In Postgres RLS, when `WITH CHECK` is omitted on UPDATE, it effectively uses the same condition as `USING` to validate the *new row values*.
+- Your “pass the ball” step updates the task like this:
+  - sets `assigned_to_users = [requesterId]`
+  - sets `assigned_to_role = null`
+- After that update, the user who clicked “Notify” is **no longer assigned**, so the default check fails and the UPDATE is rejected.
+- Result: click triggers a request, but the request is denied by RLS, so the UI appears like “nothing happened”.
 
-Clicking "Fill Data" (sample tracking) and "Confirm & Notify" (commercial data) buttons does nothing because the action handlers are not being passed to the TaskCard component in certain scenarios.
+This affects BOTH:
+- Add Tracking → “Ship & Notify” (reassign to requester)
+- Fill Commercial Data → “Confirm & Notify Requester” (reassign to requester)
 
-## Root Cause
+## Secondary issue (role notifications won’t work reliably)
+Separately, role-based notifications are currently attempted client-side by selecting from `user_roles`:
+- Non-admin users typically cannot read all rows in `user_roles` (by design), so they can’t discover “all traders” to notify.
+- That means “notify the whole team” will often silently notify nobody unless done via privileged backend logic.
 
-In `PendingTasksBanner.tsx`, the `getTaskActions()` function (lines 54-86) has logic that's too restrictive:
+## Implementation plan (fixes clicks + makes team workflow reliable)
 
-```typescript
-if (!isDataFilled && !isRequester) {
-  return { onFillCommercial: () => onFillCommercial(task) };
-}
-```
+### 1) Reproduce & confirm the failure mode (quick verification)
+- In the browser devtools/network:
+  - Perform “Ship & Notify” or “Confirm & Notify”
+  - Confirm the request to update `development_card_tasks` returns **403** (RLS) or a permission error.
 
-This means:
-- If user IS the requester, they can't fill data (even if they have the role)
-- If user IS the requester but data is filled, no action is returned
-- The function returns `{}` (empty object) in edge cases, causing no button to work
+### 2) Database fix: allow assignees to reassign (“pass the ball”) safely
+Update the UPDATE policy on `public.development_card_tasks` so that:
+- **USING** stays strict (only current assignees/admin/buyer can update the task)
+- **WITH CHECK** is set to `true` so that an authorized updater can change assignment away from themselves.
 
-## Solution
+Concretely:
+- Drop the existing UPDATE policy (e.g. “Assigned users and admins can update tasks”)
+- Recreate it like:
 
-### 1. Fix `PendingTasksBanner.tsx` - Simplify Action Logic
+- `FOR UPDATE`
+- `TO authenticated`
+- `USING (auth.uid() = ANY(assigned_to_users) OR has_role(auth.uid(), assigned_to_role::app_role) OR has_role(auth.uid(),'admin') OR has_role(auth.uid(),'buyer'))`
+- `WITH CHECK (true)`
 
-Update `getTaskActions()` to properly determine actions based on:
-- Task state (is data filled? has tracking? is delivered?)
-- User's ability to action (already checked by `canActionTask`)
+Why this is safe:
+- The user must still satisfy **USING** on the *pre-update row* (meaning they must already be the assignee or have the assigned role).  
+- Once authorized, they can reassign (which is exactly what we want for the workflow).
 
-The logic should be:
-- **Commercial**: Show "Fill Data" if not filled, show "Confirm" if filled and user is requester
-- **Sample**: Show "Add Tracking" if no tracking, show "Mark Arrived" if has tracking and user is requester
+### 3) UX fix: show the real error if anything still fails
+Even after the RLS fix, if something else fails (e.g., sample update denied, invalid enum cast, etc.), it should be obvious:
+- In `AddTrackingModal` and `FillCommercialDataModal`, improve error toast to include `error.message` (and optionally `error.details`) so users don’t experience “nothing happens”.
+- Ensure the modal stays open on error.
 
-Remove the `!isRequester` checks - if someone can action the task AND has the role, they should be able to.
+### 4) Make “notify team by role” work correctly (recommended next)
+Right now, client-side code cannot reliably fetch all users for a role due to `user_roles` protections.
+Implement a small backend function (privileged) that:
+- Accepts `{ recipientRole, recipientUserIds, triggeredBy, cardId, taskId, type, title, content }`
+- If `recipientRole` provided: resolves all user_ids for that role server-side
+- Inserts into `notifications` server-side
 
-### 2. Changes to Make
+Then replace the client-side `sendTaskNotification()` role lookup with a call to this backend function.  
+This preserves security while making role notifications actually work for non-admins.
 
-**File: `src/components/development/PendingTasksBanner.tsx`**
+### 5) Test checklist (end-to-end)
+1. Login as Trader user (not admin).
+2. Create a Sample Request assigned to Trader role.
+3. As Trader, click “Add Tracking” → fill → click “Ship & Notify”.
+   - Expect: task updates to `in_progress`, assignment becomes requester, timeline logs message, requester gets notification.
+4. Create Commercial Request assigned to Trader role.
+5. As Trader, “Fill Data” → fill all 4 fields → “Confirm & Notify Requester”.
+   - Expect: task updates to `in_progress`, assignment becomes requester, timeline logs message, requester gets notification.
+6. As requester, confirm commercial data (should complete task) and verify timeline entry.
 
-Update `getTaskActions()` function:
-
-```typescript
-const getTaskActions = (task: CardTask) => {
-  const metadata = task.metadata || {};
-  const isRequester = task.created_by === user?.id;
-  
-  if (task.task_type === 'commercial_request') {
-    const isDataFilled = !!metadata.fob_price_usd;
-    
-    // Anyone who can action can fill data if not filled yet
-    if (!isDataFilled) {
-      return { onFillCommercial: () => onFillCommercial(task) };
-    }
-    // Only requester can confirm filled data
-    if (isDataFilled && isRequester) {
-      return { onConfirmData: () => onConfirmData(task) };
-    }
-  }
-  
-  if (task.task_type === 'sample_request') {
-    const hasTracking = !!metadata.tracking_number;
-    const isDelivered = !!metadata.actual_arrival;
-    
-    // Anyone who can action can add tracking if not added yet
-    if (!hasTracking) {
-      return { onAddTracking: () => onAddTracking(task) };
-    }
-    // Only requester can mark arrived
-    if (hasTracking && !isDelivered && isRequester) {
-      return { onMarkArrived: () => onMarkArrived(task) };
-    }
-  }
-  
-  return {};
-};
-```
-
-This removes the `&& !isRequester` condition that was blocking requesters who also have the assigned role from filling data/adding tracking.
-
-## Summary
-
-| Issue | Fix |
-|-------|-----|
-| Fill Data button does nothing | Remove `!isRequester` check - anyone who can action should be able to fill |
-| Confirm & Notify does nothing | Ensure handler is passed when data is filled and user is requester |
-| Add Tracking button does nothing | Remove `!isRequester` check |
-| Mark Arrived does nothing | Ensure handler is passed when tracking exists and user is requester |
+## Expected outcome
+- Team members (role-assignees) can perform the “action” step and successfully reassign responsibility back to requester.
+- The “Notify” buttons will actually result in database updates + timeline entries.
+- Role-based notifications become reliable once moved to privileged backend logic.
