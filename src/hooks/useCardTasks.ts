@@ -158,7 +158,7 @@ export function useCardTasks(cardId: string) {
   };
 }
 
-// Helper to send task notifications
+// Helper to send task notifications via edge function (handles role lookups server-side)
 export async function sendTaskNotification({
   recipientUserIds,
   recipientRole,
@@ -178,51 +178,24 @@ export async function sendTaskNotification({
   title: string;
   content: string;
 }) {
-  let userIds = recipientUserIds || [];
+  try {
+    const response = await supabase.functions.invoke('send-notification', {
+      body: {
+        recipientUserIds,
+        recipientRole,
+        triggeredBy,
+        cardId,
+        taskId,
+        type,
+        title,
+        content,
+      },
+    });
 
-  // If assigned to role, get all users with that role
-  if (recipientRole && userIds.length === 0) {
-    // Cast to valid role type for the query
-    const validRoles = ['admin', 'buyer', 'trader', 'quality', 'marketing', 'viewer'] as const;
-    type AppRole = typeof validRoles[number];
-    
-    if (validRoles.includes(recipientRole as AppRole)) {
-      const { data: roleUsers } = await supabase
-        .from('user_roles')
-        .select('user_id')
-        .eq('role', recipientRole as AppRole);
-      
-      if (roleUsers) {
-        userIds = roleUsers.map(r => r.user_id);
-      }
+    if (response.error) {
+      console.error('Failed to send notification:', response.error);
     }
+  } catch (error) {
+    console.error('Error invoking send-notification:', error);
   }
-
-  // Filter out the triggering user
-  userIds = userIds.filter(id => id !== triggeredBy);
-
-  if (userIds.length === 0) return;
-
-  // Get triggering user's name
-  const { data: triggerProfile } = await supabase
-    .from('profiles')
-    .select('full_name')
-    .eq('user_id', triggeredBy)
-    .single();
-
-  const triggerName = triggerProfile?.full_name || 'Someone';
-  const formattedTitle = title.replace('{name}', triggerName);
-
-  // Create notifications
-  const notifications = userIds.map(userId => ({
-    user_id: userId,
-    type,
-    card_id: cardId,
-    activity_id: taskId,
-    triggered_by: triggeredBy,
-    title: formattedTitle,
-    content,
-  }));
-
-  await supabase.from('notifications').insert(notifications);
 }
