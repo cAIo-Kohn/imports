@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowRight, HelpCircle, RotateCcw, Send, Users, Briefcase } from 'lucide-react';
+import { ArrowRight, HelpCircle, RotateCcw, Send, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
@@ -115,7 +115,7 @@ export function InlineReplyBox({
     return Object.keys(metadata).length > 0 ? metadata : null;
   };
 
-  // Reply as comment (no reassignment)
+  // Reply as comment (no reassignment - just adds info to thread)
   const commentReplyMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id || (!replyContent.trim() && attachments.length === 0)) return;
@@ -147,13 +147,81 @@ export function InlineReplyBox({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
-      toast({ title: 'Reply added' });
+      toast({ title: 'Comment added' });
       setReplyContent('');
       setAttachments([]);
       onClose();
     },
     onError: () => {
-      toast({ title: 'Error', description: 'Failed to add reply', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to add comment', variant: 'destructive' });
+    },
+  });
+
+  // Reply as answer and auto-reassign to card creator (for asking questions back)
+  const answerToCardCreatorMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id || !cardCreatorId || (!replyContent.trim() && attachments.length === 0)) return;
+      
+      const effectiveThreadId = threadId || replyToId;
+      
+      // 1. Insert the question activity
+      const { data, error } = await supabase.from('development_card_activity').insert({
+        card_id: cardId,
+        user_id: user.id,
+        activity_type: 'question',
+        content: replyContent.trim() || null,
+        metadata: {
+          ...buildMetadata(),
+          reassigned_to_card_creator: true,
+        },
+        thread_id: effectiveThreadId,
+        thread_root_id: effectiveThreadId,
+      }).select('id').single();
+      if (error) throw error;
+
+      // 2. Update thread root to reassign to card creator
+      const { error: updateError } = await supabase
+        .from('development_card_activity')
+        .update({
+          assigned_to_users: [cardCreatorId],
+          assigned_to_role: null,
+        })
+        .eq('id', effectiveThreadId);
+      if (updateError) throw updateError;
+
+      // 3. Notify card creator
+      if (data?.id && cardCreatorId !== user.id) {
+        await supabase.from('notifications').insert({
+          user_id: cardCreatorId,
+          triggered_by: user.id,
+          type: 'question_asked',
+          title: 'Question on your card',
+          content: replyContent.trim().slice(0, 100) || 'New question',
+          card_id: cardId,
+          activity_id: data.id,
+        });
+      }
+
+      // Create mention notifications
+      if (data?.id && replyContent.trim()) {
+        await createMentionNotifications({
+          text: replyContent,
+          cardId,
+          activityId: data.id,
+          triggeredBy: user.id,
+          cardTitle: cardData?.title || 'Development Card',
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-card-activity', cardId] });
+      toast({ title: 'Question sent to card creator' });
+      setReplyContent('');
+      setAttachments([]);
+      onClose();
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to send question', variant: 'destructive' });
     },
   });
 
@@ -314,12 +382,14 @@ export function InlineReplyBox({
     }
   };
 
-  const isPending = commentReplyMutation.isPending || replyBackToCreatorMutation.isPending || replyAndReassignMutation.isPending;
+  const isPending = commentReplyMutation.isPending || replyBackToCreatorMutation.isPending || replyAndReassignMutation.isPending || answerToCardCreatorMutation.isPending;
   const canSubmit = replyContent.trim() || attachments.length > 0;
   const canReassign = showReassign && (newAssignedUsers.length > 0 || newAssignedRole);
   
   const creatorName = creatorProfile?.full_name?.split(' ')[0] || 'Creator';
   const isCreator = user?.id === threadCreatorId;
+  const isCardCreator = user?.id === cardCreatorId;
+  const showAskQuestion = !isCardCreator && cardCreatorId; // Only show if not the card creator
 
   return (
     <div className="mt-3 p-3 bg-muted/50 rounded-lg border">
@@ -377,7 +447,7 @@ export function InlineReplyBox({
           size="sm"
         />
         
-        {/* Just Reply - no assignment change */}
+        {/* Just Reply (comment) - no assignment change */}
         <Button 
           variant="outline" 
           size="sm" 
@@ -385,20 +455,34 @@ export function InlineReplyBox({
           disabled={!canSubmit || isPending}
         >
           <Send className="h-3 w-3 mr-1" />
-          {commentReplyMutation.isPending ? 'Sending...' : 'Reply'}
+          {commentReplyMutation.isPending ? 'Sending...' : 'Comment'}
         </Button>
         
-        {/* Reply & Back to Creator - only if not the creator */}
+        {/* Ask Question - reassigns to card creator */}
+        {showAskQuestion && (
+          <Button 
+            variant="outline"
+            size="sm" 
+            onClick={() => answerToCardCreatorMutation.mutate()}
+            disabled={!canSubmit || isPending}
+            className="border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-600 dark:text-purple-300 dark:hover:bg-purple-900/30"
+          >
+            <HelpCircle className="h-3 w-3 mr-1" />
+            {answerToCardCreatorMutation.isPending ? 'Sending...' : 'Ask Question'}
+          </Button>
+        )}
+        
+        {/* Reply & Back to Thread Creator - only if not the thread creator */}
         {!isCreator && threadCreatorId && (
           <Button 
             variant="outline"
             size="sm" 
             onClick={() => replyBackToCreatorMutation.mutate()}
             disabled={!canSubmit || isPending}
-            className="border-green-300 text-green-700 hover:bg-green-50"
+            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-600 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
           >
             <RotateCcw className="h-3 w-3 mr-1" />
-            {replyBackToCreatorMutation.isPending ? 'Sending...' : `Reply to ${creatorName}`}
+            {replyBackToCreatorMutation.isPending ? 'Sending...' : `Answer ${creatorName}`}
           </Button>
         )}
         
