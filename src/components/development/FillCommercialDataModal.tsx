@@ -122,11 +122,13 @@ export function FillCommercialDataModal({
       setQtyPerContainer('');
       setContainerType('');
     },
-    onError: (error) => {
+    onError: (error: Error & { details?: string }) => {
       console.error('Failed to fill commercial data:', error);
+      const errorMessage = error.message || 'Failed to submit commercial data';
+      const details = error.details ? `: ${error.details}` : '';
       toast({
         title: 'Error',
-        description: 'Failed to submit commercial data',
+        description: `${errorMessage}${details}`,
         variant: 'destructive',
       });
     },

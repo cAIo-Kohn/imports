@@ -130,11 +130,13 @@ export function AddTrackingModal({
       setShippedDate(new Date().toISOString().split('T')[0]);
       setEstimatedArrival('');
     },
-    onError: (error) => {
+    onError: (error: Error & { details?: string }) => {
       console.error('Failed to add tracking:', error);
+      const errorMessage = error.message || 'Failed to add tracking information';
+      const details = error.details ? `: ${error.details}` : '';
       toast({
         title: 'Error',
-        description: 'Failed to add tracking information',
+        description: `${errorMessage}${details}`,
         variant: 'destructive',
       });
     },
