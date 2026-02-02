@@ -58,12 +58,12 @@ export function PendingTasksBanner({
     if (task.task_type === 'commercial_request') {
       const isDataFilled = !!metadata.fob_price_usd;
       
-      if (!isDataFilled && !isRequester) {
-        // Assignee can fill data
+      // Anyone who can action can fill data if not filled yet
+      if (!isDataFilled) {
         return { onFillCommercial: () => onFillCommercial(task) };
       }
+      // Only requester can confirm filled data
       if (isDataFilled && isRequester) {
-        // Requester can confirm
         return { onConfirmData: () => onConfirmData(task) };
       }
     }
@@ -72,12 +72,12 @@ export function PendingTasksBanner({
       const hasTracking = !!metadata.tracking_number;
       const isDelivered = !!metadata.actual_arrival;
       
-      if (!hasTracking && !isRequester) {
-        // Assignee can add tracking
+      // Anyone who can action can add tracking if not added yet
+      if (!hasTracking) {
         return { onAddTracking: () => onAddTracking(task) };
       }
+      // Only requester can mark arrived
       if (hasTracking && !isDelivered && isRequester) {
-        // Requester can mark arrived
         return { onMarkArrived: () => onMarkArrived(task) };
       }
     }
