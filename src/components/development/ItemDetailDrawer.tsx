@@ -11,7 +11,6 @@ import {
 } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -22,15 +21,13 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { DevelopmentItem, DevelopmentCardStatus, deriveCardStatus } from '@/pages/Development';
 import { CardInfoSection } from './CardInfoSection';
-import { HistoryTimeline } from './HistoryTimeline';
-import { ActionsPanel } from './ActionsPanel';
+import { ChatTimeline } from './ChatTimeline';
 import { DeleteCardDialog } from './DeleteCardDialog';
 
 interface ItemDetailDrawerProps {
   item: DevelopmentItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  targetThreadId?: string | null;
 }
 
 // Map new status to old status for database
@@ -49,22 +46,14 @@ const mapNewToOldStatus = (newStatus: DevelopmentCardStatus): string => {
   }
 };
 
-export function ItemDetailDrawer({ item, open, onOpenChange, targetThreadId }: ItemDetailDrawerProps) {
+export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerProps) {
   const { canManageOrders, isTrader, isBuyer, isAdmin } = useUserRole();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  
-  // State for forcing ActionsPanel sections open from timeline hints
-  const [forcedOpenSection, setForcedOpenSection] = useState<string | null>(null);
-  const [forcedMessageType, setForcedMessageType] = useState<'comment' | 'question' | null>(null);
-  const [targetSampleId, setTargetSampleId] = useState<string | null>(null);
-  
-  // Track if this was initially a new card (persists for drawer session)
-  const [wasNewForOtherTeam, setWasNewForOtherTeam] = useState(false);
 
   const canManage = canManageOrders || isTrader;
-  const canInteract = !!user; // Any authenticated user can comment/question/upload
+  const canInteract = !!user; // Any authenticated user can message
   const canDelete = canManage;
   const canRestore = isAdmin;
 
@@ -84,29 +73,11 @@ export function ItemDetailDrawer({ item, open, onOpenChange, targetThreadId }: I
     enabled: !!item?.created_by,
   });
 
-  // Capture initial "new for other team" state when drawer opens with a new item
-  useEffect(() => {
-    if (open && item?.id) {
-      const itemWithNewFields = item as any;
-      const isNewForMe = itemWithNewFields.is_new_for_other_team && (
-        (isBuyer && itemWithNewFields.created_by_role === 'trader') ||
-        (isTrader && itemWithNewFields.created_by_role === 'buyer')
-      );
-      setWasNewForOtherTeam(isNewForMe);
-    }
-    
-    // Reset when drawer closes
-    if (!open) {
-      setWasNewForOtherTeam(false);
-    }
-  }, [open, item?.id]); // Intentionally not including item itself to avoid updates from refetch
-
-  // Update last viewed timestamp when drawer opens (do NOT clear is_new_for_other_team here)
+  // Update last viewed timestamp when drawer opens
   useEffect(() => {
     const updateViewTimestamp = async () => {
       if (!item?.id || !open || !user?.id) return;
 
-      // Update last viewed timestamp for current user
       const { error } = await supabase
         .from('card_user_views')
         .upsert({
@@ -118,24 +89,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange, targetThreadId }: I
         });
 
       if (!error) {
-        // Optimistically mark as viewed in all matching caches
-        const optimisticSeenAt = new Date().toISOString();
-
-        queryClient.setQueriesData<DevelopmentItem[]>(
-          { queryKey: ['development-items'] },
-          (prev) => {
-            if (!prev) return prev;
-            return prev.map((it) =>
-              it.id === item.id ? { ...it, last_viewed_at: optimisticSeenAt } : it
-            );
-          }
-        );
-
-        // Force immediate refetch to get server-confirmed data
-        await queryClient.refetchQueries({
-          queryKey: ['development-items'],
-          type: 'active',
-        });
+        queryClient.invalidateQueries({ queryKey: ['development-items'] });
       }
     };
 
@@ -367,64 +321,11 @@ export function ItemDetailDrawer({ item, open, onOpenChange, targetThreadId }: I
           canEdit={canManage && !isDeleted}
         />
 
-        {/* Timeline Section - Takes most of the space */}
-        <ScrollArea className="flex-1 min-h-0">
-          <div className="px-4 py-2">
-            <HistoryTimeline
-              cardId={item.id}
-              cardType={cardType}
-              cardCreatedBy={item.created_by}
-              cardTitle={item.title}
-              cardDescription={item.description}
-              cardImageUrl={item.image_url}
-              isCardSolved={itemWithNewFields.is_solved || false}
-              isNewForOtherTeam={wasNewForOtherTeam}
-              showAttentionBanner={shouldShowAttentionBanner}
-              currentOwner={itemWithNewFields.current_owner || 'arc'}
-              pendingActionType={itemWithNewFields.pending_action_type || null}
-              pendingActionDueAt={itemWithNewFields.pending_action_due_at || null}
-              snoozedUntil={itemWithNewFields.pending_action_snoozed_until || null}
-              fobPriceUsd={itemWithNewFields.fob_price_usd}
-              moq={itemWithNewFields.moq}
-              qtyPerContainer={itemWithNewFields.qty_per_container}
-              containerType={itemWithNewFields.container_type}
-              targetThreadId={targetThreadId}
-              onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
-              onOpenSampleSection={(sampleId) => {
-                setForcedOpenSection('samples');
-                if (sampleId) setTargetSampleId(sampleId);
-              }}
-              onOpenMessageSection={(type) => {
-                setForcedMessageType(type);
-                setForcedOpenSection('messaging');
-              }}
-              onOpenUploadSection={() => setForcedOpenSection('messaging')}
-              onOpenCommercialSection={() => setForcedOpenSection('commercial')}
-              onCloseCard={() => onOpenChange(false)}
-            />
-          </div>
-        </ScrollArea>
-
-        {/* Quick Action Bar at Bottom */}
-        {canInteract && !isDeleted && (
-          <ActionsPanel
+        {/* WhatsApp-style Chat Timeline */}
+        {!isDeleted && (
+          <ChatTimeline
             cardId={item.id}
-            cardType={cardType}
-            fobPriceUsd={itemWithNewFields.fob_price_usd}
-            moq={itemWithNewFields.moq}
-            qtyPerContainer={itemWithNewFields.qty_per_container}
-            containerType={itemWithNewFields.container_type}
-            currentOwner={itemWithNewFields.current_owner || 'arc'}
-            canEdit={canManage}
-            forcedOpenSection={forcedOpenSection}
-            forcedMessageType={forcedMessageType}
-            targetSampleId={targetSampleId}
-            onForcedSectionHandled={() => {
-              setForcedOpenSection(null);
-              setForcedMessageType(null);
-              setTargetSampleId(null);
-            }}
-            onOwnerChange={() => queryClient.invalidateQueries({ queryKey: ['development-items'] })}
+            cardTitle={item.title}
           />
         )}
 

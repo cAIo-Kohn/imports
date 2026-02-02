@@ -7,7 +7,7 @@ import { usePendingActionNotifications } from '@/hooks/usePendingActionNotificat
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Search, Filter, Eye, EyeOff, Trash2, Users, FileSpreadsheet, LayoutGrid, Package } from 'lucide-react';
-import { TeamSection } from '@/components/development/TeamSection';
+import { DepartmentSection } from '@/components/development/DepartmentSection';
 import { CreateCardModal } from '@/components/development/CreateCardModal';
 import { SampleTrackerView } from '@/components/development/SampleTrackerView';
 import { ItemDetailDrawer } from '@/components/development/ItemDetailDrawer';
@@ -460,31 +460,27 @@ export default function Development() {
     });
   }, [items, deferredSearchTerm, priorityFilter, cardTypeFilter, creatorRoleFilter, showSolved, showDeleted]);
 
-  // Filter items into "My Pending" and "Other Cards" based on assignment
-  const { myPendingItems, otherItems } = useMemo(() => {
-    const userId = user?.id;
-    const userRolesArray = isTrader ? ['trader'] : isAdmin ? ['admin', 'buyer', 'quality', 'marketing'] : 
-      ['buyer', 'quality', 'marketing'];
+  // Group items by creator's department (role)
+  const itemsByDepartment = useMemo(() => {
+    const grouped: Record<string, DevelopmentItem[]> = {
+      buyer: [],
+      quality: [],
+      trader: [],
+      marketing: [],
+    };
     
-    const myPending = filteredItems.filter(item => {
-      // Check if card-level assignment is to current user
-      if (item.assigned_to_users?.includes(userId || '')) return true;
-      // Check if card-level assignment is to user's role
-      if (item.assigned_to_role && userRolesArray.includes(item.assigned_to_role)) return true;
-      // Check if any open thread is assigned to user
-      if (item.pending_threads_count && item.pending_threads_count > 0) return true;
-      return false;
-    });
+    for (const item of filteredItems) {
+      const role = item.created_by_role || 'buyer'; // Default to buyer if no role
+      if (grouped[role]) {
+        grouped[role].push(item);
+      } else {
+        // Handle admin or other roles - put in buyer section
+        grouped.buyer.push(item);
+      }
+    }
     
-    const others = filteredItems.filter(item => {
-      if (item.assigned_to_users?.includes(userId || '')) return false;
-      if (item.assigned_to_role && userRolesArray.includes(item.assigned_to_role)) return false;
-      if (item.pending_threads_count && item.pending_threads_count > 0) return false;
-      return true;
-    });
-    
-    return { myPendingItems: myPending, otherItems: others };
-  }, [filteredItems, user?.id, isTrader, isAdmin]);
+    return grouped;
+  }, [filteredItems]);
 
   // Stabilized event handlers
   const handleCardClick = useCallback((itemId: string) => {
@@ -714,33 +710,55 @@ export default function Development() {
 
       {/* Main Content - conditionally render based on view mode */}
       {viewMode === 'cards' ? (
-        /* Unified Card Layout: My Pending / All Cards */
-        <div className="flex-1 min-w-0 overflow-hidden p-4 md:p-6">
-          <div className="flex gap-4 md:gap-6 h-full">
-            {/* My Pending Section */}
-            <TeamSection
-              title="My Pending"
-              subtitle="Cards assigned to you or your role"
-              items={myPendingItems}
-              colorClass="border-amber-300 bg-amber-50/30"
-              flagEmoji="📌"
+        /* Dashboard by Creator's Department */
+        <div className="flex-1 min-w-0 overflow-auto p-4 md:p-6">
+          <div className="space-y-4">
+            {/* Buyer Section */}
+            <DepartmentSection
+              title="Buyer"
+              role="buyer"
+              items={itemsByDepartment.buyer}
+              colorClass="border-blue-300 bg-blue-50/30"
               onCardClick={handleCardClick}
-              onCardClickThread={handleCardClickThread}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDrop={handleDropToSection}
               canManage={canManage}
             />
 
-            {/* All Other Cards Section */}
-            <TeamSection
-              title="All Cards"
-              subtitle="All development cards"
-              items={otherItems}
-              colorClass="border-slate-300 bg-slate-50/30"
-              flagEmoji="📋"
+            {/* Quality Section */}
+            <DepartmentSection
+              title="Quality"
+              role="quality"
+              items={itemsByDepartment.quality}
+              colorClass="border-green-300 bg-green-50/30"
               onCardClick={handleCardClick}
-              onCardClickThread={handleCardClickThread}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDrop={handleDropToSection}
+              canManage={canManage}
+            />
+
+            {/* Trader Section */}
+            <DepartmentSection
+              title="Trader"
+              role="trader"
+              items={itemsByDepartment.trader}
+              colorClass="border-amber-300 bg-amber-50/30"
+              onCardClick={handleCardClick}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDrop={handleDropToSection}
+              canManage={canManage}
+            />
+
+            {/* Marketing Section */}
+            <DepartmentSection
+              title="Marketing"
+              role="marketing"
+              items={itemsByDepartment.marketing}
+              colorClass="border-purple-300 bg-purple-50/30"
+              onCardClick={handleCardClick}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDrop={handleDropToSection}
@@ -766,10 +784,8 @@ export default function Development() {
         onOpenChange={(open) => {
           if (!open) {
             setSelectedItemId(null);
-            setSelectedThreadId(null);
           }
         }}
-        targetThreadId={selectedThreadId}
       />
     </div>
   );
