@@ -243,13 +243,13 @@ export default function Development() {
           .select('card_id, metadata')
           .eq('activity_type', 'answer')
           .in('card_id', itemIds),
-        // Fetch pending threads - based on assignment, not pending_for_team
+        // Fetch thread roots - activities where thread_id = id (thread root identifiers)
         supabase
           .from('development_card_activity')
-          .select('id, card_id, thread_title, activity_type, content, assigned_to_users, assigned_to_role, thread_status')
+          .select('id, card_id, thread_title, activity_type, content, assigned_to_users, assigned_to_role, thread_status, thread_id')
           .in('card_id', itemIds)
           .is('thread_resolved_at', null)
-          .not('thread_id', 'is', null), // Only thread roots
+          .not('thread_id', 'is', null),
       ]);
 
       const sampleCountMap = (sampleCountsRes.data || []).reduce((acc, s) => {
@@ -308,6 +308,9 @@ export default function Development() {
       const pendingThreadsInfoMap: Record<string, { id: string; title: string; type: string }[]> = {};
       
       for (const pt of pendingThreadsRes.data || []) {
+        // Only count thread roots (where thread_id = id)
+        if (pt.thread_id !== pt.id) continue;
+        
         // Check if this thread is assigned to current user or their role
         const isAssignedToUser = pt.assigned_to_users?.includes(user?.id || '');
         const isAssignedToRole = pt.assigned_to_role && userRolesForCheck.includes(pt.assigned_to_role);
