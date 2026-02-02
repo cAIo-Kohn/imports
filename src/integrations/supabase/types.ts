@@ -170,6 +170,66 @@ export type Database = {
           },
         ]
       }
+      development_card_tasks: {
+        Row: {
+          assigned_to_role: string | null
+          assigned_to_users: string[] | null
+          card_id: string
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          created_by: string
+          id: string
+          metadata: Json | null
+          sample_id: string | null
+          status: string
+          task_type: string
+        }
+        Insert: {
+          assigned_to_role?: string | null
+          assigned_to_users?: string[] | null
+          card_id: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          metadata?: Json | null
+          sample_id?: string | null
+          status?: string
+          task_type: string
+        }
+        Update: {
+          assigned_to_role?: string | null
+          assigned_to_users?: string[] | null
+          card_id?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          metadata?: Json | null
+          sample_id?: string | null
+          status?: string
+          task_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "development_card_tasks_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "development_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "development_card_tasks_sample_id_fkey"
+            columns: ["sample_id"]
+            isOneToOne: false
+            referencedRelation: "development_item_samples"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       development_item_comments: {
         Row: {
           content: string
