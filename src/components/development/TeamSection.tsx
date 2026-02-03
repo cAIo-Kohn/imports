@@ -12,7 +12,6 @@ interface TeamSectionProps {
   colorClass: string;
   flagEmoji: string;
   onCardClick: (itemId: string) => void;
-  onCardClickThread?: (itemId: string, threadId: string) => void;
   onDragStart: (e: React.DragEvent, itemId: string) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
@@ -26,7 +25,6 @@ function TeamSectionComponent({
   colorClass,
   flagEmoji,
   onCardClick,
-  onCardClickThread,
   onDragStart,
   onDragOver,
   onDrop,
