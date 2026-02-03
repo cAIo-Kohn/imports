@@ -91,6 +91,9 @@ function DevelopmentCardComponent({
     return new Date(latestActivity) > new Date(lastViewed);
   }, [item.latest_activity_at, item.last_viewed_at]);
 
+  // Get unread count for notification badge
+  const unreadCount = item.unread_count || 0;
+
   // Determine the highlight class - deleted cards are faded, "my turn" cards are highlighted
   const highlightClass = isDeleted
     ? 'opacity-60 border-destructive'
@@ -123,6 +126,13 @@ function DevelopmentCardComponent({
       draggable={canDrag}
       onDragStart={(e) => onDragStart(e, item.id)}
     >
+      {/* Unread notification badge - WhatsApp style */}
+      {unreadCount > 0 && (
+        <div className="absolute -top-1.5 -right-1.5 z-10 flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold shadow-md">
+          {unreadCount > 99 ? '99+' : unreadCount}
+        </div>
+      )}
+
       {/* Indicators - both can show independently */}
       <div className="absolute top-2 right-2 flex items-center gap-1">
         {/* Pending threads count indicator with tooltip */}
@@ -162,8 +172,8 @@ function DevelopmentCardComponent({
             </Tooltip>
           </TooltipProvider>
         )}
-        {/* Unseen activity indicator - always shown when there's unseen activity */}
-        {hasUnseenActivity && !item.pending_threads_count && (
+        {/* Unseen activity indicator - only show when no unread badge is visible */}
+        {hasUnseenActivity && !item.pending_threads_count && unreadCount === 0 && (
           <span className="relative flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
@@ -292,6 +302,7 @@ export const DevelopmentCard = memo(DevelopmentCardComponent, (prev, next) => {
     prev.item.pending_action_type === next.item.pending_action_type &&
     prev.item.pending_action_snoozed_until === next.item.pending_action_snoozed_until &&
     prev.item.pending_threads_count === next.item.pending_threads_count &&
+    prev.item.unread_count === next.item.unread_count &&
     JSON.stringify(prev.item.pending_threads_info) === JSON.stringify(next.item.pending_threads_info) &&
     prev.canDrag === next.canDrag &&
     prev.onClickThread === next.onClickThread
