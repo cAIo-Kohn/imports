@@ -85,6 +85,8 @@ export interface DevelopmentItem {
   // Assignment columns - the source of truth for "whose turn"
   assigned_to_users?: string[] | null;
   assigned_to_role?: string | null;
+  // Unread count for notification badge
+  unread_count?: number;
 }
 
 // Derive card status automatically from pending_action_type, snooze, and is_solved
@@ -203,8 +205,8 @@ export default function Development() {
       // Get unique creator user IDs
       const creatorIds = [...new Set(data.map(item => item.created_by).filter(Boolean))];
 
-      // Fetch sample counts, product counts, latest activity, user views, creator profiles, unresolved questions, unacknowledged answers, and pending threads in parallel
-      const [sampleCountsRes, productCountsRes, latestActivitiesRes, userViewsRes, creatorProfilesRes, unresolvedQuestionsRes, unacknowledgedAnswersRes, pendingThreadsRes] = await Promise.all([
+      // Fetch sample counts, product counts, latest activity, user views, creator profiles, unresolved questions, unacknowledged answers, pending threads, and all activities for unread count in parallel
+      const [sampleCountsRes, productCountsRes, latestActivitiesRes, userViewsRes, creatorProfilesRes, unresolvedQuestionsRes, unacknowledgedAnswersRes, pendingThreadsRes, allActivitiesRes] = await Promise.all([
         supabase
           .from('development_item_samples')
           .select('item_id')
@@ -250,6 +252,11 @@ export default function Development() {
           .in('card_id', itemIds)
           .is('thread_resolved_at', null)
           .not('thread_id', 'is', null),
+        // Fetch all activities for unread count calculation
+        supabase
+          .from('development_card_activity')
+          .select('card_id, created_at')
+          .in('card_id', itemIds),
       ]);
 
       const sampleCountMap = (sampleCountsRes.data || []).reduce((acc, s) => {
@@ -331,6 +338,18 @@ export default function Development() {
         }
       }
 
+      // Compute unread count per card based on activities after last_viewed_at
+      const unreadCountMap: Record<string, number> = {};
+      const allActivities = allActivitiesRes.data || [];
+      
+      for (const activity of allActivities) {
+        const lastViewed = userViewMap[activity.card_id];
+        // If never viewed or activity is after last viewed, count it
+        if (!lastViewed || new Date(activity.created_at) > new Date(lastViewed)) {
+          unreadCountMap[activity.card_id] = (unreadCountMap[activity.card_id] || 0) + 1;
+        }
+      }
+
       return data.map(item => {
         // Compute effective pending action type
         let effectivePendingActionType = item.pending_action_type;
@@ -371,6 +390,7 @@ export default function Development() {
           pending_threads_count: pendingThreadsCountMap[item.id] || 0,
           pending_threads_info: pendingThreadsInfoMap[item.id] || [],
           derived_status: derivedStatus,
+          unread_count: unreadCountMap[item.id] || 0,
         };
       }) as DevelopmentItem[];
     },
