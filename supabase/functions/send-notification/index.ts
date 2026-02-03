@@ -83,11 +83,13 @@ Deno.serve(async (req) => {
     const formattedTitle = title.replace("{name}", triggerName);
 
     // Create notifications for all recipients
+    // Note: activity_id must reference development_card_activity, not tasks
+    // taskId is stored separately or omitted - it's not a valid activity_id
     const notifications = userIds.map((userId) => ({
       user_id: userId,
       type,
       card_id: cardId,
-      activity_id: activityId || taskId,
+      activity_id: activityId || null,
       triggered_by: triggeredBy,
       title: formattedTitle,
       content,
