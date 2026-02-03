@@ -1,75 +1,109 @@
 
-## Diagnosis (why “Notify” / “Confirm & Notify” does nothing)
-This is not primarily a “team membership not being read” problem in the UI. The core blocker is in the database Row Level Security (RLS) for `development_card_tasks`:
+# Complete Sample Review Flow in Pending Tasks
 
-- The UPDATE policy on `development_card_tasks` has a **USING** clause but **no WITH CHECK** clause.
-- In Postgres RLS, when `WITH CHECK` is omitted on UPDATE, it effectively uses the same condition as `USING` to validate the *new row values*.
-- Your “pass the ball” step updates the task like this:
-  - sets `assigned_to_users = [requesterId]`
-  - sets `assigned_to_role = null`
-- After that update, the user who clicked “Notify” is **no longer assigned**, so the default check fails and the UPDATE is rejected.
-- Result: click triggers a request, but the request is denied by RLS, so the UI appears like “nothing happened”.
+## Current State
 
-This affects BOTH:
-- Add Tracking → “Ship & Notify” (reassign to requester)
-- Fill Commercial Data → “Confirm & Notify Requester” (reassign to requester)
+The sample workflow currently works through these steps:
+1. **Request sample** - Creates a `sample_request` task assigned to Trader role
+2. **Send tracking** - Trader adds tracking, task reassigns to requester
+3. **Mark as received** - Requester marks sample as delivered
 
-## Secondary issue (role notifications won’t work reliably)
-Separately, role-based notifications are currently attempted client-side by selecting from `user_roles`:
-- Non-admin users typically cannot read all rows in `user_roles` (by design), so they can’t discover “all traders” to notify.
-- That means “notify the whole team” will often silently notify nobody unless done via privileged backend logic.
+However, after "Mark as Received," the task workflow stops - the review step exists in the Sample Tracking accordion (`SampleReviewSection`) but doesn't appear as a pending task.
 
-## Implementation plan (fixes clicks + makes team workflow reliable)
+## Missing Flow
 
-### 1) Reproduce & confirm the failure mode (quick verification)
-- In the browser devtools/network:
-  - Perform “Ship & Notify” or “Confirm & Notify”
-  - Confirm the request to update `development_card_tasks` returns **403** (RLS) or a permission error.
+After a sample is marked as received:
+1. **Awaiting Review** should appear as a pending task for the requester
+2. **If rejected** - require report upload, then reassign task to Trader for new sample
+3. **If approved** - complete the task and keep sample visible in history with full timeline
 
-### 2) Database fix: allow assignees to reassign (“pass the ball”) safely
-Update the UPDATE policy on `public.development_card_tasks` so that:
-- **USING** stays strict (only current assignees/admin/buyer can update the task)
-- **WITH CHECK** is set to `true` so that an authorized updater can change assignment away from themselves.
+## Implementation Plan
 
-Concretely:
-- Drop the existing UPDATE policy (e.g. “Assigned users and admins can update tasks”)
-- Recreate it like:
+### 1. Add New Task Type for Sample Review
 
-- `FOR UPDATE`
-- `TO authenticated`
-- `USING (auth.uid() = ANY(assigned_to_users) OR has_role(auth.uid(), assigned_to_role::app_role) OR has_role(auth.uid(),'admin') OR has_role(auth.uid(),'buyer'))`
-- `WITH CHECK (true)`
+**File: `src/hooks/useCardTasks.ts`**
+- Extend `task_type` to include `'sample_review'`
 
-Why this is safe:
-- The user must still satisfy **USING** on the *pre-update row* (meaning they must already be the assignee or have the assigned role).  
-- Once authorized, they can reassign (which is exactly what we want for the workflow).
+**File: `src/components/development/ItemDetailDrawer.tsx`**
+- In `handleMarkArrived`, after updating the task metadata, change task_type to `'sample_review'` or create a follow-up review task
 
-### 3) UX fix: show the real error if anything still fails
-Even after the RLS fix, if something else fails (e.g., sample update denied, invalid enum cast, etc.), it should be obvious:
-- In `AddTrackingModal` and `FillCommercialDataModal`, improve error toast to include `error.message` (and optionally `error.details`) so users don’t experience “nothing happens”.
-- Ensure the modal stays open on error.
+### 2. Update TaskCard to Handle Sample Review
 
-### 4) Make “notify team by role” work correctly (recommended next)
-Right now, client-side code cannot reliably fetch all users for a role due to `user_roles` protections.
-Implement a small backend function (privileged) that:
-- Accepts `{ recipientRole, recipientUserIds, triggeredBy, cardId, taskId, type, title, content }`
-- If `recipientRole` provided: resolves all user_ids for that role server-side
-- Inserts into `notifications` server-side
+**File: `src/components/development/TaskCard.tsx`**
+- Add rendering for `sample_review` task type
+- Show "Review Sample" button that opens the review flow
+- Display status: "Awaiting your review"
 
-Then replace the client-side `sendTaskNotification()` role lookup with a call to this backend function.  
-This preserves security while making role notifications actually work for non-admins.
+### 3. Update PendingTasksBanner
 
-### 5) Test checklist (end-to-end)
-1. Login as Trader user (not admin).
-2. Create a Sample Request assigned to Trader role.
-3. As Trader, click “Add Tracking” → fill → click “Ship & Notify”.
-   - Expect: task updates to `in_progress`, assignment becomes requester, timeline logs message, requester gets notification.
-4. Create Commercial Request assigned to Trader role.
-5. As Trader, “Fill Data” → fill all 4 fields → “Confirm & Notify Requester”.
-   - Expect: task updates to `in_progress`, assignment becomes requester, timeline logs message, requester gets notification.
-6. As requester, confirm commercial data (should complete task) and verify timeline entry.
+**File: `src/components/development/PendingTasksBanner.tsx`**
+- Add `onReviewSample` callback prop
+- In `getTaskActions`, handle `sample_review` task type:
+  - Show "Review Sample" button for the requester (delivered but not reviewed)
 
-## Expected outcome
-- Team members (role-assignees) can perform the “action” step and successfully reassign responsibility back to requester.
-- The “Notify” buttons will actually result in database updates + timeline entries.
-- Role-based notifications become reliable once moved to privileged backend logic.
+### 4. Handle Review Outcomes
+
+**File: `src/components/development/SampleReviewSection.tsx`**
+- On **Reject**:
+  - Require report/notes (already implemented)
+  - Update task to reassign to Trader role with metadata indicating "needs new sample"
+  - Task type stays `sample_request` but with `needs_resend: true` in metadata
+- On **Approve**:
+  - Mark task as `completed`
+  - Sample stays visible in Sample Tracking section with full history
+
+### 5. Create Sample Review Modal
+
+**New File: `src/components/development/SampleReviewModal.tsx`**
+- Similar to `FillCommercialDataModal` but for sample review
+- Contains the review form (notes, file upload, approve/reject buttons)
+- On submit, updates sample and task appropriately
+
+### 6. Wire Up in ItemDetailDrawer
+
+**File: `src/components/development/ItemDetailDrawer.tsx`**
+- Add state for `showSampleReviewModal`
+- Add `handleReviewSample` function that opens the modal
+- Pass `onReviewSample` to PendingTasksBanner
+
+## Flow Summary
+
+```text
+Request Sample
+     ↓
+[Task: sample_request, assigned: Trader]
+     ↓
+Add Tracking → Ship & Notify
+     ↓
+[Task: sample_request, assigned: Requester, status: in_progress]
+     ↓
+Mark as Arrived
+     ↓
+[Task: sample_review, assigned: Requester] ← NEW PENDING TASK
+     ↓
+Review Sample (in modal)
+     ↓
+┌─────────────┬─────────────┐
+│   APPROVE   │   REJECT    │
+│  (complete) │ (needs new) │
+└─────────────┴─────────────┘
+      ↓              ↓
+   Task Done    [Task: sample_request, 
+                 assigned: Trader,
+                 metadata: needs_resend]
+                      ↓
+                Add New Tracking...
+```
+
+## Technical Changes Summary
+
+| File | Change |
+|------|--------|
+| `useCardTasks.ts` | Update `task_type` union to include `'sample_review'` |
+| `TaskCard.tsx` | Add rendering for review task with "Review Sample" button |
+| `PendingTasksBanner.tsx` | Add `onReviewSample` prop and handler |
+| `ItemDetailDrawer.tsx` | Wire up review modal state and handler |
+| `SampleReviewModal.tsx` (new) | Modal for reviewing samples with approve/reject |
+| `SampleReviewSection.tsx` | Update to handle task reassignment on reject |
+
+This ensures the complete sample lifecycle flows through the pending task system with clear accountability at each step.
