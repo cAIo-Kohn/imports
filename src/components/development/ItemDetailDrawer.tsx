@@ -405,7 +405,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0 mr-6">
               {isDeleted && canRestore && (
                 <Button
                   variant="outline"
