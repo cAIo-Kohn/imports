@@ -1,109 +1,157 @@
 
-# Complete Sample Review Flow in Pending Tasks
+# Complete Commercial Data Review Flow
 
 ## Current State
 
-The sample workflow currently works through these steps:
-1. **Request sample** - Creates a `sample_request` task assigned to Trader role
-2. **Send tracking** - Trader adds tracking, task reassigns to requester
-3. **Mark as received** - Requester marks sample as delivered
+The commercial data workflow currently works through these steps:
+1. **Request Commercial Data** - Creates a `commercial_request` task assigned to a team/user
+2. **Fill Data** - Assignee fills all 4 fields (FOB Price, MOQ, Qty/Container, Container Type), task reassigns to requester with status `in_progress`
+3. **Confirm** - Requester clicks "Confirm" → task marked `completed`
 
-However, after "Mark as Received," the task workflow stops - the review step exists in the Sample Tracking accordion (`SampleReviewSection`) but doesn't appear as a pending task.
+**What's missing:**
+- No ability for requester to **reject** data (e.g., ask for a better price)
+- No review modal with approve/reject options
+- No feedback loop for negotiations (discount requests, target price, etc.)
+- No history tracking of negotiations until final approval
 
-## Missing Flow
+## Proposed Flow
 
-After a sample is marked as received:
-1. **Awaiting Review** should appear as a pending task for the requester
-2. **If rejected** - require report upload, then reassign task to Trader for new sample
-3. **If approved** - complete the task and keep sample visible in history with full timeline
+```text
+Request Commercial Data
+        ↓
+[Task: commercial_request, assigned: Trader, status: pending]
+        ↓
+Fill Data → Notify Requester
+        ↓
+[Task: commercial_review, assigned: Requester, status: pending]
+        ↓
+Review Commercial Data (in modal)
+        ↓
+┌──────────────────┬──────────────────┐
+│     APPROVE      │      REJECT      │
+│    (complete)    │  (needs revision)│
+└──────────────────┴──────────────────┘
+        ↓                    ↓
+    Task Done         [Task: commercial_request,
+                       assigned: Trader,
+                       metadata: needs_revision + feedback]
+                              ↓
+                    Fill Revised Data...
+                    (loop until approved)
+```
 
 ## Implementation Plan
 
-### 1. Add New Task Type for Sample Review
+### 1. Add New Task Type: `commercial_review`
 
 **File: `src/hooks/useCardTasks.ts`**
-- Extend `task_type` to include `'sample_review'`
+- Add `'commercial_review'` to the `task_type` union
 
-**File: `src/components/development/ItemDetailDrawer.tsx`**
-- In `handleMarkArrived`, after updating the task metadata, change task_type to `'sample_review'` or create a follow-up review task
+### 2. Update FillCommercialDataModal
 
-### 2. Update TaskCard to Handle Sample Review
+**File: `src/components/development/FillCommercialDataModal.tsx`**
+- After filling data, create a NEW `commercial_review` task for the requester instead of updating the current task
+- Mark the original `commercial_request` task as completed
+- Support pre-filling with previous data when resubmitting (for revision flow)
+
+### 3. Create CommercialReviewModal
+
+**New File: `src/components/development/CommercialReviewModal.tsx`**
+- Display submitted commercial data (FOB Price, MOQ, Qty/Container, Container Type)
+- Show historical submissions if this is a revision
+- Feedback textarea for rejection (target price, discount request, etc.)
+- **Approve** button: marks task completed, logs to timeline
+- **Request Revision** button: 
+  - Creates new `commercial_request` task assigned to original filler (or Trader role)
+  - Includes rejection reason and requested changes in metadata
+  - Logs negotiation round to timeline
+
+### 4. Update TaskCard for commercial_review
 
 **File: `src/components/development/TaskCard.tsx`**
-- Add rendering for `sample_review` task type
-- Show "Review Sample" button that opens the review flow
-- Display status: "Awaiting your review"
+- Add handling for `commercial_review` task type
+- Green/success color scheme for review tasks
+- Show submitted data summary
+- Display "Review Commercial Data" button for requester
+- Handle `needs_revision` state display (show previous rejection reason)
 
-### 3. Update PendingTasksBanner
+### 5. Update PendingTasksBanner
 
 **File: `src/components/development/PendingTasksBanner.tsx`**
-- Add `onReviewSample` callback prop
-- In `getTaskActions`, handle `sample_review` task type:
-  - Show "Review Sample" button for the requester (delivered but not reviewed)
+- Add `onReviewCommercial` callback prop
+- Handle `commercial_review` task type in `getTaskActions`
 
-### 4. Handle Review Outcomes
-
-**File: `src/components/development/SampleReviewSection.tsx`**
-- On **Reject**:
-  - Require report/notes (already implemented)
-  - Update task to reassign to Trader role with metadata indicating "needs new sample"
-  - Task type stays `sample_request` but with `needs_resend: true` in metadata
-- On **Approve**:
-  - Mark task as `completed`
-  - Sample stays visible in Sample Tracking section with full history
-
-### 5. Create Sample Review Modal
-
-**New File: `src/components/development/SampleReviewModal.tsx`**
-- Similar to `FillCommercialDataModal` but for sample review
-- Contains the review form (notes, file upload, approve/reject buttons)
-- On submit, updates sample and task appropriately
-
-### 6. Wire Up in ItemDetailDrawer
+### 6. Update ItemDetailDrawer
 
 **File: `src/components/development/ItemDetailDrawer.tsx`**
-- Add state for `showSampleReviewModal`
-- Add `handleReviewSample` function that opens the modal
-- Pass `onReviewSample` to PendingTasksBanner
+- Add state for `showCommercialReviewModal`
+- Add `handleReviewCommercial` function
+- Pass `onReviewCommercial` to PendingTasksBanner
+- Include CommercialReviewModal in render
 
-## Flow Summary
+### 7. Update CommercialDataSection (Optional Enhancement)
 
-```text
-Request Sample
-     ↓
-[Task: sample_request, assigned: Trader]
-     ↓
-Add Tracking → Ship & Notify
-     ↓
-[Task: sample_request, assigned: Requester, status: in_progress]
-     ↓
-Mark as Arrived
-     ↓
-[Task: sample_review, assigned: Requester] ← NEW PENDING TASK
-     ↓
-Review Sample (in modal)
-     ↓
-┌─────────────┬─────────────┐
-│   APPROVE   │   REJECT    │
-│  (complete) │ (needs new) │
-└─────────────┴─────────────┘
-      ↓              ↓
-   Task Done    [Task: sample_request, 
-                 assigned: Trader,
-                 metadata: needs_resend]
-                      ↓
-                Add New Tracking...
+**File: `src/components/development/CommercialDataSection.tsx`**
+- Add negotiation history section showing:
+  - Each revision round with dates
+  - Previous prices offered vs. requested target
+  - Final approved price
+
+## Task Type States
+
+| Task Type | Status | Assigned To | Meaning |
+|-----------|--------|-------------|---------|
+| `commercial_request` | `pending` | Trader/Role | Awaiting data entry |
+| `commercial_request` | `pending` + `needs_revision` | Trader/Role | Data rejected, needs update |
+| `commercial_review` | `pending` | Requester | Data submitted, awaiting review |
+| `commercial_review` | `completed` | N/A | Data approved |
+
+## Metadata Structure
+
+For `commercial_request` with `needs_revision`:
+```json
+{
+  "needs_revision": true,
+  "revision_number": 2,
+  "previous_submissions": [
+    {
+      "fob_price_usd": 2.50,
+      "moq": 1000,
+      "submitted_at": "2024-02-03T...",
+      "submitted_by": "user-id",
+      "rejection_reason": "Price too high, target $2.00"
+    }
+  ]
+}
 ```
 
-## Technical Changes Summary
+For `commercial_review`:
+```json
+{
+  "fob_price_usd": 2.30,
+  "moq": 1000,
+  "qty_per_container": 50000,
+  "container_type": "40hq",
+  "filled_by": "trader-user-id",
+  "filled_at": "2024-02-03T...",
+  "revision_number": 2
+}
+```
+
+## Files Changed Summary
 
 | File | Change |
 |------|--------|
-| `useCardTasks.ts` | Update `task_type` union to include `'sample_review'` |
-| `TaskCard.tsx` | Add rendering for review task with "Review Sample" button |
-| `PendingTasksBanner.tsx` | Add `onReviewSample` prop and handler |
+| `useCardTasks.ts` | Add `'commercial_review'` to task_type union |
+| `FillCommercialDataModal.tsx` | Create `commercial_review` task after filling, support revision flow |
+| `CommercialReviewModal.tsx` (new) | Modal for approve/reject with feedback |
+| `TaskCard.tsx` | Handle `commercial_review` rendering and actions |
+| `PendingTasksBanner.tsx` | Add `onReviewCommercial` prop and handler |
 | `ItemDetailDrawer.tsx` | Wire up review modal state and handler |
-| `SampleReviewModal.tsx` (new) | Modal for reviewing samples with approve/reject |
-| `SampleReviewSection.tsx` | Update to handle task reassignment on reject |
 
-This ensures the complete sample lifecycle flows through the pending task system with clear accountability at each step.
+## Expected Outcome
+
+- Requesters can negotiate commercial terms until satisfied
+- Full audit trail of negotiation rounds in timeline
+- Clear accountability at each step (who filled, who rejected, why)
+- Final approved data is stored on the card for reference
