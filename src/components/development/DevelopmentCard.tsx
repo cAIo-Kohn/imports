@@ -135,54 +135,17 @@ function DevelopmentCardComponent({
         </div>
       )}
 
-      {/* Indicators - both can show independently */}
+      {/* Indicators */}
       <div className="absolute top-2 right-2 flex items-center gap-1">
-        {/* Pending threads count indicator with tooltip */}
-        {(item.pending_threads_count ?? 0) > 0 && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="relative flex items-center justify-center h-5 w-5 rounded-full bg-amber-500 text-white text-[10px] font-bold animate-pulse cursor-help">
-                  {item.pending_threads_count}
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="max-w-[220px] p-2">
-                <p className="font-medium text-xs mb-1.5">Pending threads:</p>
-                <ul className="text-xs space-y-1.5">
-                  {(item.pending_threads_info || []).slice(0, 5).map((thread, i) => (
-                    <li 
-                      key={thread.id || i} 
-                      className="flex items-center gap-1.5 cursor-pointer hover:text-primary transition-colors group/item"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onClickThread?.(thread.id);
-                      }}
-                    >
-                      {thread.type === 'question' && <HelpCircle className="h-3 w-3 text-purple-500 flex-shrink-0" />}
-                      {thread.type === 'sample_requested' && <Package className="h-3 w-3 text-cyan-500 flex-shrink-0" />}
-                      {thread.type === 'answer' && <Reply className="h-3 w-3 text-green-500 flex-shrink-0" />}
-                      {thread.type === 'comment' && <MessageCircle className="h-3 w-3 text-blue-500 flex-shrink-0" />}
-                      {!['question', 'sample_requested', 'answer', 'comment'].includes(thread.type) && <MessageCircle className="h-3 w-3 text-muted-foreground flex-shrink-0" />}
-                      <span className="truncate group-hover/item:underline">{thread.title}</span>
-                    </li>
-                  ))}
-                  {(item.pending_threads_info || []).length > 5 && (
-                    <li className="text-muted-foreground">+{item.pending_threads_info!.length - 5} more</li>
-                  )}
-                </ul>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
         {/* Unseen activity indicator - only show when no unread badge is visible */}
-        {hasUnseenActivity && !(item.pending_threads_count ?? 0) && unreadCount === 0 && (
+        {hasUnseenActivity && unreadCount === 0 && (
           <span className="relative flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
           </span>
         )}
-        {/* Pending action indicator - shown independently */}
-        {item.pending_action_type && !(item.pending_threads_count ?? 0) && (
+        {/* Pending action indicator */}
+        {item.pending_action_type && (
           <PendingActionIndicator
             pendingActionType={item.pending_action_type}
             pendingActionDueAt={item.pending_action_due_at || null}
