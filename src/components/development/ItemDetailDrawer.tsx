@@ -38,6 +38,7 @@ import { RequestCommercialDataModal } from './RequestCommercialDataModal';
 import { FillCommercialDataModal } from './FillCommercialDataModal';
 import { RequestSampleModal } from './RequestSampleModal';
 import { AddTrackingModal } from './AddTrackingModal';
+import { SampleReviewModal } from './SampleReviewModal';
 
 interface ItemDetailDrawerProps {
   item: DevelopmentItem | null;
@@ -72,6 +73,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   const [showFillCommercialModal, setShowFillCommercialModal] = useState(false);
   const [showRequestSampleModal, setShowRequestSampleModal] = useState(false);
   const [showAddTrackingModal, setShowAddTrackingModal] = useState(false);
+  const [showSampleReviewModal, setShowSampleReviewModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<CardTask | null>(null);
 
   // Fetch card tasks
@@ -285,10 +287,31 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
           .eq('id', task.sample_id);
       }
 
-      // Update task - reassign to requester for review
+      // Create a new sample_review task for the requester
+      const { error: reviewTaskError } = await (supabase
+        .from('development_card_tasks') as any)
+        .insert({
+          card_id: task.card_id,
+          task_type: 'sample_review',
+          status: 'pending',
+          assigned_to_users: [task.created_by], // Assign to original requester
+          assigned_to_role: null,
+          created_by: task.created_by, // Keep original requester as creator
+          sample_id: task.sample_id,
+          metadata: {
+            ...task.metadata,
+            actual_arrival: new Date().toISOString().split('T')[0],
+            marked_arrived_by: user.id,
+          },
+        });
+
+      if (reviewTaskError) throw reviewTaskError;
+
+      // Mark original sample_request task as completed
       await updateTask({
         taskId: task.id,
-        status: 'in_progress',
+        status: 'completed',
+        completed_by: user.id,
         metadata: {
           ...task.metadata,
           actual_arrival: new Date().toISOString().split('T')[0],
@@ -313,6 +336,11 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
       console.error('Failed to mark arrived:', error);
       toast({ title: 'Error', description: 'Failed to update sample', variant: 'destructive' });
     }
+  };
+
+  const handleReviewSample = (task: CardTask) => {
+    setSelectedTask(task);
+    setShowSampleReviewModal(true);
   };
 
   if (!item) return null;
@@ -472,6 +500,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               onAddTracking={handleAddTracking}
               onConfirmData={handleConfirmData}
               onMarkArrived={handleMarkArrived}
+              onReviewSample={handleReviewSample}
             />
           </div>
         )}
@@ -528,6 +557,19 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
             open={showAddTrackingModal}
             onOpenChange={(open) => {
               setShowAddTrackingModal(open);
+              if (!open) setSelectedTask(null);
+            }}
+            task={selectedTask}
+            cardTitle={item.title}
+          />
+        )}
+
+        {/* Sample Review Modal */}
+        {selectedTask && (
+          <SampleReviewModal
+            open={showSampleReviewModal}
+            onOpenChange={(open) => {
+              setShowSampleReviewModal(open);
               if (!open) setSelectedTask(null);
             }}
             task={selectedTask}

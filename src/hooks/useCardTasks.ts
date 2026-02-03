@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 export interface CardTask {
   id: string;
   card_id: string;
-  task_type: 'sample_request' | 'commercial_request';
+  task_type: 'sample_request' | 'commercial_request' | 'sample_review';
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   assigned_to_users: string[];
   assigned_to_role: string | null;

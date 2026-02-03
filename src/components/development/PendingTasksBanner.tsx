@@ -13,6 +13,7 @@ interface PendingTasksBannerProps {
   onAddTracking: (task: CardTask) => void;
   onConfirmData: (task: CardTask) => void;
   onMarkArrived: (task: CardTask) => void;
+  onReviewSample: (task: CardTask) => void;
 }
 
 export function PendingTasksBanner({
@@ -21,6 +22,7 @@ export function PendingTasksBanner({
   onAddTracking,
   onConfirmData,
   onMarkArrived,
+  onReviewSample,
 }: PendingTasksBannerProps) {
   const [isOpen, setIsOpen] = useState(true);
   const { user } = useAuth();
@@ -80,6 +82,11 @@ export function PendingTasksBanner({
       if (hasTracking && !isDelivered && isRequester) {
         return { onMarkArrived: () => onMarkArrived(task) };
       }
+    }
+
+    // Sample review - show review button for the requester
+    if (task.task_type === 'sample_review') {
+      return { onReviewSample: () => onReviewSample(task) };
     }
     
     return {};

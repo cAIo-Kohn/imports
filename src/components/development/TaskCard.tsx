@@ -11,6 +11,7 @@ interface TaskCardProps {
   onAddTracking?: () => void;
   onConfirmData?: () => void;
   onMarkArrived?: () => void;
+  onReviewSample?: () => void;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -27,9 +28,11 @@ export function TaskCard({
   onAddTracking,
   onConfirmData,
   onMarkArrived,
+  onReviewSample,
 }: TaskCardProps) {
   const isCommercial = task.task_type === 'commercial_request';
   const isSample = task.task_type === 'sample_request';
+  const isReview = task.task_type === 'sample_review';
   
   const creatorName = task.created_by_profile?.full_name || 'Unknown';
   const timeAgo = formatDistanceToNow(new Date(task.created_at), { addSuffix: true });
@@ -45,28 +48,45 @@ export function TaskCard({
   const isDataFilled = isCommercial && metadata.fob_price_usd;
   const hasTracking = isSample && metadata.tracking_number;
   const isDelivered = isSample && metadata.actual_arrival;
+  const needsResend = isSample && metadata.needs_resend;
+
+  // Determine background color based on task type
+  const getBgClass = () => {
+    if (isCommercial) return 'bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800';
+    if (isReview) return 'bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800';
+    return 'bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800';
+  };
+
+  // Determine icon background color
+  const getIconBgClass = () => {
+    if (isCommercial) return 'bg-amber-100 dark:bg-amber-900/50';
+    if (isReview) return 'bg-purple-100 dark:bg-purple-900/50';
+    return 'bg-blue-100 dark:bg-blue-900/50';
+  };
+
+  // Determine icon color
+  const getIconColorClass = () => {
+    if (isCommercial) return 'text-amber-600 dark:text-amber-400';
+    if (isReview) return 'text-purple-600 dark:text-purple-400';
+    return 'text-blue-600 dark:text-blue-400';
+  };
 
   return (
-    <div className={`rounded-lg border p-3 ${
-      isCommercial ? 'bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800' : 
-      'bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800'
-    }`}>
+    <div className={`rounded-lg border p-3 ${getBgClass()}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2 flex-1 min-w-0">
-          <div className={`p-1.5 rounded ${
-            isCommercial ? 'bg-amber-100 dark:bg-amber-900/50' : 'bg-blue-100 dark:bg-blue-900/50'
-          }`}>
+          <div className={`p-1.5 rounded ${getIconBgClass()}`}>
             {isCommercial ? (
-              <DollarSign className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <DollarSign className={`h-4 w-4 ${getIconColorClass()}`} />
             ) : (
-              <Package className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <Package className={`h-4 w-4 ${getIconColorClass()}`} />
             )}
           </div>
           
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium text-sm">
-                {isCommercial ? 'Commercial Data Request' : 'Sample Request'}
+                {isCommercial ? 'Commercial Data Request' : isReview ? 'Sample Review' : needsResend ? 'New Sample Needed' : 'Sample Request'}
               </span>
               <Badge variant="outline" className="text-xs flex items-center gap-1">
                 {task.assigned_to_role ? <Users className="h-3 w-3" /> : <User className="h-3 w-3" />}
@@ -78,14 +98,24 @@ export function TaskCard({
             </div>
             
             <div className="text-xs text-muted-foreground mt-1">
-              {isSample && metadata.quantity && (
+              {(isSample || isReview) && metadata.quantity && (
                 <span>{metadata.quantity as number} pcs needed</span>
               )}
-              {isSample && metadata.notes && (
+              {(isSample || isReview) && metadata.notes && (
                 <span className="ml-1">• "{metadata.notes as string}"</span>
               )}
               {isCommercial && metadata.notes && (
                 <span>"{metadata.notes as string}"</span>
+              )}
+              {isReview && (
+                <span className="text-purple-600 dark:text-purple-400 font-medium">
+                  📦 Sample arrived - awaiting your review
+                </span>
+              )}
+              {needsResend && metadata.rejection_notes && (
+                <span className="text-red-600 dark:text-red-400">
+                  Previous rejection: "{metadata.rejection_notes as string}"
+                </span>
               )}
             </div>
             
@@ -127,12 +157,17 @@ export function TaskCard({
             )}
             {isSample && !hasTracking && onAddTracking && (
               <Button size="sm" onClick={onAddTracking}>
-                Add Tracking
+                {needsResend ? 'Add New Tracking' : 'Add Tracking'}
               </Button>
             )}
             {isSample && hasTracking && !isDelivered && onMarkArrived && (
               <Button size="sm" variant="outline" onClick={onMarkArrived}>
                 Mark Arrived
+              </Button>
+            )}
+            {isReview && onReviewSample && (
+              <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white" onClick={onReviewSample}>
+                Review Sample
               </Button>
             )}
           </div>
