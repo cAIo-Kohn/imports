@@ -130,8 +130,8 @@ export function ChatTimeline({ cardId, cardTitle }: ChatTimelineProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Messages Area */}
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
+      {/* Messages Area - scrolls independently */}
       <ScrollArea className="flex-1" ref={scrollRef}>
         <div className="p-4 space-y-4">
           {sortedDates.length === 0 ? (
