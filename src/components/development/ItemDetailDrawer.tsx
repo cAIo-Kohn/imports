@@ -39,6 +39,7 @@ import { FillCommercialDataModal } from './FillCommercialDataModal';
 import { RequestSampleModal } from './RequestSampleModal';
 import { AddTrackingModal } from './AddTrackingModal';
 import { SampleReviewModal } from './SampleReviewModal';
+import { CommercialReviewModal } from './CommercialReviewModal';
 
 interface ItemDetailDrawerProps {
   item: DevelopmentItem | null;
@@ -74,6 +75,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   const [showRequestSampleModal, setShowRequestSampleModal] = useState(false);
   const [showAddTrackingModal, setShowAddTrackingModal] = useState(false);
   const [showSampleReviewModal, setShowSampleReviewModal] = useState(false);
+  const [showCommercialReviewModal, setShowCommercialReviewModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<CardTask | null>(null);
 
   // Fetch card tasks
@@ -343,6 +345,11 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
     setShowSampleReviewModal(true);
   };
 
+  const handleReviewCommercial = (task: CardTask) => {
+    setSelectedTask(task);
+    setShowCommercialReviewModal(true);
+  };
+
   if (!item) return null;
 
   const itemWithNewFields = item as any;
@@ -501,6 +508,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               onConfirmData={handleConfirmData}
               onMarkArrived={handleMarkArrived}
               onReviewSample={handleReviewSample}
+              onReviewCommercial={handleReviewCommercial}
             />
           </div>
         )}
@@ -570,6 +578,19 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
             open={showSampleReviewModal}
             onOpenChange={(open) => {
               setShowSampleReviewModal(open);
+              if (!open) setSelectedTask(null);
+            }}
+            task={selectedTask}
+            cardTitle={item.title}
+          />
+        )}
+
+        {/* Commercial Review Modal */}
+        {selectedTask && (
+          <CommercialReviewModal
+            open={showCommercialReviewModal}
+            onOpenChange={(open) => {
+              setShowCommercialReviewModal(open);
               if (!open) setSelectedTask(null);
             }}
             task={selectedTask}

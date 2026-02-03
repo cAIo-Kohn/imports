@@ -14,6 +14,7 @@ interface PendingTasksBannerProps {
   onConfirmData: (task: CardTask) => void;
   onMarkArrived: (task: CardTask) => void;
   onReviewSample: (task: CardTask) => void;
+  onReviewCommercial: (task: CardTask) => void;
 }
 
 export function PendingTasksBanner({
@@ -23,6 +24,7 @@ export function PendingTasksBanner({
   onConfirmData,
   onMarkArrived,
   onReviewSample,
+  onReviewCommercial,
 }: PendingTasksBannerProps) {
   const [isOpen, setIsOpen] = useState(true);
   const { user } = useAuth();
@@ -64,10 +66,11 @@ export function PendingTasksBanner({
       if (!isDataFilled) {
         return { onFillCommercial: () => onFillCommercial(task) };
       }
-      // Only requester can confirm filled data
-      if (isDataFilled && isRequester) {
-        return { onConfirmData: () => onConfirmData(task) };
-      }
+    }
+
+    // Commercial review - for requester approval
+    if (task.task_type === 'commercial_review') {
+      return { onReviewCommercial: () => onReviewCommercial(task) };
     }
     
     if (task.task_type === 'sample_request') {

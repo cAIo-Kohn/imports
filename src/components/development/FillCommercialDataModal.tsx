@@ -72,15 +72,41 @@ export function FillCommercialDataModal({
 
       if (cardError) throw cardError;
 
-      // Update the task with the data and reassign to requester
+      // Get revision number from task metadata
+      const taskMetadata = task.metadata || {};
+      const revisionNumber = (taskMetadata.revision_number as number) || 1;
+      const previousSubmissions = (taskMetadata.previous_submissions as Array<unknown>) || [];
+
+      // Create a new commercial_review task for the requester to approve
+      const { error: reviewTaskError } = await (supabase
+        .from('development_card_tasks') as any)
+        .insert({
+          card_id: task.card_id,
+          task_type: 'commercial_review',
+          status: 'pending',
+          assigned_to_users: [task.created_by], // Assign to original requester
+          assigned_to_role: null,
+          created_by: task.created_by, // Keep original requester as creator
+          metadata: {
+            ...commercialData,
+            filled_by: user.id,
+            filled_at: new Date().toISOString(),
+            revision_number: revisionNumber,
+            previous_submissions: previousSubmissions,
+          },
+        });
+
+      if (reviewTaskError) throw reviewTaskError;
+
+      // Mark the original commercial_request task as completed
       const { error: taskError } = await supabase
         .from('development_card_tasks')
         .update({
-          status: 'in_progress',
-          assigned_to_users: [task.created_by],
-          assigned_to_role: null,
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          completed_by: user.id,
           metadata: {
-            ...task.metadata,
+            ...taskMetadata,
             ...commercialData,
             filled_by: user.id,
             filled_at: new Date().toISOString(),
@@ -95,8 +121,8 @@ export function FillCommercialDataModal({
         card_id: task.card_id,
         user_id: user.id,
         activity_type: 'message',
-        content: `💰 Commercial data provided: $${fobPrice} FOB, MOQ ${moq}, ${qtyPerContainer}/${containerType}`,
-        metadata: { task_id: task.id, task_type: 'commercial_data_filled', ...commercialData },
+        content: `💰 Commercial data submitted: $${fobPrice} FOB, MOQ ${moq}, ${qtyPerContainer}/${containerType}${revisionNumber > 1 ? ` (Revision #${revisionNumber})` : ''}`,
+        metadata: { task_id: task.id, task_type: 'commercial_data_filled', ...commercialData, revision_number: revisionNumber },
       });
 
       // Notify the requester
@@ -106,8 +132,8 @@ export function FillCommercialDataModal({
         cardId: task.card_id,
         taskId: task.id,
         type: 'commercial_filled',
-        title: '{name} provided commercial data',
-        content: `Commercial data for "${cardTitle}" is ready for confirmation`,
+        title: '{name} submitted commercial data',
+        content: `Commercial data for "${cardTitle}" is ready for your approval`,
       });
     },
     onSuccess: () => {
