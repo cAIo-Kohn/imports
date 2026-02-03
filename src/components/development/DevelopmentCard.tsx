@@ -18,36 +18,23 @@ interface DevelopmentCardProps {
   canDrag: boolean;
 }
 
-const PRIORITY_STYLES: Record<DevelopmentItemPriority, string> = {
-  urgent: 'bg-red-500 text-white',
-  high: 'bg-orange-500 text-white',
-  medium: 'bg-yellow-500 text-white',
-  low: 'bg-slate-400 text-white',
+// Priority border styles - color and animation class
+const PRIORITY_BORDER_STYLES: Record<DevelopmentItemPriority, { color: string; animation: string }> = {
+  low: { color: '#60A5FA', animation: '' },
+  medium: { color: '#FACC15', animation: '' },
+  high: { color: '#F87171', animation: 'animate-pulse-border-red' },
+  urgent: { color: '#A855F7', animation: 'animate-pulse-border-purple' },
 };
 
-const PRIORITY_LABELS: Record<DevelopmentItemPriority, string> = {
-  urgent: 'Urgent',
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
+// Badge configuration for card types
+const CARD_TYPE_BADGE_CONFIG: Record<DevelopmentCardType, { label: string; icon: React.ReactNode; className: string }> = {
+  item: { label: 'Product', icon: <Box className="h-3 w-3" />, className: 'bg-blue-100 text-blue-700 border-blue-200' },
+  item_group: { label: 'Group', icon: <Layers className="h-3 w-3" />, className: 'bg-purple-100 text-purple-700 border-purple-200' },
+  task: { label: 'Task', icon: <ListTodo className="h-3 w-3" />, className: 'bg-slate-100 text-slate-700 border-slate-200' },
 };
 
-const CARD_TYPE_ICONS: Record<DevelopmentCardType, React.ReactNode> = {
-  item: <Package className="h-3 w-3" />,
-  item_group: <Layers className="h-3 w-3" />,
-  task: <ListTodo className="h-3 w-3" />,
-};
-
-const CARD_TYPE_LABELS: Record<DevelopmentCardType, string> = {
-  item: 'Item',
-  item_group: 'Group',
-  task: 'Task',
-};
-
-const PRODUCT_CATEGORY_CONFIG: Record<DevelopmentProductCategory, { label: string; icon: React.ReactNode; className: string }> = {
-  final_product: { label: 'Final', icon: <Box className="h-3 w-3" />, className: 'bg-blue-100 text-blue-700 border-blue-200' },
-  raw_material: { label: 'Raw', icon: <Leaf className="h-3 w-3" />, className: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-};
+// Raw material badge (overrides item badge when product_category is raw_material)
+const RAW_MATERIAL_BADGE = { label: 'Raw', icon: <Leaf className="h-3 w-3" />, className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
 
 function DevelopmentCardComponent({
   item,
@@ -101,6 +88,9 @@ function DevelopmentCardComponent({
       ? 'ring-2 ring-amber-400 ring-offset-1'
       : '';
   
+  // Get priority border style
+  const priorityStyle = PRIORITY_BORDER_STYLES[item.priority];
+  
   // Convert hex to rgba for subtle background
   const hexToRgba = (hex: string, alpha: number) => {
     const r = parseInt(hex.slice(1, 3), 16);
@@ -108,6 +98,17 @@ function DevelopmentCardComponent({
     const b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
+  
+  // Determine which badge to show based on card type and product category
+  const getBadgeConfig = () => {
+    if (cardType === 'task') return CARD_TYPE_BADGE_CONFIG.task;
+    if (cardType === 'item_group') return CARD_TYPE_BADGE_CONFIG.item_group;
+    // For individual items, check if it's raw material
+    if (item.product_category === 'raw_material') return RAW_MATERIAL_BADGE;
+    return CARD_TYPE_BADGE_CONFIG.item; // Default to "Product"
+  };
+  
+  const badgeConfig = getBadgeConfig();
 
   return (
     <div
@@ -115,12 +116,13 @@ function DevelopmentCardComponent({
         'relative rounded-md border shadow-sm p-2 md:p-3 cursor-pointer transition-all',
         'hover:shadow-md',
         canDrag && 'cursor-grab active:cursor-grabbing',
-        highlightClass
+        highlightClass,
+        priorityStyle.animation
       )}
       style={{
         backgroundColor: creatorRole ? hexToRgba(roleColor, 0.08) : undefined,
-        borderLeftWidth: creatorRole ? '3px' : undefined,
-        borderLeftColor: creatorRole ? roleColor : undefined,
+        borderLeftWidth: '4px',
+        borderLeftColor: priorityStyle.color,
       }}
       onClick={onClick}
       draggable={canDrag}
@@ -214,26 +216,13 @@ function DevelopmentCardComponent({
             Your Turn
           </Badge>
         )}
+        {/* Simplified type/category badge */}
         <Badge
           variant="outline"
-          className="text-[10px] px-1.5 py-0 flex items-center gap-1"
+          className={cn('text-[10px] px-1.5 py-0 flex items-center gap-1', badgeConfig.className)}
         >
-          {CARD_TYPE_ICONS[cardType]}
-          {CARD_TYPE_LABELS[cardType]}
-        </Badge>
-        {item.product_category && cardType !== 'task' && (
-          <Badge
-            variant="outline"
-            className={cn('text-[10px] px-1.5 py-0 flex items-center gap-1', PRODUCT_CATEGORY_CONFIG[item.product_category].className)}
-          >
-            {PRODUCT_CATEGORY_CONFIG[item.product_category].icon}
-            {PRODUCT_CATEGORY_CONFIG[item.product_category].label}
-          </Badge>
-        )}
-        <Badge
-          className={cn('text-[10px] px-1.5 py-0', PRIORITY_STYLES[item.priority])}
-        >
-          {PRIORITY_LABELS[item.priority]}
+          {badgeConfig.icon}
+          {badgeConfig.label}
         </Badge>
       </div>
       

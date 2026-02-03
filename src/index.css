@@ -129,4 +129,35 @@
   .line-clamp-4 {
     -webkit-line-clamp: 4;
   }
+
+  /* Priority border pulse animations */
+  @keyframes pulse-border-red {
+    0%, 100% { 
+      border-left-color: #F87171; 
+      box-shadow: -2px 0 8px rgba(248, 113, 113, 0.4); 
+    }
+    50% { 
+      border-left-color: #FCA5A5; 
+      box-shadow: -2px 0 12px rgba(248, 113, 113, 0.6); 
+    }
+  }
+
+  @keyframes pulse-border-purple {
+    0%, 100% { 
+      border-left-color: #A855F7; 
+      box-shadow: -2px 0 8px rgba(168, 85, 247, 0.4); 
+    }
+    50% { 
+      border-left-color: #C084FC; 
+      box-shadow: -2px 0 12px rgba(168, 85, 247, 0.6); 
+    }
+  }
+
+  .animate-pulse-border-red {
+    animation: pulse-border-red 2s ease-in-out infinite;
+  }
+
+  .animate-pulse-border-purple {
+    animation: pulse-border-purple 2s ease-in-out infinite;
+  }
 }
