@@ -138,7 +138,7 @@ function DevelopmentCardComponent({
       {/* Indicators - both can show independently */}
       <div className="absolute top-2 right-2 flex items-center gap-1">
         {/* Pending threads count indicator with tooltip */}
-        {item.pending_threads_count && item.pending_threads_count > 0 && (
+        {(item.pending_threads_count ?? 0) > 0 && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -175,14 +175,14 @@ function DevelopmentCardComponent({
           </TooltipProvider>
         )}
         {/* Unseen activity indicator - only show when no unread badge is visible */}
-        {hasUnseenActivity && !item.pending_threads_count && unreadCount === 0 && (
+        {hasUnseenActivity && !(item.pending_threads_count ?? 0) && unreadCount === 0 && (
           <span className="relative flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
           </span>
         )}
         {/* Pending action indicator - shown independently */}
-        {item.pending_action_type && !item.pending_threads_count && (
+        {item.pending_action_type && !(item.pending_threads_count ?? 0) && (
           <PendingActionIndicator
             pendingActionType={item.pending_action_type}
             pendingActionDueAt={item.pending_action_due_at || null}
