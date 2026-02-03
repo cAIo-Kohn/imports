@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
-import { Package, ListTodo, Plus, X } from 'lucide-react';
+import { Package, ListTodo, Plus, X, Image as ImageIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ImageUpload } from './ImageUpload';
 import { ThreadAssignmentSelect } from './ThreadAssignmentSelect';
@@ -44,6 +44,7 @@ interface GroupProduct {
   productCode: string;
   productName: string;
   notes: string;
+  imageUrl: string | null;
 }
 
 export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
@@ -68,6 +69,7 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
   const [groupProducts, setGroupProducts] = useState<GroupProduct[]>([]);
   const [newProductCode, setNewProductCode] = useState('');
   const [newProductName, setNewProductName] = useState('');
+  const [newProductImageUrl, setNewProductImageUrl] = useState<string | null>(null);
   
   // Assignment state - required for every card
   const [assignedUsers, setAssignedUsers] = useState<AssignedUser[]>([]);
@@ -135,6 +137,7 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
           product_code: p.productCode,
           product_name: p.productName || null,
           notes: p.notes || null,
+          image_url: p.imageUrl || null,
           created_by: user?.id,
         }));
 
@@ -143,6 +146,23 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
           .insert(productsToInsert);
 
         if (productsError) throw productsError;
+      }
+
+      // Auto-generate description listing all items if it's a group
+      let finalDescription = desiredOutcome || null;
+      if (cardType === 'item_group' && groupProducts.length > 0) {
+        const itemsList = groupProducts
+          .map(p => `• ${p.productCode}${p.productName ? ` - ${p.productName}` : ''}`)
+          .join('\n');
+        finalDescription = desiredOutcome 
+          ? `${desiredOutcome}\n\nItems in Group:\n${itemsList}`
+          : `Items in Group:\n${itemsList}`;
+        
+        // Update the card with the auto-generated description
+        await supabase
+          .from('development_items')
+          .update({ description: finalDescription })
+          .eq('id', card.id);
       }
 
       // Create the "original thread" activity - this auto-creates the main thread for the card
@@ -227,10 +247,18 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
         productCode: newProductCode.trim(),
         productName: newProductName.trim(),
         notes: '',
+        imageUrl: newProductImageUrl,
       },
     ]);
     setNewProductCode('');
     setNewProductName('');
+    setNewProductImageUrl(null);
+  };
+
+  const handleUpdateProductImage = (index: number, imageUrl: string | null) => {
+    const updated = [...groupProducts];
+    updated[index] = { ...updated[index], imageUrl };
+    setGroupProducts(updated);
   };
 
   const handleRemoveProduct = (index: number) => {
@@ -390,27 +418,89 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
                 <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
                   <Label>Products in this Group</Label>
                   
-                  {/* List of added products */}
+                  {/* List of added products with images */}
                   {groupProducts.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
                       {groupProducts.map((p, idx) => (
-                        <Badge
+                        <div
                           key={idx}
-                          variant="secondary"
-                          className="flex items-center gap-1 py-1"
+                          className="flex items-center gap-3 p-2 rounded-md border bg-background"
                         >
-                          <span className="font-mono">{p.productCode}</span>
-                          {p.productName && (
-                            <span className="text-muted-foreground">- {p.productName}</span>
-                          )}
+                          {/* Product Image */}
+                          <div 
+                            className="flex-shrink-0 cursor-pointer"
+                            onClick={() => document.getElementById(`group-product-image-${idx}`)?.click()}
+                          >
+                            {p.imageUrl ? (
+                              <img
+                                src={p.imageUrl}
+                                alt={p.productCode}
+                                className="h-10 w-10 rounded object-cover border"
+                              />
+                            ) : (
+                              <div className="h-10 w-10 rounded border border-dashed flex items-center justify-center bg-muted hover:bg-muted/80 transition-colors">
+                                <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                            )}
+                            <input
+                              type="file"
+                              id={`group-product-image-${idx}`}
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                if (file.size > 10 * 1024 * 1024) {
+                                  toast({
+                                    title: 'File too large',
+                                    description: 'Maximum file size is 10MB',
+                                    variant: 'destructive',
+                                  });
+                                  return;
+                                }
+                                const fileName = `products/temp/${Date.now()}-${file.name}`;
+                                const { error } = await supabase.storage
+                                  .from('development-images')
+                                  .upload(fileName, file);
+                                if (error) {
+                                  toast({
+                                    title: 'Upload failed',
+                                    description: error.message,
+                                    variant: 'destructive',
+                                  });
+                                  return;
+                                }
+                                const { data: urlData } = supabase.storage
+                                  .from('development-images')
+                                  .getPublicUrl(fileName);
+                                handleUpdateProductImage(idx, urlData.publicUrl);
+                              }}
+                            />
+                          </div>
+
+                          {/* Product Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className="font-mono text-xs">
+                                {p.productCode}
+                              </Badge>
+                              {p.productName && (
+                                <span className="text-sm text-muted-foreground truncate">
+                                  {p.productName}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Remove Button */}
                           <button
                             type="button"
                             onClick={() => handleRemoveProduct(idx)}
-                            className="ml-1 hover:text-destructive"
+                            className="text-muted-foreground hover:text-destructive transition-colors"
                           >
-                            <X className="h-3 w-3" />
+                            <X className="h-4 w-4" />
                           </button>
-                        </Badge>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -438,6 +528,9 @@ export function CreateCardModal({ open, onOpenChange }: CreateCardModalProps) {
                       <Plus className="h-4 w-4" />
                     </Button>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Click on the image placeholder to upload a photo for each item
+                  </p>
                 </div>
               )}
 

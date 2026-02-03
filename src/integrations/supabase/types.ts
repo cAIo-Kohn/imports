@@ -181,6 +181,7 @@ export type Database = {
           created_by: string
           id: string
           metadata: Json | null
+          product_id: string | null
           sample_id: string | null
           status: string
           task_type: string
@@ -195,6 +196,7 @@ export type Database = {
           created_by: string
           id?: string
           metadata?: Json | null
+          product_id?: string | null
           sample_id?: string | null
           status?: string
           task_type: string
@@ -209,6 +211,7 @@ export type Database = {
           created_by?: string
           id?: string
           metadata?: Json | null
+          product_id?: string | null
           sample_id?: string | null
           status?: string
           task_type?: string
@@ -219,6 +222,13 @@ export type Database = {
             columns: ["card_id"]
             isOneToOne: false
             referencedRelation: "development_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "development_card_tasks_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "development_card_products"
             referencedColumns: ["id"]
           },
           {
@@ -275,6 +285,7 @@ export type Database = {
           id: string
           item_id: string
           notes: string | null
+          product_id: string | null
           quantity: number | null
           report_url: string | null
           shipped_date: string | null
@@ -293,6 +304,7 @@ export type Database = {
           id?: string
           item_id: string
           notes?: string | null
+          product_id?: string | null
           quantity?: number | null
           report_url?: string | null
           shipped_date?: string | null
@@ -311,6 +323,7 @@ export type Database = {
           id?: string
           item_id?: string
           notes?: string | null
+          product_id?: string | null
           quantity?: number | null
           report_url?: string | null
           shipped_date?: string | null
@@ -323,6 +336,13 @@ export type Database = {
             columns: ["item_id"]
             isOneToOne: false
             referencedRelation: "development_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "development_item_samples_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "development_card_products"
             referencedColumns: ["id"]
           },
         ]
@@ -568,6 +588,60 @@ export type Database = {
             columns: ["card_id"]
             isOneToOne: false
             referencedRelation: "development_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_commercial_data: {
+        Row: {
+          card_id: string
+          container_type: string | null
+          created_at: string
+          created_by: string
+          fob_price_usd: number | null
+          id: string
+          moq: number | null
+          product_id: string
+          qty_per_container: number | null
+          updated_at: string
+        }
+        Insert: {
+          card_id: string
+          container_type?: string | null
+          created_at?: string
+          created_by: string
+          fob_price_usd?: number | null
+          id?: string
+          moq?: number | null
+          product_id: string
+          qty_per_container?: number | null
+          updated_at?: string
+        }
+        Update: {
+          card_id?: string
+          container_type?: string | null
+          created_at?: string
+          created_by?: string
+          fob_price_usd?: number | null
+          id?: string
+          moq?: number | null
+          product_id?: string
+          qty_per_container?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_commercial_data_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "development_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_commercial_data_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "development_card_products"
             referencedColumns: ["id"]
           },
         ]
