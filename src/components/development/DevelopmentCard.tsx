@@ -13,7 +13,6 @@ import { PendingActionIndicator, ActionDueDate } from './PendingActionBadge';
 interface DevelopmentCardProps {
   item: DevelopmentItem;
   onClick: () => void;
-  onClickThread?: (threadId: string) => void;
   onDragStart: (e: React.DragEvent, itemId: string) => void;
   canDrag: boolean;
 }
@@ -39,7 +38,6 @@ const RAW_MATERIAL_BADGE = { label: 'Raw', icon: <Leaf className="h-3 w-3" />, c
 function DevelopmentCardComponent({
   item,
   onClick,
-  onClickThread,
   onDragStart,
   canDrag,
 }: DevelopmentCardProps) {
@@ -62,10 +60,8 @@ function DevelopmentCardComponent({
     // Card-level assignment
     if (item.assigned_to_users?.includes(user.id)) return true;
     if (item.assigned_to_role && userRoles.includes(item.assigned_to_role as any)) return true;
-    // Thread-level pending
-    if (item.pending_threads_count && item.pending_threads_count > 0) return true;
     return false;
-  }, [user?.id, item.assigned_to_users, item.assigned_to_role, item.pending_threads_count, userRoles]);
+  }, [user?.id, item.assigned_to_users, item.assigned_to_role, userRoles]);
 
   // Check if there's unseen activity for this user
   const hasUnseenActivity = useMemo(() => {
@@ -253,10 +249,7 @@ export const DevelopmentCard = memo(DevelopmentCardComponent, (prev, next) => {
     prev.item.last_viewed_at === next.item.last_viewed_at &&
     prev.item.pending_action_type === next.item.pending_action_type &&
     prev.item.pending_action_snoozed_until === next.item.pending_action_snoozed_until &&
-    prev.item.pending_threads_count === next.item.pending_threads_count &&
     prev.item.unread_count === next.item.unread_count &&
-    JSON.stringify(prev.item.pending_threads_info) === JSON.stringify(next.item.pending_threads_info) &&
-    prev.canDrag === next.canDrag &&
-    prev.onClickThread === next.onClickThread
+    prev.canDrag === next.canDrag
   );
 });

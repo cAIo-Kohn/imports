@@ -66,7 +66,6 @@ function TeamSectionComponent({
                 key={item.id}
                 item={item}
                 onClick={() => onCardClick(item.id)}
-                onClickThread={(threadId) => onCardClickThread?.(item.id, threadId)}
                 onDragStart={onDragStart}
                 canDrag={canManage}
               />
