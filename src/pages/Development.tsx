@@ -77,9 +77,7 @@ export interface DevelopmentItem {
   pending_action_due_at?: string | null;
   pending_action_snoozed_until?: string | null;
   pending_action_snoozed_by?: string | null;
-  // Pending threads count and info based on assignment (not team)
-  pending_threads_count?: number;
-  pending_threads_info?: { id: string; title: string; type: string }[];
+  // Derived status (computed from pending_action_type, is_solved, etc.)
   // Derived status (computed from pending_action_type, is_solved, etc.)
   derived_status?: DevelopmentCardStatus;
   // Assignment columns - the source of truth for "whose turn"
