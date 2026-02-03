@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 export interface CardTask {
   id: string;
   card_id: string;
-  task_type: 'sample_request' | 'commercial_request' | 'sample_review';
+  task_type: 'sample_request' | 'commercial_request' | 'sample_review' | 'commercial_review';
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   assigned_to_users: string[];
   assigned_to_role: string | null;
@@ -64,7 +64,7 @@ export function useCardTasks(cardId: string) {
   // Create a new task
   const createTaskMutation = useMutation({
     mutationFn: async (task: {
-      task_type: 'sample_request' | 'commercial_request';
+      task_type: 'sample_request' | 'commercial_request' | 'commercial_review';
       assigned_to_users?: string[];
       assigned_to_role?: string;
       metadata?: Record<string, unknown>;
