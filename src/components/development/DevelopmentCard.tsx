@@ -9,9 +9,15 @@ import { cn } from '@/lib/utils';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useRoleColors } from '@/hooks/useRoleColors';
 import { PendingActionIndicator, ActionDueDate } from './PendingActionBadge';
-
+import { ResponsibilityBadge } from './ResponsibilityBadge';
+import { MentionTags } from './MentionTags';
+import type { AssigneeRole } from '@/hooks/useCardWorkflow';
 interface DevelopmentCardProps {
-  item: DevelopmentItem;
+  item: DevelopmentItem & {
+    workflow_status?: string | null;
+    current_assignee_role?: string | null;
+    unresolved_mention_names?: string[];
+  };
   onClick: () => void;
   onDragStart: (e: React.DragEvent, itemId: string) => void;
   canDrag: boolean;
@@ -149,6 +155,24 @@ function DevelopmentCardComponent({
           />
         )}
       </div>
+      
+      {/* Responsibility Badge - High visibility "Action: Team" tag */}
+      {item.current_assignee_role && (
+        <ResponsibilityBadge
+          currentAssigneeRole={item.current_assignee_role as AssigneeRole}
+          workflowStatus={item.workflow_status}
+          className="mb-1"
+        />
+      )}
+      
+      {/* Mention Tags - Unresolved @mentions */}
+      {item.unresolved_mention_names && item.unresolved_mention_names.length > 0 && (
+        <MentionTags
+          mentionedUserNames={item.unresolved_mention_names}
+          className="mb-1"
+        />
+      )}
+
       {/* Creator Name Label */}
       {item.creator_name && (
         <div className="flex items-center gap-1.5 mb-1">

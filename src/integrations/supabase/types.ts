@@ -14,6 +14,61 @@ export type Database = {
   }
   public: {
     Tables: {
+      card_unresolved_mentions: {
+        Row: {
+          activity_id: string
+          card_id: string
+          created_at: string
+          id: string
+          mentioned_by_user_id: string
+          mentioned_user_id: string
+          resolved_at: string | null
+          resolved_by_activity_id: string | null
+        }
+        Insert: {
+          activity_id: string
+          card_id: string
+          created_at?: string
+          id?: string
+          mentioned_by_user_id: string
+          mentioned_user_id: string
+          resolved_at?: string | null
+          resolved_by_activity_id?: string | null
+        }
+        Update: {
+          activity_id?: string
+          card_id?: string
+          created_at?: string
+          id?: string
+          mentioned_by_user_id?: string
+          mentioned_user_id?: string
+          resolved_at?: string | null
+          resolved_by_activity_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_unresolved_mentions_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "development_card_activity"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_unresolved_mentions_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "development_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_unresolved_mentions_resolved_by_activity_id_fkey"
+            columns: ["resolved_by_activity_id"]
+            isOneToOne: false
+            referencedRelation: "development_card_activity"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       card_user_views: {
         Row: {
           card_id: string
@@ -357,6 +412,7 @@ export type Database = {
           created_at: string
           created_by: string
           created_by_role: string | null
+          current_assignee_role: string | null
           current_owner: string | null
           deleted_at: string | null
           deleted_by: string | null
@@ -386,6 +442,7 @@ export type Database = {
           supplier_id: string | null
           title: string
           updated_at: string
+          workflow_status: string | null
         }
         Insert: {
           assigned_to?: string | null
@@ -398,6 +455,7 @@ export type Database = {
           created_at?: string
           created_by: string
           created_by_role?: string | null
+          current_assignee_role?: string | null
           current_owner?: string | null
           deleted_at?: string | null
           deleted_by?: string | null
@@ -429,6 +487,7 @@ export type Database = {
           supplier_id?: string | null
           title: string
           updated_at?: string
+          workflow_status?: string | null
         }
         Update: {
           assigned_to?: string | null
@@ -441,6 +500,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           created_by_role?: string | null
+          current_assignee_role?: string | null
           current_owner?: string | null
           deleted_at?: string | null
           deleted_by?: string | null
@@ -472,6 +532,7 @@ export type Database = {
           supplier_id?: string | null
           title?: string
           updated_at?: string
+          workflow_status?: string | null
         }
         Relationships: [
           {
