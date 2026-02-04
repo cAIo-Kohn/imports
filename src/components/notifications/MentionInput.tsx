@@ -101,21 +101,41 @@ export function MentionInput({
     return [...filteredTeams, ...filteredUsers].slice(0, 8);
   })();
 
-  // Handle text input changes
+  // Handle text input changes - preserve mention formats when editing
   const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
-    const newValue = e.target.value;
+    const newDisplayValue = e.target.value;
     const cursorPos = e.target.selectionStart;
     
-    onChange(newValue);
+    // Reconstruct the actual value by mapping display edits back to stored format
+    // Find all mentions in the current stored value
+    const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+    const mentions: Array<{ full: string; name: string; id: string }> = [];
+    let match;
+    while ((match = mentionRegex.exec(value)) !== null) {
+      mentions.push({ full: match[0], name: match[1], id: match[2] });
+    }
+    
+    // Rebuild the value by replacing @Name back to @[Name](id)
+    let reconstructedValue = newDisplayValue;
+    for (const mention of mentions) {
+      // Replace the display format @Name with the stored format @[Name](id)
+      // Use word boundary to avoid partial matches
+      const displayMention = `@${mention.name}`;
+      if (reconstructedValue.includes(displayMention)) {
+        reconstructedValue = reconstructedValue.replace(displayMention, mention.full);
+      }
+    }
+    
+    onChange(reconstructedValue);
     
     // Check if we should show mention dropdown
-    const textBeforeCursor = newValue.slice(0, cursorPos);
+    const textBeforeCursor = newDisplayValue.slice(0, cursorPos);
     const lastAtIndex = textBeforeCursor.lastIndexOf('@');
     
     if (lastAtIndex !== -1) {
       const textAfterAt = textBeforeCursor.slice(lastAtIndex + 1);
       // Only show if @ is at start or after whitespace, and no space after @
-      const charBeforeAt = lastAtIndex > 0 ? newValue[lastAtIndex - 1] : ' ';
+      const charBeforeAt = lastAtIndex > 0 ? newDisplayValue[lastAtIndex - 1] : ' ';
       
       if ((charBeforeAt === ' ' || charBeforeAt === '\n' || lastAtIndex === 0) && !textAfterAt.includes(' ')) {
         setMentionSearch(textAfterAt);
