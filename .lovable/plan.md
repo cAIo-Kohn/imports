@@ -1,50 +1,60 @@
 
 
-# Fix Mention Tags Display on Development Cards
+# Fix Mention Tags Real-time Updates and Team Mentions
 
-## Problem Identified
+## Problems Identified
 
-1. **Prop mismatch**: The `DevelopmentCard` component checks for `item.unresolved_mention_names` (a string array) but the data is stored as `item.unresolved_mentions` (an array of objects with `user_id` and `user_name`)
-2. **Position**: User wants mention tags at the **bottom** of the card (not top) to avoid confusion with the Action badge
+1. **No real-time subscription for mentions** - The `Development.tsx` page only listens for `development_items` changes, not `card_unresolved_mentions` changes
+2. **Missing cache invalidation** - When mentions are created/resolved, the card list doesn't refresh automatically
 
 ---
 
 ## Solution
 
-### 1. Fix DevelopmentCard.tsx
+### 1. Add Real-time Subscription for Mentions in Development.tsx
 
-Update the component to:
-- Read from `item.unresolved_mentions` (the actual data field)
-- Extract user names from the objects
-- Move the `MentionTags` component to the **bottom** of the card (after the footer info)
+Add a second channel subscription to listen for `card_unresolved_mentions` changes and invalidate the `development-items` query:
 
-**Changes:**
 ```typescript
-// Remove from props interface - use DevelopmentItem's unresolved_mentions instead
-interface DevelopmentCardProps {
-  item: DevelopmentItem & {
-    workflow_status?: string | null;
-    current_assignee_role?: string | null;
-    // Remove: unresolved_mention_names?: string[];
+// Real-time subscription for mentions (alongside existing development_items subscription)
+useEffect(() => {
+  const channel = supabase
+    .channel('mentions-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'card_unresolved_mentions',
+      },
+      () => {
+        // Debounce and refetch development items to update mention tags
+        if (invalidateTimeoutRef.current) {
+          clearTimeout(invalidateTimeoutRef.current);
+        }
+        invalidateTimeoutRef.current = setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['development-items'] });
+        }, 300);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
   };
-  // ...
-}
+}, [queryClient]);
+```
 
-// In the component, extract names from unresolved_mentions
-const unresolvedMentionNames = useMemo(() => {
-  if (!item.unresolved_mentions) return [];
-  return item.unresolved_mentions
-    .map(m => m.user_name)
-    .filter((name): name is string => !!name);
-}, [item.unresolved_mentions]);
+### 2. Consolidate Subscriptions
 
-// Move MentionTags to bottom of card (after footer)
-{unresolvedMentionNames.length > 0 && (
-  <MentionTags
-    mentionedUserNames={unresolvedMentionNames}
-    className="mt-2 pt-2 border-t"
-  />
-)}
+Combine both subscriptions into a single channel for efficiency:
+
+```typescript
+const channel = supabase
+  .channel('development-realtime')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'development_items' }, handleInvalidate)
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'card_unresolved_mentions' }, handleInvalidate)
+  .subscribe();
 ```
 
 ---
@@ -53,25 +63,14 @@ const unresolvedMentionNames = useMemo(() => {
 
 | File | Changes |
 |------|---------|
-| `src/components/development/DevelopmentCard.tsx` | Fix prop reading, move mention tags to bottom of card |
+| `src/pages/Development.tsx` | Add realtime subscription for `card_unresolved_mentions` table |
 
 ---
 
-## Visual Result
+## Expected Result
 
-**Before**: Mention tags at top (conflicting with Action badge)
-**After**: Mention tags at bottom with a subtle border separator
-
-```
-┌─────────────────────────────┐
-│ Action: Quality Team        │  ← Responsibility badge (top)
-│ Creator Name                │
-│ [Product] [Your Turn]       │
-│ Card Title                  │
-│ Supplier Name               │
-│ 📦 2 samples  📅 12/02      │  ← Footer info
-│ ─────────────────────────── │
-│ @Vitória  @João             │  ← Mention tags (bottom)
-└─────────────────────────────┘
-```
+- When a user sends a message with `@Quality Team`, all Quality team members get individual mention tags
+- The mention tags appear on the card UI immediately (realtime update)
+- When any team member replies, their individual tag disappears (also realtime)
+- No page refresh required
 
