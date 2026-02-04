@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { sendTaskNotification } from '@/hooks/useCardTasks';
 import type { CardTask } from '@/hooks/useCardTasks';
+import { updateCardWorkflowStatus } from '@/hooks/useCardWorkflow';
 import {
   Dialog,
   DialogContent,
@@ -106,6 +107,17 @@ export function AddTrackingModal({
         content: `🚚 Sample shipped via ${courier}: ${trackingNumber}${estimatedArrival ? ` (ETA: ${estimatedArrival})` : ''}`,
         metadata: { task_id: task.id, sample_id: task.sample_id, task_type: 'sample_shipped', ...trackingData },
       });
+
+      // Update workflow status - ball goes to buyer
+      await updateCardWorkflowStatus(
+        task.card_id,
+        'sample_tracking_added',
+        user.id,
+        'Tracking added - awaiting buyer to confirm arrival',
+        'trader',
+        'buyer',
+        task.id
+      );
 
       // Notify the requester
       await sendTaskNotification({

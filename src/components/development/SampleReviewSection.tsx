@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { updateCardWorkflowStatus } from '@/hooks/useCardWorkflow';
 import { 
   FileCheck, 
   CheckCircle, 
@@ -131,24 +132,45 @@ export function SampleReviewSection({
           .eq('id', sampleRequestThread.id);
       }
 
-      // Clear pending action and optionally move card
+      // Clear pending action and update workflow status
       if (decision === 'approved') {
-        // Clear pending action - card stays with Brazil to decide next steps
+        // Clear workflow status - sample complete
         await (supabase.from('development_items') as any)
           .update({ 
+            workflow_status: null,
+            current_assignee_role: null,
             pending_action_type: null,
             pending_action_due_at: null,
             pending_action_snoozed_until: null,
             pending_action_snoozed_by: null,
           })
           .eq('id', cardId);
+
+        // Log workflow completion
+        await supabase.from('development_card_activity').insert({
+          card_id: cardId,
+          user_id: user.id,
+          activity_type: 'handoff',
+          content: 'Sample approved - workflow complete',
+          metadata: { workflow_status: null, action: 'workflow_complete' },
+        });
       } else {
-        // If rejected, clear pending action and move card back to China to request new sample
+        // If rejected, restart workflow - trader needs to send new sample
+        await updateCardWorkflowStatus(
+          cardId,
+          'sample_requested',
+          user.id,
+          'Sample rejected - new sample needed',
+          'buyer',
+          'trader'
+        );
+
+        // Also update legacy fields
         await (supabase.from('development_items') as any)
           .update({ 
             current_owner: 'arc',
             is_new_for_other_team: true,
-            pending_action_type: 'sample_tracking', // They need to send a new sample
+            pending_action_type: 'sample_tracking',
             pending_action_due_at: null,
             pending_action_snoozed_until: null,
             pending_action_snoozed_by: null,

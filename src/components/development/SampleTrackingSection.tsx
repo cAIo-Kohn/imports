@@ -6,6 +6,7 @@ import {
   Package, Truck, CheckCircle, XCircle, ExternalLink, Plus, 
   Send, AlertTriangle, FileText 
 } from 'lucide-react';
+import { updateCardWorkflowStatus } from '@/hooks/useCardWorkflow';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -217,6 +218,16 @@ export function SampleTrackingSection({ cardId, cardTitle, currentOwner, canEdit
         content: 'Sample arrived',
         metadata: { type: 'sample_arrived', sample_id: sampleId },
       });
+
+      // Update workflow status - buyer needs to review
+      await updateCardWorkflowStatus(
+        cardId,
+        'sample_arrived',
+        user.id,
+        'Sample arrived - awaiting review',
+        'buyer',
+        'buyer'
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-item-samples', cardId] });
