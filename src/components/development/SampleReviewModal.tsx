@@ -121,15 +121,26 @@ export function SampleReviewModal({
           },
         });
 
-        // Clear pending action on the card
+        // Clear pending action and workflow status on the card - workflow complete
         await (supabase.from('development_items') as any)
           .update({ 
             pending_action_type: null,
             pending_action_due_at: null,
             pending_action_snoozed_until: null,
             pending_action_snoozed_by: null,
+            workflow_status: null,
+            current_assignee_role: null,
           })
           .eq('id', task.card_id);
+        
+        // Log workflow completion
+        await supabase.from('development_card_activity').insert({
+          card_id: task.card_id,
+          user_id: user.id,
+          activity_type: 'handoff',
+          content: 'Sample approved - workflow complete',
+          metadata: { workflow_status: null, action: 'workflow_complete' },
+        });
 
       } else {
         // Rejected - reassign task to Trader for new sample
