@@ -1,104 +1,168 @@
 
+# Fix "Mark Arrived" Button and Quality Team Assignment
 
-# Fix Workflow Status Updates for "Action" Badge
+## Problems Identified
 
-## Problem Summary
-The "Action: [Team]" badge updates correctly when a sample is first requested (showing "Action: Trader"), but doesn't update when:
-1. Trader adds tracking → Should show "Action: Buyer"
-2. Buyer marks sample as arrived → Should show "Action: Buyer" (for review)
-3. Buyer approves/rejects sample → Should clear badge or restart workflow
-
-## Root Cause
-
-The `useCardWorkflow` hook with `updateCardWorkflowStatus` function was added but is only called in `RequestSampleModal.tsx` and `RequestCommercialDataModal.tsx`. The subsequent workflow steps in the sample lifecycle don't call this function:
-
-| Action | File | Missing Call |
-|--------|------|--------------|
-| Trader adds tracking | `AddTrackingModal.tsx` | `updateCardWorkflowStatus(sample_tracking_added)` |
-| Buyer marks arrived | `SampleTrackingSection.tsx` | `updateCardWorkflowStatus(sample_arrived)` |
-| Buyer approves sample | `SampleReviewSection.tsx` | Clear workflow status |
-| Buyer rejects sample | `SampleReviewSection.tsx` | `updateCardWorkflowStatus(sample_requested)` |
+1. **"Mark Arrived" button doesn't work** - The click handler exists but might be failing silently due to an error in the database operations
+2. **Wrong team assigned for review** - When a sample arrives, the review task is assigned to the original requester, not the Quality Team
+3. **Action badge shows wrong team** - Should show "Action: Quality Team" after sample arrives, not "Action: Buyer"
 
 ---
 
 ## Solution
 
-### 1. Update `AddTrackingModal.tsx`
+### 1. Fix `handleMarkArrived` in `ItemDetailDrawer.tsx`
 
-Import and call `updateCardWorkflowStatus` when tracking is added:
+Update the function to:
+- Assign the `sample_review` task to the **Quality Team** instead of the original requester
+- Call `updateCardWorkflowStatus` to set workflow to `sample_arrived` with `quality` as the assignee role
+- Add proper error handling and logging
 
+**Current Code (lines 278-342):**
 ```typescript
-import { updateCardWorkflowStatus } from '@/hooks/useCardWorkflow';
-
-// Inside submitMutation, after updating task:
-await updateCardWorkflowStatus(
-  task.card_id,
-  'sample_tracking_added',
-  user.id,
-  'Tracking added - awaiting buyer to confirm arrival',
-  'trader',  // from
-  'buyer',   // to
-  task.id
-);
+const handleMarkArrived = async (task: CardTask) => {
+  // ... 
+  // Create a new sample_review task for the requester
+  const { error: reviewTaskError } = await (supabase
+    .from('development_card_tasks') as any)
+    .insert({
+      card_id: task.card_id,
+      task_type: 'sample_review',
+      status: 'pending',
+      assigned_to_users: [task.created_by], // ← WRONG: Goes to requester
+      assigned_to_role: null,
+      // ...
+    });
 ```
 
-### 2. Update `SampleTrackingSection.tsx`
-
-Add workflow update to `markArrivedMutation`:
-
+**Updated Code:**
 ```typescript
-import { updateCardWorkflowStatus } from '@/hooks/useCardWorkflow';
+const handleMarkArrived = async (task: CardTask) => {
+  if (!user?.id || !item) return;
+  
+  try {
+    // Update sample status to delivered
+    if (task.sample_id) {
+      const { error: sampleError } = await supabase
+        .from('development_item_samples')
+        .update({ 
+          status: 'delivered',
+          actual_arrival: new Date().toISOString().split('T')[0],
+        })
+        .eq('id', task.sample_id);
+      
+      if (sampleError) throw sampleError;
+    }
 
-// Inside markArrivedMutation:
-await updateCardWorkflowStatus(
-  cardId,
-  'sample_arrived',
-  user.id,
-  'Sample arrived - awaiting review',
-  'buyer',  // from (they marked it arrived)
-  'buyer',  // to (they need to review)
-);
+    // Create a new sample_review task assigned to QUALITY TEAM
+    const { error: reviewTaskError } = await (supabase
+      .from('development_card_tasks') as any)
+      .insert({
+        card_id: task.card_id,
+        task_type: 'sample_review',
+        status: 'pending',
+        assigned_to_users: [],  // No specific users
+        assigned_to_role: 'quality',  // Assign to Quality Team
+        created_by: task.created_by, // Keep original requester as creator
+        sample_id: task.sample_id,
+        metadata: {
+          ...task.metadata,
+          actual_arrival: new Date().toISOString().split('T')[0],
+          marked_arrived_by: user.id,
+        },
+      });
+
+    if (reviewTaskError) throw reviewTaskError;
+
+    // Mark original sample_request task as completed
+    await updateTask({
+      taskId: task.id,
+      status: 'completed',
+      completed_by: user.id,
+      metadata: {
+        ...task.metadata,
+        actual_arrival: new Date().toISOString().split('T')[0],
+        marked_arrived_by: user.id,
+      },
+    });
+
+    // Update workflow status - ball goes to QUALITY TEAM
+    await updateCardWorkflowStatus(
+      task.card_id,
+      'sample_arrived',
+      user.id,
+      'Sample arrived - awaiting quality team review',
+      'buyer',    // from
+      'quality',  // to (Quality Team takes over for review)
+      task.id
+    );
+
+    // Log to timeline
+    await supabase.from('development_card_activity').insert({
+      card_id: task.card_id,
+      user_id: user.id,
+      activity_type: 'message',
+      content: '📬 Sample arrived - assigned to Quality Team for review',
+      metadata: { 
+        task_id: task.id, 
+        sample_id: task.sample_id, 
+        task_type: 'sample_arrived',
+        assigned_to_role: 'quality',
+      },
+    });
+
+    // Send notification to Quality Team
+    await sendTaskNotification({
+      recipientRole: 'quality',
+      triggeredBy: user.id,
+      cardId: task.card_id,
+      taskId: task.id,
+      type: 'sample_review',
+      title: '{name} marked a sample as arrived',
+      content: `Sample for "${item.title}" is ready for quality review`,
+    });
+
+    queryClient.invalidateQueries({ queryKey: ['card-tasks', task.card_id] });
+    queryClient.invalidateQueries({ queryKey: ['development-card-activity', task.card_id] });
+    queryClient.invalidateQueries({ queryKey: ['development-item-samples', task.card_id] });
+    queryClient.invalidateQueries({ queryKey: ['development-items'] });
+    toast({ title: 'Sample marked as arrived - Quality Team notified' });
+  } catch (error) {
+    console.error('Failed to mark arrived:', error);
+    toast({ title: 'Error', description: 'Failed to update sample', variant: 'destructive' });
+  }
+};
 ```
 
-### 3. Update `SampleReviewSection.tsx`
+### 2. Import `updateCardWorkflowStatus` in ItemDetailDrawer
 
-Clear or restart workflow on sample decision:
-
+Add the import at the top of the file:
 ```typescript
 import { updateCardWorkflowStatus } from '@/hooks/useCardWorkflow';
+```
 
-// If approved - clear workflow
-await supabase
-  .from('development_items')
-  .update({
-    workflow_status: null,
-    current_assignee_role: null,
-  })
-  .eq('id', cardId);
+### 3. Update `SampleReviewSection.tsx` - Quality Team Context
 
-// Log completion
-await supabase.from('development_card_activity').insert({
-  card_id: cardId,
-  user_id: user.id,
-  activity_type: 'handoff',
-  content: 'Sample approved - workflow complete',
-  metadata: { workflow_status: null, action: 'workflow_complete' },
-});
+Update the rejection workflow to properly track that Quality rejected it:
+- On rejection, the workflow should go back to Trader (as already implemented)
+- On approval, clear the workflow status (as already implemented)
 
-// If rejected - restart workflow
-await updateCardWorkflowStatus(
-  cardId,
-  'sample_requested',
-  user.id,
-  'Sample rejected - new sample needed',
-  'buyer',
-  'trader'
-);
+### 4. Update `ResponsibilityBadge.tsx` to Handle Quality Role
+
+Ensure the badge shows correct styling for Quality Team:
+```typescript
+const colorClasses = currentAssigneeRole === 'trader'
+  ? 'bg-red-500 text-white border-red-600'
+  : currentAssigneeRole === 'buyer'
+    ? 'bg-amber-500 text-white border-amber-600'
+    : currentAssigneeRole === 'quality'
+      ? 'bg-teal-500 text-white border-teal-600'  // Add Quality color
+      : 'bg-purple-500 text-white border-purple-600';
 ```
 
 ---
 
-## Complete Workflow Flow After Fix
+## Complete Workflow After Fix
 
 ```text
 1. Buyer requests sample
@@ -109,16 +173,17 @@ await updateCardWorkflowStatus(
    → AddTrackingModal calls updateWorkflow('sample_tracking_added')
    → Badge shows: "Action: Buyer" (Amber)
 
-3. Buyer marks arrived
-   → SampleTrackingSection calls updateWorkflow('sample_arrived')
-   → Badge shows: "Action: Buyer" (Amber) - still their turn to review
+3. Buyer clicks "Mark Arrived"
+   → handleMarkArrived creates sample_review task for Quality Team
+   → updateWorkflow('sample_arrived', ..., 'quality')
+   → Badge shows: "Action: Quality Team" (Teal)
 
-4a. Buyer approves
+4a. Quality approves
    → SampleReviewSection clears workflow
    → Badge disappears (no active workflow)
 
-4b. Buyer rejects
-   → SampleReviewSection calls updateWorkflow('sample_requested')
+4b. Quality rejects
+   → SampleReviewSection calls updateWorkflow('sample_requested', ..., 'trader')
    → Badge shows: "Action: Trader" (Red) - needs new sample
 ```
 
@@ -128,21 +193,16 @@ await updateCardWorkflowStatus(
 
 | File | Changes |
 |------|---------|
-| `src/components/development/AddTrackingModal.tsx` | Add `updateCardWorkflowStatus` call after task update |
-| `src/components/development/SampleTrackingSection.tsx` | Add workflow update to `markArrivedMutation` |
-| `src/components/development/SampleReviewSection.tsx` | Clear/restart workflow on decision |
+| `src/components/development/ItemDetailDrawer.tsx` | Import `updateCardWorkflowStatus`, update `handleMarkArrived` to assign Quality Team and update workflow |
+| `src/components/development/ResponsibilityBadge.tsx` | Add teal color for Quality Team |
 
 ---
 
-## Technical Details
+## Summary
 
-All three files need to:
-1. Import `updateCardWorkflowStatus` from `@/hooks/useCardWorkflow`
-2. Call it with the appropriate workflow status and role transition
-3. Pass `fromRole` and `toRole` to log the handoff in the Responsibility History
-
-The `updateCardWorkflowStatus` helper function already handles:
-- Updating `development_items.workflow_status` and `current_assignee_role`
-- Creating a `handoff` activity entry with metadata
-- Invalidating relevant queries
-
+The fix ensures:
+1. "Mark Arrived" button works correctly and creates a `sample_review` task
+2. Sample review tasks are assigned to the **Quality Team** (`assigned_to_role: 'quality'`)
+3. The "Action" badge correctly shows "Action: Quality Team" with a teal color
+4. Quality Team receives notifications when samples arrive
+5. After Quality approves/rejects, the workflow continues or restarts appropriately
