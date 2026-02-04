@@ -18,7 +18,7 @@ export type AssigneeRole = 'buyer' | 'trader' | 'quality' | 'admin' | 'marketing
 const WORKFLOW_ASSIGNEE_MAP: Record<Exclude<WorkflowStatus, null>, AssigneeRole> = {
   sample_requested: 'trader',
   sample_tracking_added: 'buyer',
-  sample_arrived: 'buyer',
+  sample_arrived: 'quality',  // Quality Team reviews samples
   sample_reviewed: null, // Complete
   commercial_requested: 'trader',
   commercial_filled: 'buyer',
