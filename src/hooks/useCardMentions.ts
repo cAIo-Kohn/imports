@@ -14,17 +14,69 @@ export interface UnresolvedMention {
   mentioned_user_name?: string | null;
 }
 
-// Parse @mentions from text - format: @[Name](uuid)
-export function parseMentionsFromText(text: string): string[] {
-  const mentionRegex = /@\[([^\]]+)\]\(([a-f0-9-]+)\)/g;
+export interface ParsedMentions {
+  userIds: string[];
+  teamIds: string[];
+}
+
+// Parse @mentions from text - format: @[Name](id)
+// Returns { userIds: string[], teamIds: string[] }
+export function parseMentionsFromText(text: string): ParsedMentions {
+  const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
   const userIds: string[] = [];
+  const teamIds: string[] = [];
   let match;
   
   while ((match = mentionRegex.exec(text)) !== null) {
-    userIds.push(match[2]);
+    const id = match[2];
+    if (id.startsWith('team:')) {
+      teamIds.push(id);
+    } else {
+      userIds.push(id);
+    }
   }
   
-  return [...new Set(userIds)]; // Remove duplicates
+  return {
+    userIds: [...new Set(userIds)],
+    teamIds: [...new Set(teamIds)],
+  };
+}
+
+// Extract role from team ID (e.g., "team:trader" → "trader")
+function getRoleFromTeamId(teamId: string): string | null {
+  const match = teamId.match(/^team:(\w+)$/);
+  return match ? match[1] : null;
+}
+
+// Fetch all user IDs for given team IDs via edge function
+async function expandTeamsToUserIds(
+  teamIds: string[],
+  excludeUserId: string
+): Promise<string[]> {
+  if (teamIds.length === 0) return [];
+  
+  const roles = teamIds.map(getRoleFromTeamId).filter(Boolean) as string[];
+  
+  if (roles.length === 0) return [];
+  
+  try {
+    const response = await supabase.functions.invoke('get-role-users', {
+      body: { roles },
+    });
+    
+    if (response.error) {
+      console.error('Failed to expand teams:', response.error);
+      return [];
+    }
+    
+    const userIds = (response.data?.userIds || [])
+      .filter((id: string) => id !== excludeUserId);
+    
+    return userIds;
+  } catch (error) {
+    console.error('Error expanding teams to user IDs:', error);
+    return [];
+  }
 }
 
 export function useCardMentions(cardId: string) {
@@ -67,17 +119,26 @@ export function useCardMentions(cardId: string) {
     mutationFn: async ({
       activityId,
       mentionedUserIds,
+      mentionedTeamIds,
     }: {
       activityId: string;
       mentionedUserIds: string[];
+      mentionedTeamIds: string[];
     }) => {
-      if (!user?.id || mentionedUserIds.length === 0) return;
+      if (!user?.id) return;
 
-      // Filter out self-mentions
-      const validMentions = mentionedUserIds.filter(id => id !== user.id);
-      if (validMentions.length === 0) return;
+      // Expand teams to user IDs
+      const teamUserIds = await expandTeamsToUserIds(mentionedTeamIds, user.id);
+      
+      // Combine individual mentions + team member mentions, excluding self
+      const allUserIds = [...new Set([
+        ...mentionedUserIds.filter(id => id !== user.id),
+        ...teamUserIds,
+      ])];
+      
+      if (allUserIds.length === 0) return;
 
-      const mentions = validMentions.map(userId => ({
+      const mentions = allUserIds.map(userId => ({
         card_id: cardId,
         mentioned_user_id: userId,
         mentioned_by_user_id: user.id,
