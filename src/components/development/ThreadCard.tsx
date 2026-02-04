@@ -104,11 +104,6 @@ export function ThreadCard({
   const threadStatus = rootActivity.thread_status || 'open';
   const isResolved = threadStatus === 'resolved' || rootActivity.thread_resolved_at !== null;
   
-  // Check if current user is assigned
-  const isAssignedToMe = user?.id && (
-    assignedToUsers.includes(user.id) ||
-    (assignedToRole && userRoles.includes(assignedToRole))
-  );
   
   // Check if current user is the thread creator
   const isThreadCreator = user?.id === threadCreatorId;
@@ -242,10 +237,6 @@ export function ThreadCard({
   const getThreadStyle = () => {
     // Resolved threads - grey/faded
     if (isResolved) return 'border-muted bg-muted/30 opacity-70';
-    // Assigned to me - highlighted
-    if (isAssignedToMe) {
-      return 'border-amber-300 bg-amber-50/50 dark:border-amber-700 dark:bg-amber-950/20 ring-1 ring-amber-300 dark:ring-amber-700';
-    }
     // Regular thread styles
     if (isSampleRelated) return 'border-cyan-200 bg-cyan-50/50 dark:border-cyan-800 dark:bg-cyan-950/20';
     if (isQuestion) return 'border-purple-200 bg-purple-50/50 dark:border-purple-800 dark:bg-purple-950/20';
@@ -260,7 +251,6 @@ export function ThreadCard({
   
   const getThreadIconColor = () => {
     if (isResolved) return 'text-muted-foreground';
-    if (isAssignedToMe) return 'text-amber-600';
     if (isSampleRelated) return 'text-cyan-600';
     if (isQuestion) return 'text-purple-600';
     return 'text-blue-600';
@@ -439,13 +429,6 @@ export function ThreadCard({
                     {/* Assignment badges */}
                     {!isResolved && <AssignmentBadges />}
                     
-                    {/* Your turn badge */}
-                    {!isResolved && isAssignedToMe && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-100 border-amber-400 text-amber-700 dark:bg-amber-900 dark:border-amber-600 dark:text-amber-200 animate-pulse">
-                        <AlertCircle className="h-2.5 w-2.5 mr-0.5" />
-                        Your turn
-                      </Badge>
-                    )}
                   </>
                 )}
               </div>
@@ -508,8 +491,8 @@ export function ThreadCard({
               </Button>
             )}
 
-            {/* Snooze button for sample threads (when assigned to current user) */}
-            {isSampleRelated && !isResolved && isAssignedToMe && (
+            {/* Snooze button for sample threads */}
+            {isSampleRelated && !isResolved && (
               <div onClick={(e) => e.stopPropagation()}>
                 <SnoozeButton
                   cardId={cardId}
