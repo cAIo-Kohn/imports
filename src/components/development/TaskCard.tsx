@@ -13,6 +13,7 @@ interface TaskCardProps {
   onMarkArrived?: () => void;
   onReviewSample?: () => void;
   onReviewCommercial?: () => void;
+  onGiveUpItem?: () => void;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -31,6 +32,7 @@ export function TaskCard({
   onMarkArrived,
   onReviewSample,
   onReviewCommercial,
+  onGiveUpItem,
 }: TaskCardProps) {
   const isCommercial = task.task_type === 'commercial_request';
   const isCommercialReview = task.task_type === 'commercial_review';
@@ -165,7 +167,7 @@ export function TaskCard({
         </div>
 
         {canAction && (
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 flex flex-col gap-1">
             {isCommercial && !isDataFilled && onFillCommercial && (
               <Button size="sm" onClick={onFillCommercial}>
                 {needsRevision ? 'Submit Revision' : 'Fill Data'}
@@ -179,6 +181,11 @@ export function TaskCard({
             {isSample && !hasTracking && onAddTracking && (
               <Button size="sm" onClick={onAddTracking}>
                 {needsResend ? 'Add New Tracking' : 'Add Tracking'}
+              </Button>
+            )}
+            {isSample && !hasTracking && needsResend && onGiveUpItem && (
+              <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-destructive/10" onClick={onGiveUpItem}>
+                Give Up Item
               </Button>
             )}
             {isSample && hasTracking && !isDelivered && onMarkArrived && (

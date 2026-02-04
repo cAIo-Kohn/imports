@@ -15,6 +15,7 @@ interface PendingTasksBannerProps {
   onMarkArrived: (task: CardTask) => void;
   onReviewSample: (task: CardTask) => void;
   onReviewCommercial: (task: CardTask) => void;
+  onGiveUpItem: (task: CardTask) => void;
 }
 
 export function PendingTasksBanner({
@@ -25,6 +26,7 @@ export function PendingTasksBanner({
   onMarkArrived,
   onReviewSample,
   onReviewCommercial,
+  onGiveUpItem,
 }: PendingTasksBannerProps) {
   const [isOpen, setIsOpen] = useState(true);
   const { user } = useAuth();
@@ -76,10 +78,15 @@ export function PendingTasksBanner({
     if (task.task_type === 'sample_request') {
       const hasTracking = !!metadata.tracking_number;
       const isDelivered = !!metadata.actual_arrival;
+      const needsResend = !!metadata.needs_resend;
       
-      // Anyone who can action can add tracking if not added yet
+      // Show tracking and give up buttons if needs resend and no tracking yet
       if (!hasTracking) {
-        return { onAddTracking: () => onAddTracking(task) };
+        const actions: Record<string, () => void> = { onAddTracking: () => onAddTracking(task) };
+        if (needsResend) {
+          actions.onGiveUpItem = () => onGiveUpItem(task);
+        }
+        return actions;
       }
       // Anyone assigned can mark arrived (task is reassigned to requester after tracking)
       if (hasTracking && !isDelivered) {
