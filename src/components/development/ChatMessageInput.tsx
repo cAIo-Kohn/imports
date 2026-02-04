@@ -80,11 +80,12 @@ export function ChatMessageInput({
         });
         
         // Create unresolved mention entries for the new mention tracking system
-        const mentionedUserIds = parseMentionsFromText(messageContent);
-        if (mentionedUserIds.length > 0) {
+        const { userIds, teamIds } = parseMentionsFromText(messageContent);
+        if (userIds.length > 0 || teamIds.length > 0) {
           await createMentions({
             activityId: data.id,
-            mentionedUserIds,
+            mentionedUserIds: userIds,
+            mentionedTeamIds: teamIds,
           });
         }
       }

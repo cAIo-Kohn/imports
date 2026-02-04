@@ -163,18 +163,24 @@ export function useNotifications() {
   };
 }
 
-// Helper to parse @mentions from text and return user IDs
-export async function parseMentions(text: string): Promise<string[]> {
-  // Match @[Name](user_id) format
+// Helper to parse @mentions from text and return user IDs and team IDs
+export function parseMentions(text: string): { userIds: string[]; teamIds: string[] } {
+  // Match @[Name](id) format
   const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
   const userIds: string[] = [];
+  const teamIds: string[] = [];
   let match;
   
   while ((match = mentionRegex.exec(text)) !== null) {
-    userIds.push(match[2]);
+    const id = match[2];
+    if (id.startsWith('team:')) {
+      teamIds.push(id);
+    } else {
+      userIds.push(id);
+    }
   }
   
-  return userIds;
+  return { userIds, teamIds };
 }
 
 // Convert display text with mentions to storage format
@@ -189,7 +195,7 @@ export function formatMentionsForDisplay(text: string): string {
   return text.replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1');
 }
 
-// Create notifications for mentioned users
+// Create notifications for mentioned users and teams
 export async function createMentionNotifications({
   text,
   cardId,
@@ -203,14 +209,10 @@ export async function createMentionNotifications({
   triggeredBy: string;
   cardTitle: string;
 }): Promise<void> {
-  const mentionedUserIds = await parseMentions(text);
+  const { userIds, teamIds } = parseMentions(text);
   
-  if (mentionedUserIds.length === 0) return;
-  
-  // Filter out self-mentions
-  const otherUserIds = mentionedUserIds.filter(id => id !== triggeredBy);
-  
-  if (otherUserIds.length === 0) return;
+  // Filter out self-mentions for direct user mentions
+  const directUserIds = userIds.filter(id => id !== triggeredBy);
   
   // Get triggering user's name
   const { data: triggerProfile } = await supabase
@@ -220,17 +222,38 @@ export async function createMentionNotifications({
     .single();
   
   const triggerName = triggerProfile?.full_name || 'Someone';
+  const notificationContent = `In card "${cardTitle}": ${formatMentionsForDisplay(text).slice(0, 100)}${text.length > 100 ? '...' : ''}`;
   
-  // Create notifications for each mentioned user
-  const notifications = otherUserIds.map(userId => ({
-    user_id: userId,
-    type: 'mention',
-    card_id: cardId,
-    activity_id: activityId,
-    triggered_by: triggeredBy,
-    title: `${triggerName} mentioned you`,
-    content: `In card "${cardTitle}": ${formatMentionsForDisplay(text).slice(0, 100)}${text.length > 100 ? '...' : ''}`,
-  }));
+  // Create notifications for direct user mentions
+  if (directUserIds.length > 0) {
+    const notifications = directUserIds.map(userId => ({
+      user_id: userId,
+      type: 'mention',
+      card_id: cardId,
+      activity_id: activityId,
+      triggered_by: triggeredBy,
+      title: `${triggerName} mentioned you`,
+      content: notificationContent,
+    }));
+    
+    await supabase.from('notifications').insert(notifications);
+  }
   
-  await supabase.from('notifications').insert(notifications);
+  // Handle team mentions via edge function (bypasses RLS on user_roles)
+  for (const teamId of teamIds) {
+    const role = teamId.replace('team:', '');
+    if (!role) continue;
+    
+    await supabase.functions.invoke('send-notification', {
+      body: {
+        recipientRole: role,
+        triggeredBy,
+        cardId,
+        activityId,
+        type: 'mention',
+        title: `${triggerName} mentioned ${role.charAt(0).toUpperCase() + role.slice(1)} Team`,
+        content: notificationContent,
+      },
+    });
+  }
 }
