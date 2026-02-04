@@ -576,8 +576,18 @@ export default function Development() {
   const invalidateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    const handleInvalidate = () => {
+      // Debounce: wait 300ms before refetching to batch rapid changes
+      if (invalidateTimeoutRef.current) {
+        clearTimeout(invalidateTimeoutRef.current);
+      }
+      invalidateTimeoutRef.current = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      }, 300);
+    };
+
     const channel = supabase
-      .channel('development-items-changes')
+      .channel('development-realtime')
       .on(
         'postgres_changes',
         {
@@ -585,15 +595,16 @@ export default function Development() {
           schema: 'public',
           table: 'development_items',
         },
-        () => {
-          // Debounce: wait 300ms before refetching to batch rapid changes
-          if (invalidateTimeoutRef.current) {
-            clearTimeout(invalidateTimeoutRef.current);
-          }
-          invalidateTimeoutRef.current = setTimeout(() => {
-            queryClient.invalidateQueries({ queryKey: ['development-items'] });
-          }, 300);
-        }
+        handleInvalidate
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'card_unresolved_mentions',
+        },
+        handleInvalidate
       )
       .subscribe();
 
