@@ -23,7 +23,9 @@ export function ResponsibilityBadge({
     ? 'bg-red-500 text-white border-red-600'
     : currentAssigneeRole === 'buyer'
       ? 'bg-amber-500 text-white border-amber-600'
-      : 'bg-purple-500 text-white border-purple-600';
+      : currentAssigneeRole === 'quality'
+        ? 'bg-teal-500 text-white border-teal-600'
+        : 'bg-purple-500 text-white border-purple-600';
 
   return (
     <Badge
