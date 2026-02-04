@@ -64,13 +64,30 @@ export function FillCommercialDataModal({
         container_type: containerType,
       };
 
-      // Update the card with commercial data
+      // Update the card with commercial data AND update workflow status to buyer
       const { error: cardError } = await supabase
         .from('development_items')
-        .update(commercialData)
+        .update({
+          ...commercialData,
+          workflow_status: 'commercial_filled',
+          current_assignee_role: 'buyer',
+        })
         .eq('id', task.card_id);
 
       if (cardError) throw cardError;
+      
+      // Log handoff to timeline
+      await supabase.from('development_card_activity').insert({
+        card_id: task.card_id,
+        user_id: user.id,
+        activity_type: 'handoff',
+        content: 'Commercial data submitted - awaiting review',
+        metadata: { 
+          from_role: 'trader', 
+          to_role: 'buyer', 
+          workflow_status: 'commercial_filled' 
+        },
+      });
 
       // Get revision number from task metadata
       const taskMetadata = task.metadata || {};
