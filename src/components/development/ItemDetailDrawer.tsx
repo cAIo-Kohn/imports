@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCardTasks, sendTaskNotification } from '@/hooks/useCardTasks';
 import type { CardTask } from '@/hooks/useCardTasks';
 import { format } from 'date-fns';
-import { Trash2, RotateCcw, DollarSign, Package } from 'lucide-react';
+import { Trash2, RotateCcw, DollarSign, Package, History } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -40,6 +40,7 @@ import { RequestSampleModal } from './RequestSampleModal';
 import { AddTrackingModal } from './AddTrackingModal';
 import { SampleReviewModal } from './SampleReviewModal';
 import { CommercialReviewModal } from './CommercialReviewModal';
+import { HandoffTimeline } from './HandoffTimeline';
 
 interface ItemDetailDrawerProps {
   item: DevelopmentItem | null;
@@ -493,6 +494,19 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                   canEdit={canManage}
                   onRequestSample={() => setShowRequestSampleModal(true)}
                 />
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Responsibility History (Handoff Timeline) */}
+            <AccordionItem value="handoffs" className="border-0">
+              <AccordionTrigger className="px-4 py-2 hover:no-underline text-sm">
+                <span className="flex items-center gap-2 text-muted-foreground">
+                  <History className="h-4 w-4" />
+                  Responsibility History
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="px-4 pb-3">
+                <HandoffTimeline cardId={item.id} />
               </AccordionContent>
             </AccordionItem>
           </Accordion>
