@@ -306,9 +306,22 @@ export function MentionInput({
 }
 
 // Component to render text with highlighted mentions
-export function MentionText({ text, className }: { text: string; className?: string }) {
+export function MentionText({
+  text,
+  className,
+  variant = 'default',
+}: {
+  text: string;
+  className?: string;
+  variant?: 'default' | 'onPrimary';
+}) {
   // Parse and highlight @[Name](user_id) mentions
   const parts = text.split(/(@\[[^\]]+\]\([^)]+\))/g);
+
+  const mentionClassName =
+    variant === 'onPrimary'
+      ? 'text-primary-foreground bg-primary-foreground/15 border border-primary-foreground/25 font-semibold px-1 py-0.5 rounded-md'
+      : 'text-primary bg-primary/10 font-medium px-1 py-0.5 rounded-md';
   
   return (
     <span className={className}>
@@ -318,7 +331,7 @@ export function MentionText({ text, className }: { text: string; className?: str
           return (
             <span
               key={index}
-              className="text-primary font-medium bg-primary/10 px-0.5 rounded"
+              className={mentionClassName}
             >
               @{mentionMatch[1]}
             </span>
