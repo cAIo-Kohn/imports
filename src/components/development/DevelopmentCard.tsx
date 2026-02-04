@@ -16,7 +16,7 @@ interface DevelopmentCardProps {
   item: DevelopmentItem & {
     workflow_status?: string | null;
     current_assignee_role?: string | null;
-    unresolved_mention_names?: string[];
+    unresolved_mentions?: Array<{ user_id: string; user_name: string | null }>;
   };
   onClick: () => void;
   onDragStart: (e: React.DragEvent, itemId: string) => void;
@@ -82,6 +82,14 @@ function DevelopmentCardComponent({
 
   // Get unread count for notification badge
   const unreadCount = item.unread_count || 0;
+
+  // Extract mention names from unresolved_mentions objects
+  const unresolvedMentionNames = useMemo(() => {
+    if (!item.unresolved_mentions) return [];
+    return item.unresolved_mentions
+      .map(m => m.user_name)
+      .filter((name): name is string => !!name);
+  }, [item.unresolved_mentions]);
 
   // Determine the highlight class - deleted cards are faded, "my turn" cards are highlighted
   const highlightClass = isDeleted
@@ -165,13 +173,6 @@ function DevelopmentCardComponent({
         />
       )}
       
-      {/* Mention Tags - Unresolved @mentions */}
-      {item.unresolved_mention_names && item.unresolved_mention_names.length > 0 && (
-        <MentionTags
-          mentionedUserNames={item.unresolved_mention_names}
-          className="mb-1"
-        />
-      )}
 
       {/* Creator Name Label */}
       {item.creator_name && (
@@ -260,6 +261,14 @@ function DevelopmentCardComponent({
           </span>
         )}
       </div>
+
+      {/* Mention Tags - Unresolved @mentions (bottom of card) */}
+      {unresolvedMentionNames.length > 0 && (
+        <MentionTags
+          mentionedUserNames={unresolvedMentionNames}
+          className="mt-2 pt-2 border-t"
+        />
+      )}
     </div>
   );
 }
