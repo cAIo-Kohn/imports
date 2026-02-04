@@ -382,6 +382,46 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
     setShowCommercialReviewModal(true);
   };
 
+  const handleGiveUpItem = async (task: CardTask) => {
+    if (!user?.id || !item) return;
+    
+    try {
+      // Mark task as completed with give_up status
+      await updateTask({
+        taskId: task.id,
+        status: 'completed',
+        completed_by: user.id,
+        metadata: { ...task.metadata, given_up: true, given_up_at: new Date().toISOString() },
+      });
+
+      // Clear workflow status and mark card as solved
+      await (supabase.from('development_items') as any)
+        .update({ 
+          is_solved: true,
+          workflow_status: null,
+          current_assignee_role: null,
+          pending_action_type: null,
+        })
+        .eq('id', task.card_id);
+
+      // Log to timeline
+      await supabase.from('development_card_activity').insert({
+        card_id: task.card_id,
+        user_id: user.id,
+        activity_type: 'message',
+        content: '🚫 Item given up - improvement not feasible after sample rejection',
+        metadata: { task_id: task.id, action: 'give_up' },
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['card-tasks', task.card_id] });
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      toast({ title: 'Item marked as given up' });
+    } catch (error) {
+      console.error('Failed to give up item:', error);
+      toast({ title: 'Error', description: 'Failed to update', variant: 'destructive' });
+    }
+  };
+
   if (!item) return null;
 
   const itemWithNewFields = item as any;
@@ -554,6 +594,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
               onMarkArrived={handleMarkArrived}
               onReviewSample={handleReviewSample}
               onReviewCommercial={handleReviewCommercial}
+              onGiveUpItem={handleGiveUpItem}
             />
           </div>
         )}

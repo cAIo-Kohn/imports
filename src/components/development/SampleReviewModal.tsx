@@ -262,8 +262,20 @@ export function SampleReviewModal({
     }
   };
 
-  const canReject = !!reportFile || !!decisionNotes; // Require either report or notes for rejection
+  const canReject = !!reportFile; // File is REQUIRED for rejection
   const isPending = submitMutation.isPending || isUploading;
+
+  const handleReject = () => {
+    if (!reportFile) {
+      toast({
+        title: 'Report Required',
+        description: 'Please upload a report file (PDF or image) explaining the rejection reason before rejecting the sample.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    submitMutation.mutate('rejected');
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -293,8 +305,11 @@ export function SampleReviewModal({
           {/* Report Upload */}
           <div className="space-y-2">
             <Label>
-              Attach Report <span className="text-muted-foreground text-xs">(Required for rejection)</span>
+              Attach Report <span className="text-destructive text-xs font-medium">(Required for rejection)</span>
             </Label>
+            <p className="text-xs text-muted-foreground">
+              You must upload a report file explaining the issue before rejecting a sample.
+            </p>
             <div className="flex items-center gap-2 flex-wrap">
               <input
                 type="file"
@@ -341,9 +356,13 @@ export function SampleReviewModal({
           </Button>
           <Button
             variant="outline"
-            onClick={() => submitMutation.mutate('rejected')}
-            disabled={!canReject || isPending}
-            className="border-destructive text-destructive hover:bg-destructive/10 sm:order-2"
+            onClick={handleReject}
+            disabled={isPending}
+            className={cn(
+              "border-destructive text-destructive hover:bg-destructive/10 sm:order-2",
+              !canReject && "opacity-50"
+            )}
+            title={!canReject ? "Upload a report file to reject" : undefined}
           >
             <XCircle className="h-4 w-4 mr-1" />
             Reject
