@@ -1,190 +1,50 @@
 
-# Fix "Mark Arrived" Button and Quality Team Assignment
 
-## Problems Identified
+# Fix Mention Tags Display on Development Cards
 
-1. **"Mark Arrived" button doesn't work** - The click handler exists but might be failing silently due to an error in the database operations
-2. **Wrong team assigned for review** - When a sample arrives, the review task is assigned to the original requester, not the Quality Team
-3. **Action badge shows wrong team** - Should show "Action: Quality Team" after sample arrives, not "Action: Buyer"
+## Problem Identified
+
+1. **Prop mismatch**: The `DevelopmentCard` component checks for `item.unresolved_mention_names` (a string array) but the data is stored as `item.unresolved_mentions` (an array of objects with `user_id` and `user_name`)
+2. **Position**: User wants mention tags at the **bottom** of the card (not top) to avoid confusion with the Action badge
 
 ---
 
 ## Solution
 
-### 1. Fix `handleMarkArrived` in `ItemDetailDrawer.tsx`
+### 1. Fix DevelopmentCard.tsx
 
-Update the function to:
-- Assign the `sample_review` task to the **Quality Team** instead of the original requester
-- Call `updateCardWorkflowStatus` to set workflow to `sample_arrived` with `quality` as the assignee role
-- Add proper error handling and logging
+Update the component to:
+- Read from `item.unresolved_mentions` (the actual data field)
+- Extract user names from the objects
+- Move the `MentionTags` component to the **bottom** of the card (after the footer info)
 
-**Current Code (lines 278-342):**
+**Changes:**
 ```typescript
-const handleMarkArrived = async (task: CardTask) => {
-  // ... 
-  // Create a new sample_review task for the requester
-  const { error: reviewTaskError } = await (supabase
-    .from('development_card_tasks') as any)
-    .insert({
-      card_id: task.card_id,
-      task_type: 'sample_review',
-      status: 'pending',
-      assigned_to_users: [task.created_by], // ← WRONG: Goes to requester
-      assigned_to_role: null,
-      // ...
-    });
-```
+// Remove from props interface - use DevelopmentItem's unresolved_mentions instead
+interface DevelopmentCardProps {
+  item: DevelopmentItem & {
+    workflow_status?: string | null;
+    current_assignee_role?: string | null;
+    // Remove: unresolved_mention_names?: string[];
+  };
+  // ...
+}
 
-**Updated Code:**
-```typescript
-const handleMarkArrived = async (task: CardTask) => {
-  if (!user?.id || !item) return;
-  
-  try {
-    // Update sample status to delivered
-    if (task.sample_id) {
-      const { error: sampleError } = await supabase
-        .from('development_item_samples')
-        .update({ 
-          status: 'delivered',
-          actual_arrival: new Date().toISOString().split('T')[0],
-        })
-        .eq('id', task.sample_id);
-      
-      if (sampleError) throw sampleError;
-    }
+// In the component, extract names from unresolved_mentions
+const unresolvedMentionNames = useMemo(() => {
+  if (!item.unresolved_mentions) return [];
+  return item.unresolved_mentions
+    .map(m => m.user_name)
+    .filter((name): name is string => !!name);
+}, [item.unresolved_mentions]);
 
-    // Create a new sample_review task assigned to QUALITY TEAM
-    const { error: reviewTaskError } = await (supabase
-      .from('development_card_tasks') as any)
-      .insert({
-        card_id: task.card_id,
-        task_type: 'sample_review',
-        status: 'pending',
-        assigned_to_users: [],  // No specific users
-        assigned_to_role: 'quality',  // Assign to Quality Team
-        created_by: task.created_by, // Keep original requester as creator
-        sample_id: task.sample_id,
-        metadata: {
-          ...task.metadata,
-          actual_arrival: new Date().toISOString().split('T')[0],
-          marked_arrived_by: user.id,
-        },
-      });
-
-    if (reviewTaskError) throw reviewTaskError;
-
-    // Mark original sample_request task as completed
-    await updateTask({
-      taskId: task.id,
-      status: 'completed',
-      completed_by: user.id,
-      metadata: {
-        ...task.metadata,
-        actual_arrival: new Date().toISOString().split('T')[0],
-        marked_arrived_by: user.id,
-      },
-    });
-
-    // Update workflow status - ball goes to QUALITY TEAM
-    await updateCardWorkflowStatus(
-      task.card_id,
-      'sample_arrived',
-      user.id,
-      'Sample arrived - awaiting quality team review',
-      'buyer',    // from
-      'quality',  // to (Quality Team takes over for review)
-      task.id
-    );
-
-    // Log to timeline
-    await supabase.from('development_card_activity').insert({
-      card_id: task.card_id,
-      user_id: user.id,
-      activity_type: 'message',
-      content: '📬 Sample arrived - assigned to Quality Team for review',
-      metadata: { 
-        task_id: task.id, 
-        sample_id: task.sample_id, 
-        task_type: 'sample_arrived',
-        assigned_to_role: 'quality',
-      },
-    });
-
-    // Send notification to Quality Team
-    await sendTaskNotification({
-      recipientRole: 'quality',
-      triggeredBy: user.id,
-      cardId: task.card_id,
-      taskId: task.id,
-      type: 'sample_review',
-      title: '{name} marked a sample as arrived',
-      content: `Sample for "${item.title}" is ready for quality review`,
-    });
-
-    queryClient.invalidateQueries({ queryKey: ['card-tasks', task.card_id] });
-    queryClient.invalidateQueries({ queryKey: ['development-card-activity', task.card_id] });
-    queryClient.invalidateQueries({ queryKey: ['development-item-samples', task.card_id] });
-    queryClient.invalidateQueries({ queryKey: ['development-items'] });
-    toast({ title: 'Sample marked as arrived - Quality Team notified' });
-  } catch (error) {
-    console.error('Failed to mark arrived:', error);
-    toast({ title: 'Error', description: 'Failed to update sample', variant: 'destructive' });
-  }
-};
-```
-
-### 2. Import `updateCardWorkflowStatus` in ItemDetailDrawer
-
-Add the import at the top of the file:
-```typescript
-import { updateCardWorkflowStatus } from '@/hooks/useCardWorkflow';
-```
-
-### 3. Update `SampleReviewSection.tsx` - Quality Team Context
-
-Update the rejection workflow to properly track that Quality rejected it:
-- On rejection, the workflow should go back to Trader (as already implemented)
-- On approval, clear the workflow status (as already implemented)
-
-### 4. Update `ResponsibilityBadge.tsx` to Handle Quality Role
-
-Ensure the badge shows correct styling for Quality Team:
-```typescript
-const colorClasses = currentAssigneeRole === 'trader'
-  ? 'bg-red-500 text-white border-red-600'
-  : currentAssigneeRole === 'buyer'
-    ? 'bg-amber-500 text-white border-amber-600'
-    : currentAssigneeRole === 'quality'
-      ? 'bg-teal-500 text-white border-teal-600'  // Add Quality color
-      : 'bg-purple-500 text-white border-purple-600';
-```
-
----
-
-## Complete Workflow After Fix
-
-```text
-1. Buyer requests sample
-   → RequestSampleModal calls updateWorkflow('sample_requested')
-   → Badge shows: "Action: Trader" (Red)
-
-2. Trader adds tracking  
-   → AddTrackingModal calls updateWorkflow('sample_tracking_added')
-   → Badge shows: "Action: Buyer" (Amber)
-
-3. Buyer clicks "Mark Arrived"
-   → handleMarkArrived creates sample_review task for Quality Team
-   → updateWorkflow('sample_arrived', ..., 'quality')
-   → Badge shows: "Action: Quality Team" (Teal)
-
-4a. Quality approves
-   → SampleReviewSection clears workflow
-   → Badge disappears (no active workflow)
-
-4b. Quality rejects
-   → SampleReviewSection calls updateWorkflow('sample_requested', ..., 'trader')
-   → Badge shows: "Action: Trader" (Red) - needs new sample
+// Move MentionTags to bottom of card (after footer)
+{unresolvedMentionNames.length > 0 && (
+  <MentionTags
+    mentionedUserNames={unresolvedMentionNames}
+    className="mt-2 pt-2 border-t"
+  />
+)}
 ```
 
 ---
@@ -193,16 +53,25 @@ const colorClasses = currentAssigneeRole === 'trader'
 
 | File | Changes |
 |------|---------|
-| `src/components/development/ItemDetailDrawer.tsx` | Import `updateCardWorkflowStatus`, update `handleMarkArrived` to assign Quality Team and update workflow |
-| `src/components/development/ResponsibilityBadge.tsx` | Add teal color for Quality Team |
+| `src/components/development/DevelopmentCard.tsx` | Fix prop reading, move mention tags to bottom of card |
 
 ---
 
-## Summary
+## Visual Result
 
-The fix ensures:
-1. "Mark Arrived" button works correctly and creates a `sample_review` task
-2. Sample review tasks are assigned to the **Quality Team** (`assigned_to_role: 'quality'`)
-3. The "Action" badge correctly shows "Action: Quality Team" with a teal color
-4. Quality Team receives notifications when samples arrive
-5. After Quality approves/rejects, the workflow continues or restarts appropriately
+**Before**: Mention tags at top (conflicting with Action badge)
+**After**: Mention tags at bottom with a subtle border separator
+
+```
+┌─────────────────────────────┐
+│ Action: Quality Team        │  ← Responsibility badge (top)
+│ Creator Name                │
+│ [Product] [Your Turn]       │
+│ Card Title                  │
+│ Supplier Name               │
+│ 📦 2 samples  📅 12/02      │  ← Footer info
+│ ─────────────────────────── │
+│ @Vitória  @João             │  ← Mention tags (bottom)
+└─────────────────────────────┘
+```
+
