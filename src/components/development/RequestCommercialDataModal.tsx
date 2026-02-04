@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCardTasks, sendTaskNotification } from '@/hooks/useCardTasks';
+import { useCardWorkflow } from '@/hooks/useCardWorkflow';
 import {
   Dialog,
   DialogContent,
@@ -44,6 +45,7 @@ export function RequestCommercialDataModal({
 }: RequestCommercialDataModalProps) {
   const { user } = useAuth();
   const { createTask, isCreating } = useCardTasks(cardId);
+  const { updateWorkflow } = useCardWorkflow(cardId);
   const [assignType, setAssignType] = useState<'role' | 'user'>('role');
   const [selectedRole, setSelectedRole] = useState('trader');
   const [selectedUserId, setSelectedUserId] = useState('');
@@ -80,6 +82,15 @@ export function RequestCommercialDataModal({
         activity_type: 'message',
         content: `📋 Requested commercial data${notes ? `: "${notes}"` : ''}`,
         metadata: { task_id: task.id, task_type: 'commercial_request' },
+      });
+
+      // Update workflow status
+      const targetRole = assignType === 'role' ? selectedRole : 'trader';
+      await updateWorkflow({
+        workflowStatus: 'commercial_requested',
+        reason: 'Commercial data requested',
+        toRole: targetRole as 'buyer' | 'trader' | 'quality',
+        taskId: task.id,
       });
 
       // Send notifications

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCardTasks, sendTaskNotification } from '@/hooks/useCardTasks';
+import { useCardWorkflow } from '@/hooks/useCardWorkflow';
 import {
   Dialog,
   DialogContent,
@@ -46,6 +47,7 @@ export function RequestSampleModal({
 }: RequestSampleModalProps) {
   const { user } = useAuth();
   const { createTask, isCreating } = useCardTasks(cardId);
+  const { updateWorkflow } = useCardWorkflow(cardId);
   const [quantity, setQuantity] = useState('1');
   const [assignType, setAssignType] = useState<'role' | 'user'>('role');
   const [selectedRole, setSelectedRole] = useState('trader');
@@ -102,6 +104,15 @@ export function RequestSampleModal({
         activity_type: 'message',
         content: `📦 Requested ${quantity} sample(s)${notes ? `: "${notes}"` : ''}`,
         metadata: { task_id: task.id, sample_id: sample.id, task_type: 'sample_request' },
+      });
+
+      // Update workflow status
+      const targetRole = assignType === 'role' ? selectedRole : 'trader';
+      await updateWorkflow({
+        workflowStatus: 'sample_requested',
+        reason: 'Sample requested',
+        toRole: targetRole as 'buyer' | 'trader' | 'quality',
+        taskId: task.id,
       });
 
       // Send notifications

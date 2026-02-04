@@ -78,13 +78,17 @@ export interface DevelopmentItem {
   pending_action_snoozed_until?: string | null;
   pending_action_snoozed_by?: string | null;
   // Derived status (computed from pending_action_type, is_solved, etc.)
-  // Derived status (computed from pending_action_type, is_solved, etc.)
   derived_status?: DevelopmentCardStatus;
   // Assignment columns - the source of truth for "whose turn"
   assigned_to_users?: string[] | null;
   assigned_to_role?: string | null;
   // Unread count for notification badge
   unread_count?: number;
+  // Workflow status for responsibility tracking
+  workflow_status?: string | null;
+  current_assignee_role?: 'buyer' | 'trader' | 'quality' | null;
+  // Unresolved mentions for display
+  unresolved_mentions?: { user_id: string; user_name: string | null }[];
 }
 
 // Derive card status automatically from pending_action_type, snooze, and is_solved
@@ -203,8 +207,8 @@ export default function Development() {
       // Get unique creator user IDs
       const creatorIds = [...new Set(data.map(item => item.created_by).filter(Boolean))];
 
-      // Fetch sample counts, product counts, latest activity, user views, creator profiles, unresolved questions, unacknowledged answers, pending threads, and all activities for unread count in parallel
-      const [sampleCountsRes, productCountsRes, latestActivitiesRes, userViewsRes, creatorProfilesRes, unresolvedQuestionsRes, unacknowledgedAnswersRes, pendingThreadsRes, allActivitiesRes] = await Promise.all([
+      // Fetch sample counts, product counts, latest activity, user views, creator profiles, unresolved questions, unacknowledged answers, pending threads, all activities, and unresolved mentions in parallel
+      const [sampleCountsRes, productCountsRes, latestActivitiesRes, userViewsRes, creatorProfilesRes, unresolvedQuestionsRes, unacknowledgedAnswersRes, pendingThreadsRes, allActivitiesRes, unresolvedMentionsRes] = await Promise.all([
         supabase
           .from('development_item_samples')
           .select('item_id')
@@ -255,6 +259,12 @@ export default function Development() {
           .from('development_card_activity')
           .select('card_id, created_at')
           .in('card_id', itemIds),
+        // Fetch unresolved mentions
+        supabase
+          .from('card_unresolved_mentions')
+          .select('card_id, mentioned_user_id')
+          .in('card_id', itemIds)
+          .is('resolved_at', null),
       ]);
 
       const sampleCountMap = (sampleCountsRes.data || []).reduce((acc, s) => {
@@ -348,6 +358,31 @@ export default function Development() {
         }
       }
 
+      // Group unresolved mentions by card
+      const unresolvedMentionsMap: Record<string, string[]> = {};
+      for (const m of unresolvedMentionsRes.data || []) {
+        if (!unresolvedMentionsMap[m.card_id]) {
+          unresolvedMentionsMap[m.card_id] = [];
+        }
+        if (!unresolvedMentionsMap[m.card_id].includes(m.mentioned_user_id)) {
+          unresolvedMentionsMap[m.card_id].push(m.mentioned_user_id);
+        }
+      }
+
+      // Fetch mention user names
+      const allMentionedUserIds = [...new Set(Object.values(unresolvedMentionsMap).flat())];
+      let mentionUserNameMap: Record<string, string | null> = {};
+      if (allMentionedUserIds.length > 0) {
+        const { data: mentionProfiles } = await supabase
+          .from('profiles')
+          .select('user_id, full_name')
+          .in('user_id', allMentionedUserIds);
+        mentionUserNameMap = (mentionProfiles || []).reduce((acc, p) => {
+          acc[p.user_id] = p.full_name;
+          return acc;
+        }, {} as Record<string, string | null>);
+      }
+
       return data.map(item => {
         // Compute effective pending action type
         let effectivePendingActionType = item.pending_action_type;
@@ -389,6 +424,12 @@ export default function Development() {
           pending_threads_info: pendingThreadsInfoMap[item.id] || [],
           derived_status: derivedStatus,
           unread_count: unreadCountMap[item.id] || 0,
+          workflow_status: item.workflow_status || null,
+          current_assignee_role: item.current_assignee_role as DevelopmentItem['current_assignee_role'] || null,
+          unresolved_mentions: (unresolvedMentionsMap[item.id] || []).map(userId => ({
+            user_id: userId,
+            user_name: mentionUserNameMap[userId] || null,
+          })),
         };
       }) as DevelopmentItem[];
     },
