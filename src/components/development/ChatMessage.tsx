@@ -116,7 +116,7 @@ export function ChatMessage({ message, quotedMessage, isOwnMessage, onQuoteClick
           {/* Main Content */}
           {message.content && (
             <div className="text-sm whitespace-pre-wrap break-words">
-              <MentionText text={message.content} />
+              <MentionText text={message.content} variant={isOwnMessage ? 'onPrimary' : 'default'} />
             </div>
           )}
 
