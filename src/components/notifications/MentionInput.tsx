@@ -5,12 +5,29 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { Users } from 'lucide-react';
 
 interface Profile {
   user_id: string;
   full_name: string | null;
   email: string | null;
 }
+
+interface MentionOption {
+  id: string;
+  type: 'user' | 'team';
+  name: string;
+  subtitle?: string;
+}
+
+// Available teams/roles
+const TEAMS: MentionOption[] = [
+  { id: 'team:buyer', type: 'team', name: 'Buyer Team', subtitle: 'All buyers' },
+  { id: 'team:trader', type: 'team', name: 'Trader Team', subtitle: 'All traders' },
+  { id: 'team:quality', type: 'team', name: 'Quality Team', subtitle: 'Quality department' },
+  { id: 'team:marketing', type: 'team', name: 'Marketing Team', subtitle: 'Marketing department' },
+  { id: 'team:admin', type: 'team', name: 'Admin Team', subtitle: 'Administrators' },
+];
 
 interface MentionInputProps {
   value: string;
@@ -56,16 +73,33 @@ export function MentionInput({
     },
   });
 
-  // Filter profiles based on search (exclude current user)
-  const filteredProfiles = profiles.filter(p => {
-    if (p.user_id === user?.id) return false;
-    if (!mentionSearch) return true;
+  // Convert profiles to mention options
+  const userOptions: MentionOption[] = profiles
+    .filter(p => p.user_id !== user?.id)
+    .map(p => ({
+      id: p.user_id,
+      type: 'user' as const,
+      name: p.full_name || 'Unknown',
+      subtitle: p.email || undefined,
+    }));
+
+  // Filter options based on search
+  const filteredOptions: MentionOption[] = (() => {
     const searchLower = mentionSearch.toLowerCase();
-    return (
-      p.full_name?.toLowerCase().includes(searchLower) ||
-      p.email?.toLowerCase().includes(searchLower)
+    
+    const filteredTeams = TEAMS.filter(t => 
+      !mentionSearch || t.name.toLowerCase().includes(searchLower)
     );
-  }).slice(0, 5);
+    
+    const filteredUsers = userOptions.filter(u =>
+      !mentionSearch || 
+      u.name.toLowerCase().includes(searchLower) ||
+      u.subtitle?.toLowerCase().includes(searchLower)
+    );
+    
+    // Show teams first, then users, limit total
+    return [...filteredTeams, ...filteredUsers].slice(0, 8);
+  })();
 
   // Handle text input changes
   const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
@@ -112,11 +146,10 @@ export function MentionInput({
   };
 
   // Insert mention into text
-  const insertMention = (profile: Profile) => {
+  const insertMention = (option: MentionOption) => {
     if (mentionStartIndex === null) return;
     
-    const displayName = profile.full_name || profile.email || 'Unknown';
-    const mentionText = `@[${displayName}](${profile.user_id})`;
+    const mentionText = `@[${option.name}](${option.id})`;
     
     const beforeMention = value.slice(0, mentionStartIndex);
     const afterMention = value.slice(mentionStartIndex + 1 + mentionSearch.length);
@@ -140,10 +173,10 @@ export function MentionInput({
 
   // Handle keyboard navigation in dropdown
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showDropdown && filteredProfiles.length > 0) {
+    if (showDropdown && filteredOptions.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setSelectedIndex(prev => Math.min(prev + 1, filteredProfiles.length - 1));
+        setSelectedIndex(prev => Math.min(prev + 1, filteredOptions.length - 1));
         return;
       }
       if (e.key === 'ArrowUp') {
@@ -153,7 +186,7 @@ export function MentionInput({
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        insertMention(filteredProfiles[selectedIndex]);
+        insertMention(filteredOptions[selectedIndex]);
         return;
       }
       if (e.key === 'Escape') {
@@ -183,11 +216,9 @@ export function MentionInput({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const getInitials = (profile: Profile) => {
-    if (profile.full_name) {
-      return profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-    }
-    return profile.email?.[0].toUpperCase() || '?';
+  const getInitials = (option: MentionOption) => {
+    if (option.type === 'team') return null;
+    return option.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
   // Convert stored format to display format for rendering
@@ -215,48 +246,59 @@ export function MentionInput({
         autoFocus={autoFocus}
       />
       
-      {showDropdown && filteredProfiles.length > 0 && (
+      {showDropdown && filteredOptions.length > 0 && (
         <div
           ref={dropdownRef}
           className="absolute z-50 bg-popover border rounded-md shadow-lg py-1 w-full max-h-48 overflow-auto"
           style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
         >
-          {filteredProfiles.map((profile, index) => (
+          {filteredOptions.map((option, index) => (
             <button
-              key={profile.user_id}
+              key={option.id}
               type="button"
               className={cn(
                 "w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-accent",
                 index === selectedIndex && "bg-accent"
               )}
-              onClick={() => insertMention(profile)}
+              onClick={() => insertMention(option)}
               onMouseEnter={() => setSelectedIndex(index)}
             >
-              <Avatar className="h-6 w-6">
-                <AvatarFallback className="text-xs">{getInitials(profile)}</AvatarFallback>
-              </Avatar>
+              {option.type === 'team' ? (
+                <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Users className="h-3.5 w-3.5 text-primary" />
+                </div>
+              ) : (
+                <Avatar className="h-6 w-6">
+                  <AvatarFallback className="text-xs">{getInitials(option)}</AvatarFallback>
+                </Avatar>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate">
-                  {profile.full_name || 'Unknown'}
+                  {option.name}
                 </div>
-                {profile.email && (
+                {option.subtitle && (
                   <div className="text-xs text-muted-foreground truncate">
-                    {profile.email}
+                    {option.subtitle}
                   </div>
                 )}
               </div>
+              {option.type === 'team' && (
+                <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                  Team
+                </span>
+              )}
             </button>
           ))}
         </div>
       )}
       
-      {showDropdown && filteredProfiles.length === 0 && mentionSearch && (
+      {showDropdown && filteredOptions.length === 0 && mentionSearch && (
         <div
           ref={dropdownRef}
           className="absolute z-50 bg-popover border rounded-md shadow-lg py-2 px-3 w-full text-sm text-muted-foreground"
           style={{ top: dropdownPosition.top, left: dropdownPosition.left }}
         >
-          No users found matching "{mentionSearch}"
+          No users or teams found matching "{mentionSearch}"
         </div>
       )}
     </div>
