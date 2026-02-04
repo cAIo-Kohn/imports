@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Send, X, Paperclip, Camera } from 'lucide-react';
+import { Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { MentionInput } from '@/components/notifications/MentionInput';
 import { createMentionNotifications } from '@/hooks/useNotifications';
 import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton';
 import { ChatMessageData } from './ChatMessage';
+import { parseMentionsFromText, useCardMentions } from '@/hooks/useCardMentions';
 
 interface ChatMessageInputProps {
   cardId: string;
@@ -30,6 +31,7 @@ export function ChatMessageInput({
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const { createMentions, resolveMentions } = useCardMentions(cardId);
 
   // Focus input when quote is set
   useEffect(() => {
@@ -67,7 +69,7 @@ export function ChatMessageInput({
 
       if (error) throw error;
 
-      // Create mention notifications
+      // Create mention notifications (existing behavior)
       if (data?.id && messageContent.trim()) {
         await createMentionNotifications({
           text: messageContent,
@@ -76,6 +78,20 @@ export function ChatMessageInput({
           triggeredBy: user.id,
           cardTitle: cardTitle || 'Development Card',
         });
+        
+        // Create unresolved mention entries for the new mention tracking system
+        const mentionedUserIds = parseMentionsFromText(messageContent);
+        if (mentionedUserIds.length > 0) {
+          await createMentions({
+            activityId: data.id,
+            mentionedUserIds,
+          });
+        }
+      }
+      
+      // Resolve any mentions of the current user (they've replied)
+      if (data?.id) {
+        await resolveMentions({ resolvedByActivityId: data.id });
       }
 
       return data;
