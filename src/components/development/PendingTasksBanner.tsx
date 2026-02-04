@@ -81,8 +81,8 @@ export function PendingTasksBanner({
       if (!hasTracking) {
         return { onAddTracking: () => onAddTracking(task) };
       }
-      // Only requester can mark arrived
-      if (hasTracking && !isDelivered && isRequester) {
+      // Anyone assigned can mark arrived (task is reassigned to requester after tracking)
+      if (hasTracking && !isDelivered) {
         return { onMarkArrived: () => onMarkArrived(task) };
       }
     }
