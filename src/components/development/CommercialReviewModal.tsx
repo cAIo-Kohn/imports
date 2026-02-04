@@ -196,14 +196,29 @@ export function CommercialReviewModal({
           },
         });
 
-        // Update card ownership to trader
+        // Update card ownership and workflow status back to trader
         await supabase
           .from('development_items')
           .update({ 
             current_owner: 'arc',
             pending_action_type: 'commercial_data',
+            workflow_status: 'commercial_requested',
+            current_assignee_role: 'trader',
           })
           .eq('id', task.card_id);
+        
+        // Log handoff to timeline
+        await supabase.from('development_card_activity').insert({
+          card_id: task.card_id,
+          user_id: user.id,
+          activity_type: 'handoff',
+          content: 'Revision requested - awaiting updated data',
+          metadata: { 
+            from_role: 'buyer', 
+            to_role: 'trader', 
+            workflow_status: 'commercial_requested' 
+          },
+        });
 
         // Notify trader/filler
         await sendTaskNotification({
