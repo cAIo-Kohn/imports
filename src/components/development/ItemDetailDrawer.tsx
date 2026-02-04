@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCardTasks, sendTaskNotification } from '@/hooks/useCardTasks';
+import { updateCardWorkflowStatus } from '@/hooks/useCardWorkflow';
 import type { CardTask } from '@/hooks/useCardTasks';
 import { format } from 'date-fns';
 import { Trash2, RotateCcw, DollarSign, Package, History } from 'lucide-react';
@@ -279,26 +280,28 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
     if (!user?.id || !item) return;
     
     try {
-      // Update sample status
+      // Update sample status to delivered
       if (task.sample_id) {
-        await supabase
+        const { error: sampleError } = await supabase
           .from('development_item_samples')
           .update({ 
             status: 'delivered',
             actual_arrival: new Date().toISOString().split('T')[0],
           })
           .eq('id', task.sample_id);
+        
+        if (sampleError) throw sampleError;
       }
 
-      // Create a new sample_review task for the requester
+      // Create a new sample_review task assigned to QUALITY TEAM
       const { error: reviewTaskError } = await (supabase
         .from('development_card_tasks') as any)
         .insert({
           card_id: task.card_id,
           task_type: 'sample_review',
           status: 'pending',
-          assigned_to_users: [task.created_by], // Assign to original requester
-          assigned_to_role: null,
+          assigned_to_users: [],  // No specific users
+          assigned_to_role: 'quality',  // Assign to Quality Team
           created_by: task.created_by, // Keep original requester as creator
           sample_id: task.sample_id,
           metadata: {
@@ -322,19 +325,47 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
         },
       });
 
+      // Update workflow status - ball goes to QUALITY TEAM
+      await updateCardWorkflowStatus(
+        task.card_id,
+        'sample_arrived',
+        user.id,
+        'Sample arrived - awaiting quality team review',
+        'buyer',    // from
+        'quality',  // to (Quality Team takes over for review)
+        task.id
+      );
+
       // Log to timeline
       await supabase.from('development_card_activity').insert({
         card_id: task.card_id,
         user_id: user.id,
         activity_type: 'message',
-        content: '📬 Sample arrived - ready for review',
-        metadata: { task_id: task.id, sample_id: task.sample_id, task_type: 'sample_arrived' },
+        content: '📬 Sample arrived - assigned to Quality Team for review',
+        metadata: { 
+          task_id: task.id, 
+          sample_id: task.sample_id, 
+          task_type: 'sample_arrived',
+          assigned_to_role: 'quality',
+        },
+      });
+
+      // Send notification to Quality Team
+      await sendTaskNotification({
+        recipientRole: 'quality',
+        triggeredBy: user.id,
+        cardId: task.card_id,
+        taskId: task.id,
+        type: 'sample_review',
+        title: '{name} marked a sample as arrived',
+        content: `Sample for "${item.title}" is ready for quality review`,
       });
 
       queryClient.invalidateQueries({ queryKey: ['card-tasks', task.card_id] });
       queryClient.invalidateQueries({ queryKey: ['development-card-activity', task.card_id] });
       queryClient.invalidateQueries({ queryKey: ['development-item-samples', task.card_id] });
-      toast({ title: 'Sample marked as arrived' });
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      toast({ title: 'Sample marked as arrived - Quality Team notified' });
     } catch (error) {
       console.error('Failed to mark arrived:', error);
       toast({ title: 'Error', description: 'Failed to update sample', variant: 'destructive' });
