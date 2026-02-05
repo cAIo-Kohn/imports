@@ -112,6 +112,7 @@ function DevelopmentCardComponent({
       className={cn(
         'relative rounded-md border shadow-sm p-2 md:p-3 cursor-pointer transition-all',
         'hover:shadow-md',
+        'min-h-[130px] flex flex-col',
         canDrag && 'cursor-grab active:cursor-grabbing',
         highlightClass,
         priorityStyle.animation
@@ -150,104 +151,114 @@ function DevelopmentCardComponent({
           />
         )}
       </div>
-      
-      {/* Responsibility Badge - High visibility "Action: Team" tag */}
-      {item.current_assignee_role && (
-        <ResponsibilityBadge
-          currentAssigneeRole={item.current_assignee_role as AssigneeRole}
-          workflowStatus={item.workflow_status}
-          className="mb-1"
-        />
-      )}
-      
 
-      {/* Creator Name Label */}
-      {item.creator_name && (
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-[10px] font-medium" style={{ color: roleColor }}>{item.creator_name}</span>
+      {/* Content wrapper for flex distribution */}
+      <div className="flex-1 flex flex-col">
+        {/* Top section - badges and creator */}
+        <div>
+          {/* Responsibility Badge - with reserved space */}
+          <div className="min-h-[22px]">
+            {item.current_assignee_role && (
+              <ResponsibilityBadge
+                currentAssigneeRole={item.current_assignee_role as AssigneeRole}
+                workflowStatus={item.workflow_status}
+                className="mb-1"
+              />
+            )}
+          </div>
+
+          {/* Creator Name Label */}
+          {item.creator_name && (
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-[10px] font-medium" style={{ color: roleColor }}>{item.creator_name}</span>
+            </div>
+          )}
+
+          {/* Card Type, Product Category & Priority */}
+          <div className="flex items-center gap-1.5 mb-1 md:mb-2 flex-wrap">
+            {isDeleted && (
+              <Badge
+                variant="destructive"
+                className="text-[10px] px-1.5 py-0 flex items-center gap-1"
+              >
+                <Trash2 className="h-3 w-3" />
+                Deleted
+              </Badge>
+            )}
+            {/* Simplified type/category badge */}
+            <Badge
+              variant="outline"
+              className={cn('text-[10px] px-1.5 py-0 flex items-center gap-1', badgeConfig.className)}
+            >
+              {badgeConfig.icon}
+              {badgeConfig.label}
+            </Badge>
+          </div>
         </div>
-      )}
 
-      {/* Card Type, Product Category & Priority */}
-      <div className="flex items-center gap-1.5 mb-1 md:mb-2 flex-wrap">
-        {isDeleted && (
-          <Badge
-            variant="destructive"
-            className="text-[10px] px-1.5 py-0 flex items-center gap-1"
-          >
-            <Trash2 className="h-3 w-3" />
-            Deleted
-        </Badge>
-        )}
-        {/* Simplified type/category badge */}
-        <Badge
-          variant="outline"
-          className={cn('text-[10px] px-1.5 py-0 flex items-center gap-1', badgeConfig.className)}
-        >
-          {badgeConfig.icon}
-          {badgeConfig.label}
-        </Badge>
+        {/* Middle section - title & supplier (grows) */}
+        <div className="flex-1">
+          <h4 className="font-medium text-xs md:text-sm mb-1 md:mb-2 line-clamp-2">{item.title}</h4>
+          {item.supplier && (
+            <p className="text-xs text-muted-foreground truncate">
+              {item.supplier.company_name}
+            </p>
+          )}
+        </div>
+
+        {/* Bottom section - footer info (fixed at bottom) */}
+        <div className="mt-auto">
+          {/* Footer Info */}
+          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+            {/* Sample Count */}
+            {item.samples_count !== undefined && item.samples_count > 0 && (
+              <div className="flex items-center gap-1">
+                <Package className="h-3 w-3" />
+                <span>{item.samples_count} sample{item.samples_count > 1 ? 's' : ''}</span>
+              </div>
+            )}
+
+            {/* Product Count for Groups */}
+            {cardType === 'item_group' && item.products_count !== undefined && item.products_count > 0 && (
+              <div className="flex items-center gap-1">
+                <Layers className="h-3 w-3" />
+                <span>{item.products_count} item{item.products_count > 1 ? 's' : ''}</span>
+              </div>
+            )}
+
+            {/* Due Date */}
+            {item.due_date && (
+              <div className="flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                <span>{format(new Date(item.due_date), 'dd/MM')}</span>
+              </div>
+            )}
+
+            {/* Pending Action Due Date (if different from card due date) */}
+            {item.pending_action_type && (item.pending_action_due_at || item.pending_action_snoozed_until) && (
+              <ActionDueDate
+                pendingActionDueAt={item.pending_action_due_at || null}
+                snoozedUntil={item.pending_action_snoozed_until || null}
+              />
+            )}
+
+            {/* Product Code (for single items) */}
+            {cardType === 'item' && item.product_code && (
+              <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                {item.product_code}
+              </span>
+            )}
+          </div>
+
+          {/* Mention Tags - Unresolved @mentions (bottom of card) */}
+          {unresolvedMentionNames.length > 0 && (
+            <MentionTags
+              mentionedUserNames={unresolvedMentionNames}
+              className="mt-2 pt-2 border-t"
+            />
+          )}
+        </div>
       </div>
-      
-      {/* Title */}
-      <h4 className="font-medium text-xs md:text-sm mb-1 md:mb-2 line-clamp-2">{item.title}</h4>
-
-      {/* Supplier */}
-      {item.supplier && (
-        <p className="text-xs text-muted-foreground mb-2 truncate">
-          {item.supplier.company_name}
-        </p>
-      )}
-
-      {/* Footer Info */}
-      <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-        {/* Sample Count */}
-        {item.samples_count !== undefined && item.samples_count > 0 && (
-          <div className="flex items-center gap-1">
-            <Package className="h-3 w-3" />
-            <span>{item.samples_count} sample{item.samples_count > 1 ? 's' : ''}</span>
-          </div>
-        )}
-
-        {/* Product Count for Groups */}
-        {cardType === 'item_group' && item.products_count !== undefined && item.products_count > 0 && (
-          <div className="flex items-center gap-1">
-            <Layers className="h-3 w-3" />
-            <span>{item.products_count} item{item.products_count > 1 ? 's' : ''}</span>
-          </div>
-        )}
-
-        {/* Due Date */}
-        {item.due_date && (
-          <div className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            <span>{format(new Date(item.due_date), 'dd/MM')}</span>
-          </div>
-        )}
-
-        {/* Pending Action Due Date (if different from card due date) */}
-        {item.pending_action_type && (item.pending_action_due_at || item.pending_action_snoozed_until) && (
-          <ActionDueDate
-            pendingActionDueAt={item.pending_action_due_at || null}
-            snoozedUntil={item.pending_action_snoozed_until || null}
-          />
-        )}
-
-        {/* Product Code (for single items) */}
-        {cardType === 'item' && item.product_code && (
-          <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded">
-            {item.product_code}
-          </span>
-        )}
-      </div>
-
-      {/* Mention Tags - Unresolved @mentions (bottom of card) */}
-      {unresolvedMentionNames.length > 0 && (
-        <MentionTags
-          mentionedUserNames={unresolvedMentionNames}
-          className="mt-2 pt-2 border-t"
-        />
-      )}
     </div>
   );
 }
