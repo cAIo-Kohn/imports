@@ -109,6 +109,15 @@ export function TaskCard({
                 <Badge variant="secondary" className="text-xs">In Progress</Badge>
               )}
             </div>
+
+            {/* Product context for grouped cards */}
+            {metadata.product_names && (metadata.product_names as string[]).length > 0 && (
+              <div className="text-xs text-muted-foreground mt-1">
+                📦 {metadata.is_all_products 
+                  ? 'All items' 
+                  : (metadata.product_names as string[]).join(', ')}
+              </div>
+            )}
             
             <div className="text-xs text-muted-foreground mt-1">
               {(isSample || isSampleReview) && metadata.quantity && (

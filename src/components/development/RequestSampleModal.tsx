@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
+import { ProductSelector } from './ProductSelector';
 
 interface RequestSampleModalProps {
   open: boolean;
@@ -54,6 +55,33 @@ export function RequestSampleModal({
   const [selectedUserId, setSelectedUserId] = useState('');
   const [notes, setNotes] = useState('');
 
+  // Product selection for grouped cards
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [selectAll, setSelectAll] = useState(true);
+
+  // Fetch products for this card (for item_groups)
+  const { data: cardProducts = [] } = useQuery({
+    queryKey: ['card-products', cardId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('development_card_products')
+        .select('id, product_code, product_name, image_url')
+        .eq('card_id', cardId)
+        .order('created_at');
+      return data || [];
+    },
+  });
+
+  const isGroupedCard = cardProducts.length > 1;
+
+  // Reset selection when modal opens
+  useEffect(() => {
+    if (open) {
+      setSelectAll(true);
+      setSelectedProductIds([]);
+    }
+  }, [open]);
+
   // Fetch users for user assignment
   const { data: users = [] } = useQuery({
     queryKey: ['all-users'],
@@ -67,10 +95,46 @@ export function RequestSampleModal({
     },
   });
 
+  const handleToggleProduct = (productId: string) => {
+    setSelectedProductIds(prev =>
+      prev.includes(productId)
+        ? prev.filter(id => id !== productId)
+        : [...prev, productId]
+    );
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    setSelectAll(checked);
+    if (checked) {
+      setSelectedProductIds([]);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!user?.id) return;
 
+    // Validate product selection for grouped cards
+    if (isGroupedCard && !selectAll && selectedProductIds.length === 0) {
+      toast({
+        title: 'Select products',
+        description: 'Please select at least one product',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
+      // Build product metadata
+      const productIds = selectAll
+        ? cardProducts.map(p => p.id)
+        : selectedProductIds;
+      const productNames = selectAll
+        ? cardProducts.map(p => p.product_name || p.product_code)
+        : selectedProductIds.map(id => {
+            const p = cardProducts.find(cp => cp.id === id);
+            return p?.product_name || p?.product_code || '';
+          });
+
       // Create sample record
       const { data: sample, error: sampleError } = await supabase
         .from('development_item_samples')
@@ -85,25 +149,41 @@ export function RequestSampleModal({
 
       if (sampleError) throw sampleError;
 
-      // Create task
+      // Create task with product info
       const task = await createTask({
         task_type: 'sample_request',
         assigned_to_role: assignType === 'role' ? selectedRole : undefined,
         assigned_to_users: assignType === 'user' && selectedUserId ? [selectedUserId] : [],
-        metadata: { 
+        metadata: {
           quantity: parseInt(quantity, 10) || 1,
           notes: notes || undefined,
+          product_ids: isGroupedCard ? productIds : undefined,
+          product_names: isGroupedCard ? productNames : undefined,
+          is_all_products: isGroupedCard ? selectAll : undefined,
         },
         sample_id: sample.id,
       });
+
+      // Build product label for messages
+      const productLabel = isGroupedCard
+        ? selectAll
+          ? '(all items)'
+          : `(${productNames.join(', ')})`
+        : '';
 
       // Log to timeline
       await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
         activity_type: 'message',
-        content: `📦 Requested ${quantity} sample(s)${notes ? `: "${notes}"` : ''}`,
-        metadata: { task_id: task.id, sample_id: sample.id, task_type: 'sample_request' },
+        content: `📦 Requested ${quantity} sample(s) ${productLabel}${notes ? `: "${notes}"` : ''}`.trim(),
+        metadata: {
+          task_id: task.id,
+          sample_id: sample.id,
+          task_type: 'sample_request',
+          product_ids: isGroupedCard ? productIds : undefined,
+          product_names: isGroupedCard ? productNames : undefined,
+        },
       });
 
       // Update workflow status
@@ -124,7 +204,7 @@ export function RequestSampleModal({
         taskId: task.id,
         type: 'sample_request',
         title: '{name} requested a sample',
-        content: `${quantity} sample(s) needed for "${cardTitle}"`,
+        content: `${quantity} sample(s) needed for "${cardTitle}" ${productLabel}`.trim(),
       });
 
       toast({ title: 'Sample requested' });
@@ -152,6 +232,17 @@ export function RequestSampleModal({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {/* Product Selector for grouped cards */}
+          {isGroupedCard && (
+            <ProductSelector
+              products={cardProducts}
+              selectedIds={selectedProductIds}
+              selectAll={selectAll}
+              onSelectAll={handleSelectAll}
+              onToggleProduct={handleToggleProduct}
+            />
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="quantity">Quantity</Label>
