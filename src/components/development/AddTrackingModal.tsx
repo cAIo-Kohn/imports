@@ -196,7 +196,8 @@ export function AddTrackingModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          {/* Date fields - 2 columns for more space */}
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="shipped-date">Shipped Date</Label>
               <Input
@@ -204,7 +205,7 @@ export function AddTrackingModal({
                 type="date"
                 value={shippedDate}
                 onChange={(e) => setShippedDate(e.target.value)}
-                className="[&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:z-10 [&::-webkit-calendar-picker-indicator]:relative"
+                className="[&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
               />
             </div>
 
@@ -215,20 +216,21 @@ export function AddTrackingModal({
                 type="date"
                 value={estimatedArrival}
                 onChange={(e) => setEstimatedArrival(e.target.value)}
-                className="[&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:z-10 [&::-webkit-calendar-picker-indicator]:relative"
+                className="[&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
               />
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="qty">Quantity</Label>
-              <Input
-                id="qty"
-                type="number"
-                min="1"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-              />
-            </div>
+          {/* Quantity - smaller standalone field */}
+          <div className="space-y-2 w-24">
+            <Label htmlFor="qty">Quantity</Label>
+            <Input
+              id="qty"
+              type="number"
+              min="1"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+            />
           </div>
 
           <p className="text-xs text-muted-foreground">
