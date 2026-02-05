@@ -420,13 +420,15 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
         metadata: { ...task.metadata, given_up: true, given_up_at: new Date().toISOString() },
       });
 
-      // Clear workflow status and mark card as solved
+      // Clear workflow status - card remains open, only the sample task loop ends
       await (supabase.from('development_items') as any)
         .update({ 
-          is_solved: true,
           workflow_status: null,
           current_assignee_role: null,
           pending_action_type: null,
+          pending_action_due_at: null,
+          pending_action_snoozed_until: null,
+          pending_action_snoozed_by: null,
         })
         .eq('id', task.card_id);
 
