@@ -204,7 +204,7 @@ export function AddTrackingModal({
                 type="date"
                 value={shippedDate}
                 onChange={(e) => setShippedDate(e.target.value)}
-                className="[&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                className="[&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:z-10 [&::-webkit-calendar-picker-indicator]:relative"
               />
             </div>
 
@@ -215,7 +215,7 @@ export function AddTrackingModal({
                 type="date"
                 value={estimatedArrival}
                 onChange={(e) => setEstimatedArrival(e.target.value)}
-                className="[&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                className="[&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:z-10 [&::-webkit-calendar-picker-indicator]:relative"
               />
             </div>
 
