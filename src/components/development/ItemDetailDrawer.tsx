@@ -49,6 +49,32 @@ interface ItemDetailDrawerProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Helper component to show sample count badge
+function SampleCountBadge({ cardId }: { cardId: string }) {
+  const { data: samples = [] } = useQuery({
+    queryKey: ['development-item-samples', cardId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('development_item_samples')
+        .select('id, status, decision')
+        .eq('item_id', cardId);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  if (samples.length === 0) return null;
+
+  const approvedCount = samples.filter(s => s.decision === 'approved').length;
+  const totalCount = samples.length;
+
+  return (
+    <Badge variant="secondary" className="text-[10px] h-4 ml-2">
+      {approvedCount > 0 ? `${approvedCount} approved` : `${totalCount} sample${totalCount > 1 ? 's' : ''}`}
+    </Badge>
+  );
+}
+
 // Map new status to old status for database
 const mapNewToOldStatus = (newStatus: DevelopmentCardStatus): string => {
   switch (newStatus) {
@@ -555,6 +581,7 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                 <span className="flex items-center gap-2 text-muted-foreground">
                   <Package className="h-4 w-4" />
                   Sample Tracking
+                  <SampleCountBadge cardId={item.id} />
                 </span>
               </AccordionTrigger>
               <AccordionContent className="px-4 pb-3">
