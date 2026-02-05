@@ -188,6 +188,8 @@ export function SampleReviewModal({
             pending_action_due_at: null,
             pending_action_snoozed_until: null,
             pending_action_snoozed_by: null,
+            workflow_status: 'sample_requested',
+            current_assignee_role: 'trader',
           })
           .eq('id', task.card_id);
 
