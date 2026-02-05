@@ -143,18 +143,18 @@ export function SampleReviewModal({
         });
 
       } else {
-        // Rejected - reassign task to Trader for new sample
-        const { error: taskError } = await supabase
+        // REJECTED - Complete current task and create fresh sample + task for resend
+        
+        // B) Mark the current sample_review task as completed (for audit trail)
+        const { error: taskCompleteError } = await supabase
           .from('development_card_tasks')
           .update({
-            task_type: 'sample_request', // Back to sample_request
-            status: 'pending',
-            assigned_to_role: 'trader',
-            assigned_to_users: [],
+            status: 'completed',
+            completed_at: new Date().toISOString(),
+            completed_by: user.id,
             metadata: {
               ...task.metadata,
-              needs_resend: true,
-              previous_decision: 'rejected',
+              decision: 'rejected',
               rejection_notes: decisionNotes || null,
               rejection_report_url: reportUrl,
               rejected_at: new Date().toISOString(),
@@ -163,7 +163,48 @@ export function SampleReviewModal({
           })
           .eq('id', task.id);
 
-        if (taskError) throw taskError;
+        if (taskCompleteError) throw taskCompleteError;
+
+        // C) Create a NEW sample record for the resend loop
+        const previousQuantity = (task.metadata as any)?.quantity || 1;
+        const { data: newSample, error: newSampleError } = await supabase
+          .from('development_item_samples')
+          .insert({
+            item_id: task.card_id,
+            status: 'pending',
+            quantity: previousQuantity,
+            notes: decisionNotes ? `Resend requested: ${decisionNotes}` : 'Resend requested after rejection',
+          })
+          .select('id')
+          .single();
+
+        if (newSampleError) throw newSampleError;
+
+        // D) Create a NEW sample_request task assigned to Trader with CLEAN metadata
+        const { data: newTask, error: newTaskError } = await supabase
+          .from('development_card_tasks')
+          .insert({
+            card_id: task.card_id,
+            task_type: 'sample_request',
+            status: 'pending',
+            assigned_to_role: 'trader',
+            assigned_to_users: [],
+            created_by: task.created_by, // Keep original requester
+            sample_id: newSample.id,
+            metadata: {
+              // Clean metadata - NO tracking_number, courier_name, actual_arrival
+              needs_resend: true,
+              previous_decision: 'rejected',
+              rejection_notes: decisionNotes || null,
+              rejection_report_url: reportUrl,
+              previous_sample_id: task.sample_id,
+              quantity: previousQuantity,
+            },
+          })
+          .select('id')
+          .single();
+
+        if (newTaskError) throw newTaskError;
 
         // Log rejection to timeline
         await supabase.from('development_card_activity').insert({
@@ -174,12 +215,14 @@ export function SampleReviewModal({
           metadata: { 
             task_id: task.id, 
             sample_id: task.sample_id,
+            new_task_id: newTask.id,
+            new_sample_id: newSample.id,
             notes: decisionNotes || null,
             has_report: !!reportUrl,
           },
         });
 
-        // Update card - move ownership back to ARC (China)
+        // E) Update card - move ownership back to ARC (China)
         await (supabase.from('development_items') as any)
           .update({ 
             current_owner: 'arc',
@@ -201,12 +244,12 @@ export function SampleReviewModal({
           metadata: { new_owner: 'arc', trigger: 'sample_rejected' },
         });
 
-        // Notify Traders about rejection
+        // F) Notify Traders about rejection (reference the NEW task)
         await sendTaskNotification({
           recipientRole: 'trader',
           triggeredBy: user.id,
           cardId: task.card_id,
-          taskId: task.id,
+          taskId: newTask.id,
           type: 'sample_rejected',
           title: '{name} rejected a sample',
           content: `Sample for "${cardTitle}" was rejected. A new sample is needed.`,
