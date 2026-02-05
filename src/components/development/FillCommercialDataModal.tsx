@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
+import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton';
 
 interface FillCommercialDataModalProps {
   open: boolean;
@@ -50,8 +51,11 @@ export function FillCommercialDataModal({
   const [moq, setMoq] = useState('');
   const [qtyPerContainer, setQtyPerContainer] = useState('');
   const [containerType, setContainerType] = useState('');
+  const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
 
-  const isValid = fobPrice && moq && qtyPerContainer && containerType;
+  const hasManualData = fobPrice && moq && qtyPerContainer && containerType;
+  const hasFileUpload = attachments.length > 0;
+  const isValid = hasManualData || hasFileUpload;
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -110,6 +114,8 @@ export function FillCommercialDataModal({
             filled_at: new Date().toISOString(),
             revision_number: revisionNumber,
             previous_submissions: previousSubmissions,
+            attachments: attachments,
+            submission_type: hasManualData ? 'manual' : 'file_only',
           },
         });
 
@@ -134,12 +140,16 @@ export function FillCommercialDataModal({
       if (taskError) throw taskError;
 
       // Log to timeline
-      await supabase.from('development_card_activity').insert({
+      const timelineContent = hasManualData
+        ? `💰 Commercial data submitted: $${fobPrice} FOB, MOQ ${moq}, ${qtyPerContainer}/${containerType}${revisionNumber > 1 ? ` (Revision #${revisionNumber})` : ''}`
+        : `📎 Commercial data submitted via file upload (${attachments.length} file${attachments.length > 1 ? 's' : ''})${revisionNumber > 1 ? ` (Revision #${revisionNumber})` : ''}`;
+
+      await (supabase.from('development_card_activity') as any).insert({
         card_id: task.card_id,
         user_id: user.id,
         activity_type: 'message',
-        content: `💰 Commercial data submitted: $${fobPrice} FOB, MOQ ${moq}, ${qtyPerContainer}/${containerType}${revisionNumber > 1 ? ` (Revision #${revisionNumber})` : ''}`,
-        metadata: { task_id: task.id, task_type: 'commercial_data_filled', ...commercialData, revision_number: revisionNumber },
+        content: timelineContent,
+        metadata: { task_id: task.id, task_type: 'commercial_data_filled', ...commercialData, revision_number: revisionNumber, attachments },
       });
 
       // Notify the requester
@@ -164,6 +174,7 @@ export function FillCommercialDataModal({
       setMoq('');
       setQtyPerContainer('');
       setContainerType('');
+      setAttachments([]);
     },
     onError: (error: Error & { details?: string }) => {
       console.error('Failed to fill commercial data:', error);
@@ -185,7 +196,7 @@ export function FillCommercialDataModal({
         <DialogHeader>
           <DialogTitle>Fill Commercial Data</DialogTitle>
           <DialogDescription>
-            All 4 fields are required. {requesterName} will be notified to confirm.
+            Fill all 4 fields OR upload a document. {requesterName} will be notified to review.
           </DialogDescription>
         </DialogHeader>
 
@@ -246,6 +257,27 @@ export function FillCommercialDataModal({
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        {/* File Upload Alternative */}
+        <div className="border-t pt-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">or upload a document</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          
+          <TimelineUploadButton
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
+            variant="button"
+          />
+          
+          {hasFileUpload && !hasManualData && (
+            <p className="text-xs text-muted-foreground">
+              File uploaded — you can submit without filling the fields above.
+            </p>
+          )}
         </div>
 
         <DialogFooter>
