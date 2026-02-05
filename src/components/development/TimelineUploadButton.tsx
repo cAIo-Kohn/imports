@@ -20,7 +20,7 @@ interface TimelineUploadButtonProps {
 }
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_TYPES = [
+const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/png',
   'image/gif',
@@ -31,6 +31,12 @@ const ALLOWED_TYPES = [
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ];
+
+// File extensions for the accept attribute (more reliable for Excel)
+const ALLOWED_EXTENSIONS = '.jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx';
+
+// Human-readable format hint
+export const ALLOWED_FORMATS_HINT = 'PDF, Excel, Word, or images';
 
 export function TimelineUploadButton({
   attachments,
@@ -58,13 +64,14 @@ export function TimelineUploadButton({
           continue;
         }
 
-        // Validate file type
-        if (!ALLOWED_TYPES.includes(file.type)) {
-          console.warn(`File ${file.name} has unsupported type`);
+        // Validate file type - check both MIME type and extension for better compatibility
+        const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
+        const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'];
+        if (!ALLOWED_MIME_TYPES.includes(file.type) && !allowedExtensions.includes(fileExt)) {
+          console.warn(`File ${file.name} has unsupported type: ${file.type}`);
           continue;
         }
 
-        const fileExt = file.name.split('.').pop();
         const fileName = `timeline/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
@@ -130,7 +137,7 @@ export function TimelineUploadButton({
       <input
         ref={fileInputRef}
         type="file"
-        accept={ALLOWED_TYPES.join(',')}
+        accept={ALLOWED_EXTENSIONS}
         onChange={handleFileChange}
         className="hidden"
         multiple

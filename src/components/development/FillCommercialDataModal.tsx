@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { TimelineUploadButton, UploadedAttachment } from './TimelineUploadButton';
+import { TimelineUploadButton, UploadedAttachment, ALLOWED_FORMATS_HINT } from './TimelineUploadButton';
 
 interface FillCommercialDataModalProps {
   open: boolean;
@@ -267,11 +267,14 @@ export function FillCommercialDataModal({
             <div className="h-px flex-1 bg-border" />
           </div>
           
-          <TimelineUploadButton
-            attachments={attachments}
-            onAttachmentsChange={setAttachments}
-            variant="button"
-          />
+          <div className="flex items-center gap-2">
+            <TimelineUploadButton
+              attachments={attachments}
+              onAttachmentsChange={setAttachments}
+              variant="button"
+            />
+            <span className="text-xs text-muted-foreground">({ALLOWED_FORMATS_HINT})</span>
+          </div>
           
           {hasFileUpload && !hasManualData && (
             <p className="text-xs text-muted-foreground">
