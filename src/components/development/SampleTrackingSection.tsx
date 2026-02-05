@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 import { 
   Package, Truck, CheckCircle, XCircle, ExternalLink, Plus, 
-  Send, AlertTriangle, FileText 
+  Send, AlertTriangle, FileText, User, Clock
 } from 'lucide-react';
 import { updateCardWorkflowStatus } from '@/hooks/useCardWorkflow';
 import { Badge } from '@/components/ui/badge';
@@ -49,6 +49,14 @@ interface Sample {
   created_at: string;
   decided_at: string | null;
   decided_by: string | null;
+}
+
+interface SampleHistoryStep {
+  action: string;
+  userId: string | null;
+  userName: string | null;
+  timestamp: string | null;
+  icon: 'request' | 'ship' | 'arrive' | 'approve' | 'reject' | 'give_up';
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -495,8 +503,193 @@ interface SampleCardProps {
   showReview?: boolean;
 }
 
+// Helper component to show sample workflow history
+function SampleHistoryTimeline({ sampleId, cardId }: { sampleId: string; cardId: string }) {
+  const { data: historyData } = useQuery({
+    queryKey: ['sample-history', sampleId],
+    queryFn: async () => {
+      // Fetch the task associated with this sample
+      const { data: tasks } = await supabase
+        .from('development_card_tasks')
+        .select('*')
+        .eq('sample_id', sampleId)
+        .order('created_at', { ascending: true });
+
+      // Fetch activity logs related to this sample
+      const { data: activities } = await supabase
+        .from('development_card_activity')
+        .select('*')
+        .eq('card_id', cardId)
+        .order('created_at', { ascending: true });
+
+      // Get sample-related activities
+      const sampleActivities = activities?.filter(a => {
+        const meta = a.metadata as Record<string, unknown> | null;
+        return meta?.sample_id === sampleId || 
+               meta?.task_type === 'sample_shipped' ||
+               a.activity_type === 'sample_approved' ||
+               a.activity_type === 'sample_rejected' ||
+               (meta?.type === 'sample_request' && !meta?.sample_id) || // Legacy
+               (meta?.type === 'sample_shipped') ||
+               (meta?.type === 'sample_arrived' && meta?.sample_id === sampleId);
+      }) || [];
+
+      // Collect all user IDs
+      const userIds = new Set<string>();
+      tasks?.forEach(t => {
+        userIds.add(t.created_by);
+        if (t.completed_by) userIds.add(t.completed_by);
+        const meta = t.metadata as Record<string, unknown> | null;
+        if (meta?.shipped_by) userIds.add(meta.shipped_by as string);
+      });
+      sampleActivities.forEach(a => userIds.add(a.user_id));
+
+      // Fetch profiles
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name')
+        .in('user_id', Array.from(userIds));
+
+      const profileMap = new Map<string, string>();
+      profiles?.forEach(p => profileMap.set(p.user_id, p.full_name || 'Unknown'));
+
+      // Build history steps
+      const steps: SampleHistoryStep[] = [];
+
+      // Find task for this sample
+      const task = tasks?.[0];
+      if (task) {
+        // Requested step
+        steps.push({
+          action: 'Requested',
+          userId: task.created_by,
+          userName: profileMap.get(task.created_by) || null,
+          timestamp: task.created_at,
+          icon: 'request',
+        });
+
+        // Shipped step (from metadata)
+        const meta = task.metadata as Record<string, unknown> | null;
+        if (meta?.shipped_by) {
+          steps.push({
+            action: 'Shipped',
+            userId: meta.shipped_by as string,
+            userName: profileMap.get(meta.shipped_by as string) || null,
+            timestamp: meta.shipped_at as string || null,
+            icon: 'ship',
+          });
+        }
+      }
+
+      // Check activities for arrival, approval, rejection
+      sampleActivities.forEach(a => {
+        const meta = a.metadata as Record<string, unknown> | null;
+        if (meta?.type === 'sample_arrived' || a.content?.toLowerCase().includes('arrived')) {
+          if (!steps.find(s => s.action === 'Arrived')) {
+            steps.push({
+              action: 'Arrived',
+              userId: a.user_id,
+              userName: profileMap.get(a.user_id) || null,
+              timestamp: a.created_at,
+              icon: 'arrive',
+            });
+          }
+        }
+        if (a.activity_type === 'sample_approved') {
+          steps.push({
+            action: 'Approved',
+            userId: a.user_id,
+            userName: profileMap.get(a.user_id) || null,
+            timestamp: a.created_at,
+            icon: 'approve',
+          });
+        }
+        if (a.activity_type === 'sample_rejected') {
+          steps.push({
+            action: 'Rejected',
+            userId: a.user_id,
+            userName: profileMap.get(a.user_id) || null,
+            timestamp: a.created_at,
+            icon: 'reject',
+          });
+        }
+      });
+
+      // Check if task was given up
+      if (task?.status === 'completed') {
+        const meta = task.metadata as Record<string, unknown> | null;
+        if (meta?.given_up && task.completed_by) {
+          steps.push({
+            action: 'Given Up',
+            userId: task.completed_by,
+            userName: profileMap.get(task.completed_by) || null,
+            timestamp: task.completed_at,
+            icon: 'give_up',
+          });
+        }
+      }
+
+      return steps;
+    },
+    enabled: !!sampleId,
+  });
+
+  if (!historyData || historyData.length === 0) return null;
+
+  const getStepIcon = (icon: SampleHistoryStep['icon']) => {
+    switch (icon) {
+      case 'request': return <Send className="h-2.5 w-2.5" />;
+      case 'ship': return <Truck className="h-2.5 w-2.5" />;
+      case 'arrive': return <Package className="h-2.5 w-2.5" />;
+      case 'approve': return <CheckCircle className="h-2.5 w-2.5" />;
+      case 'reject': return <XCircle className="h-2.5 w-2.5" />;
+      case 'give_up': return <AlertTriangle className="h-2.5 w-2.5" />;
+      default: return <Clock className="h-2.5 w-2.5" />;
+    }
+  };
+
+  const getStepColor = (icon: SampleHistoryStep['icon']) => {
+    switch (icon) {
+      case 'approve': return 'text-green-600 bg-green-100 dark:bg-green-900/30';
+      case 'reject': return 'text-red-600 bg-red-100 dark:bg-red-900/30';
+      case 'give_up': return 'text-amber-600 bg-amber-100 dark:bg-amber-900/30';
+      default: return 'text-muted-foreground bg-muted';
+    }
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t space-y-1.5">
+      <p className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
+        <Clock className="h-3 w-3" />
+        History
+      </p>
+      <div className="space-y-1">
+        {historyData.map((step, idx) => (
+          <div key={idx} className="flex items-center gap-2 text-[10px]">
+            <span className={cn("p-1 rounded-full", getStepColor(step.icon))}>
+              {getStepIcon(step.icon)}
+            </span>
+            <span className="font-medium">{step.action}</span>
+            <span className="text-muted-foreground">by</span>
+            <span className="flex items-center gap-1">
+              <User className="h-2.5 w-2.5 text-muted-foreground" />
+              {step.userName || 'Unknown'}
+            </span>
+            {step.timestamp && (
+              <span className="text-muted-foreground ml-auto">
+                {format(new Date(step.timestamp), 'dd/MM HH:mm')}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SampleCard({ sample, canEdit, cardId, onMarkArrived, isMarkingArrived, showReview }: SampleCardProps) {
   const trackingUrl = getTrackingUrl(sample.courier_name, sample.tracking_number);
+  const isCompleted = !!sample.decision;
 
   return (
     <div className={cn(
@@ -589,6 +782,11 @@ function SampleCard({ sample, canEdit, cardId, onMarkArrived, isMarkingArrived, 
           <FileText className="h-3 w-3" />
           View Report
         </a>
+      )}
+
+      {/* Sample History Timeline - shown when sample is completed (approved or has decision) */}
+      {isCompleted && (
+        <SampleHistoryTimeline sampleId={sample.id} cardId={cardId} />
       )}
 
       {/* Mark as Arrived Button */}
