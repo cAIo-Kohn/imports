@@ -167,12 +167,20 @@ function DevelopmentCardComponent({
             )}
           </div>
 
-          {/* Creator Name Label */}
-          {item.creator_name && (
-            <div className="flex items-center gap-1.5 mb-1">
+          {/* Creator Name & Created Date */}
+          <div className="flex items-center gap-1.5 mb-1">
+            {item.creator_name && (
               <span className="text-[10px] font-medium" style={{ color: roleColor }}>{item.creator_name}</span>
-            </div>
-          )}
+            )}
+            {item.creator_name && item.created_at && (
+              <span className="text-[10px] text-muted-foreground">•</span>
+            )}
+            {item.created_at && (
+              <span className="text-[10px] text-muted-foreground">
+                {format(new Date(item.created_at), 'dd/MM/yy')}
+              </span>
+            )}
+          </div>
 
           {/* Card Type, Product Category & Priority */}
           <div className="flex items-center gap-1.5 mb-1 md:mb-2 flex-wrap">
