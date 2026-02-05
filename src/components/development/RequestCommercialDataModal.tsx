@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -22,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
+import { ProductSelector } from './ProductSelector';
 
 interface RequestCommercialDataModalProps {
   open: boolean;
@@ -51,6 +53,33 @@ export function RequestCommercialDataModal({
   const [selectedUserId, setSelectedUserId] = useState('');
   const [notes, setNotes] = useState('');
 
+  // Product selection for grouped cards
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [selectAll, setSelectAll] = useState(true);
+
+  // Fetch products for this card (for item_groups)
+  const { data: cardProducts = [] } = useQuery({
+    queryKey: ['card-products', cardId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('development_card_products')
+        .select('id, product_code, product_name, image_url')
+        .eq('card_id', cardId)
+        .order('created_at');
+      return data || [];
+    },
+  });
+
+  const isGroupedCard = cardProducts.length > 1;
+
+  // Reset selection when modal opens
+  useEffect(() => {
+    if (open) {
+      setSelectAll(true);
+      setSelectedProductIds([]);
+    }
+  }, [open]);
+
   // Fetch users for user assignment
   const { data: users = [] } = useQuery({
     queryKey: ['all-users'],
@@ -64,24 +93,77 @@ export function RequestCommercialDataModal({
     },
   });
 
+  const handleToggleProduct = (productId: string) => {
+    setSelectedProductIds(prev =>
+      prev.includes(productId)
+        ? prev.filter(id => id !== productId)
+        : [...prev, productId]
+    );
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    setSelectAll(checked);
+    if (checked) {
+      setSelectedProductIds([]);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!user?.id) return;
 
+    // Validate product selection for grouped cards
+    if (isGroupedCard && !selectAll && selectedProductIds.length === 0) {
+      toast({
+        title: 'Select products',
+        description: 'Please select at least one product',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
+      // Build product metadata
+      const productIds = selectAll
+        ? cardProducts.map(p => p.id)
+        : selectedProductIds;
+      const productNames = selectAll
+        ? cardProducts.map(p => p.product_name || p.product_code)
+        : selectedProductIds.map(id => {
+            const p = cardProducts.find(cp => cp.id === id);
+            return p?.product_name || p?.product_code || '';
+          });
+
       const task = await createTask({
         task_type: 'commercial_request',
         assigned_to_role: assignType === 'role' ? selectedRole : undefined,
         assigned_to_users: assignType === 'user' && selectedUserId ? [selectedUserId] : [],
-        metadata: { notes: notes || undefined },
+        metadata: {
+          notes: notes || undefined,
+          product_ids: isGroupedCard ? productIds : undefined,
+          product_names: isGroupedCard ? productNames : undefined,
+          is_all_products: isGroupedCard ? selectAll : undefined,
+        },
       });
+
+      // Build product label for messages
+      const productLabel = isGroupedCard
+        ? selectAll
+          ? '(all items)'
+          : `(${productNames.join(', ')})`
+        : '';
 
       // Log to timeline
       await supabase.from('development_card_activity').insert({
         card_id: cardId,
         user_id: user.id,
         activity_type: 'message',
-        content: `📋 Requested commercial data${notes ? `: "${notes}"` : ''}`,
-        metadata: { task_id: task.id, task_type: 'commercial_request' },
+        content: `📋 Requested commercial data ${productLabel}${notes ? `: "${notes}"` : ''}`.trim(),
+        metadata: {
+          task_id: task.id,
+          task_type: 'commercial_request',
+          product_ids: isGroupedCard ? productIds : undefined,
+          product_names: isGroupedCard ? productNames : undefined,
+        },
       });
 
       // Update workflow status
@@ -102,7 +184,7 @@ export function RequestCommercialDataModal({
         taskId: task.id,
         type: 'commercial_request',
         title: '{name} requested commercial data',
-        content: `Commercial data needed for "${cardTitle}"`,
+        content: `Commercial data needed for "${cardTitle}" ${productLabel}`.trim(),
       });
 
       toast({ title: 'Commercial data requested' });
@@ -123,9 +205,23 @@ export function RequestCommercialDataModal({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Request Commercial Data</DialogTitle>
+          <DialogDescription>
+            The assigned team will be notified to provide pricing and MOQ information.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {/* Product Selector for grouped cards */}
+          {isGroupedCard && (
+            <ProductSelector
+              products={cardProducts}
+              selectedIds={selectedProductIds}
+              selectAll={selectAll}
+              onSelectAll={handleSelectAll}
+              onToggleProduct={handleToggleProduct}
+            />
+          )}
+
           <div className="space-y-2">
             <Label>Assign to</Label>
             <Select value={assignType} onValueChange={(v) => setAssignType(v as 'role' | 'user')}>

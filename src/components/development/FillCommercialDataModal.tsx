@@ -189,6 +189,15 @@ export function FillCommercialDataModal({
   });
 
   const requesterName = task.created_by_profile?.full_name || 'the requester';
+  const productNames = (task.metadata?.product_names as string[]) || [];
+  const isAllProducts = task.metadata?.is_all_products as boolean;
+
+  // Build product description
+  const productDescription = productNames.length > 0
+    ? isAllProducts
+      ? 'for all items in this group'
+      : `for: ${productNames.join(', ')}`
+    : '';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -196,6 +205,9 @@ export function FillCommercialDataModal({
         <DialogHeader>
           <DialogTitle>Fill Commercial Data</DialogTitle>
           <DialogDescription>
+            {productDescription && (
+              <span className="block text-xs font-medium mb-1">📦 {productDescription}</span>
+            )}
             Fill all 4 fields OR upload a document. {requesterName} will be notified to review.
           </DialogDescription>
         </DialogHeader>

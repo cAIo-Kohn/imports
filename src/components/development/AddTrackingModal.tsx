@@ -156,6 +156,15 @@ export function AddTrackingModal({
 
   const requesterName = task.created_by_profile?.full_name || 'the requester';
   const requestedQty = (task.metadata?.quantity as number) || 1;
+  const productNames = (task.metadata?.product_names as string[]) || [];
+  const isAllProducts = task.metadata?.is_all_products as boolean;
+
+  // Build product description
+  const productDescription = productNames.length > 0
+    ? isAllProducts
+      ? 'All items'
+      : productNames.join(', ')
+    : '';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -164,6 +173,9 @@ export function AddTrackingModal({
           <DialogTitle>Add Tracking & Ship</DialogTitle>
           <DialogDescription>
             Sample Request ({requestedQty} pcs) by {requesterName}
+            {productDescription && (
+              <span className="block text-xs mt-1">📦 {productDescription}</span>
+            )}
           </DialogDescription>
         </DialogHeader>
 

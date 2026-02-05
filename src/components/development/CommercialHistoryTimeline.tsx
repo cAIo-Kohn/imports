@@ -29,6 +29,8 @@ interface CommercialCycle {
   submissionType?: 'manual' | 'file_only';
   revisionCount: number;
   isApproved: boolean;
+  productNames?: string[];
+  isAllProducts?: boolean;
 }
 
 const STEP_ICONS = {
@@ -97,11 +99,14 @@ export function CommercialHistoryTimeline({ cardId }: CommercialHistoryTimelineP
       });
 
       for (const rootTask of rootRequests) {
+        const rootMeta = (rootTask.metadata || {}) as Record<string, unknown>;
         const cycle: CommercialCycle = {
           id: rootTask.id,
           steps: [],
           revisionCount: 0,
           isApproved: false,
+          productNames: (rootMeta.product_names as string[]) || undefined,
+          isAllProducts: (rootMeta.is_all_products as boolean) || undefined,
         };
 
         // Add requested step
@@ -223,9 +228,15 @@ function CommercialCycleCard({ cycle }: { cycle: CommercialCycle }) {
       "border rounded-lg p-3 text-xs",
       cycle.isApproved && "border-green-300 bg-green-50/50 dark:bg-green-900/20"
     )}>
-      {/* Header with data summary */}
+      {/* Header with product names and data summary */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1">
+          {/* Product context */}
+          {cycle.productNames && cycle.productNames.length > 0 && (
+            <div className="text-[10px] text-muted-foreground mb-1">
+              📦 {cycle.isAllProducts ? 'All items' : cycle.productNames.join(', ')}
+            </div>
+          )}
           {cycle.finalData && (cycle.finalData.fob_price_usd || cycle.finalData.moq) ? (
             <div className="flex flex-wrap gap-2 text-[11px]">
               {cycle.finalData.fob_price_usd && (
