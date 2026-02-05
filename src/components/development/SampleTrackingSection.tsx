@@ -419,12 +419,13 @@ export function SampleTrackingSection({ cardId, cardTitle, currentOwner, canEdit
         </div>
       )}
 
-      {/* Samples List */}
-      {samples.length === 0 && !showAddForm && (
-        <p className="text-xs text-muted-foreground text-center py-4">
-          No samples yet
-        </p>
-      )}
+      {/* Samples List - Scrollable container */}
+      <div className="max-h-[400px] overflow-y-auto space-y-3">
+        {samples.length === 0 && !showAddForm && (
+          <p className="text-xs text-muted-foreground text-center py-4">
+            No samples yet
+          </p>
+        )}
 
       {/* Pending Samples */}
       {pendingSamples.length > 0 && (
@@ -490,6 +491,7 @@ export function SampleTrackingSection({ cardId, cardTitle, currentOwner, canEdit
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
