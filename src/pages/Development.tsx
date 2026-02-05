@@ -185,6 +185,34 @@ export default function Development() {
   // Deferred search for smoother typing
   const deferredSearchTerm = useDeferredValue(searchTerm);
 
+  // Fetch all user roles for department filtering (needed to know which users are in which department)
+  const { data: allUserRoles = [] } = useQuery({
+    queryKey: ['all-user-roles-for-filter'],
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('user_id, role');
+      if (error) {
+        console.error('Failed to fetch user roles:', error);
+        return [];
+      }
+      return data || [];
+    },
+  });
+
+  // Build a map: userId -> roles[]
+  const userRolesMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const ur of allUserRoles) {
+      if (!map[ur.user_id]) {
+        map[ur.user_id] = [];
+      }
+      map[ur.user_id].push(ur.role);
+    }
+    return map;
+  }, [allUserRoles]);
+
   // Fetch development items with caching
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['development-items', user?.id],
@@ -504,8 +532,35 @@ export default function Development() {
       
       const matchesPriority = priorityFilter === 'all' || item.priority === priorityFilter;
       const matchesCardType = cardTypeFilter === 'all' || item.card_type === cardTypeFilter;
-      const matchesCreatorRole = creatorRoleFilter === 'all' || 
-        (item as any).created_by_role === creatorRoleFilter;
+      
+      // Department filter - matches if:
+      // 1) created by anyone in that department
+      // 2) has an Action notification (current_assignee_role) for the department
+      // 3) has an unresolved mention for someone in that department
+      let matchesDepartment = creatorRoleFilter === 'all';
+      if (!matchesDepartment) {
+        // Check condition 1: created by someone in the department
+        const creatorRole = (item as any).created_by_role;
+        if (creatorRole === creatorRoleFilter) {
+          matchesDepartment = true;
+        }
+        
+        // Check condition 2: current_assignee_role matches the department
+        if (!matchesDepartment && item.current_assignee_role === creatorRoleFilter) {
+          matchesDepartment = true;
+        }
+        
+        // Check condition 3: has unresolved mention for someone in that department
+        if (!matchesDepartment && item.unresolved_mentions && item.unresolved_mentions.length > 0) {
+          for (const mention of item.unresolved_mentions) {
+            const mentionedUserRoles = userRolesMap[mention.user_id] || [];
+            if (mentionedUserRoles.includes(creatorRoleFilter)) {
+              matchesDepartment = true;
+              break;
+            }
+          }
+        }
+      }
       
       // Use derived status for solved filtering
       const status = item.derived_status || 'pending';
@@ -515,9 +570,9 @@ export default function Development() {
       const isDeleted = !!item.deleted_at;
       const matchesDeletedFilter = showDeleted ? isDeleted : !isDeleted;
       
-      return matchesSearch && matchesPriority && matchesCardType && matchesCreatorRole && matchesSolvedFilter && matchesDeletedFilter;
+      return matchesSearch && matchesPriority && matchesCardType && matchesDepartment && matchesSolvedFilter && matchesDeletedFilter;
     });
-  }, [items, deferredSearchTerm, priorityFilter, cardTypeFilter, creatorRoleFilter, showSolved, showDeleted]);
+  }, [items, deferredSearchTerm, priorityFilter, cardTypeFilter, creatorRoleFilter, showSolved, showDeleted, userRolesMap]);
 
   // Group items by creator's department (role)
   const itemsByDepartment = useMemo(() => {
