@@ -693,6 +693,30 @@ function SampleCard({ sample, canEdit, cardId, onMarkArrived, isMarkingArrived, 
   const trackingUrl = getTrackingUrl(sample.courier_name, sample.tracking_number);
   const isCompleted = !!sample.decision;
 
+  // Fetch product names from the related task
+  const { data: productInfo } = useQuery({
+    queryKey: ['sample-product-info', sample.id],
+    queryFn: async () => {
+      const { data: task } = await supabase
+        .from('development_card_tasks')
+        .select('metadata')
+        .eq('sample_id', sample.id)
+        .limit(1)
+        .single();
+
+      if (!task?.metadata) return null;
+      const meta = task.metadata as Record<string, unknown>;
+      return {
+        productNames: meta.product_names as string[] | undefined,
+        isAllProducts: meta.is_all_products as boolean | undefined,
+      };
+    },
+    enabled: !!sample.id,
+  });
+
+  const productNames = productInfo?.productNames;
+  const isAllProducts = productInfo?.isAllProducts;
+
   return (
     <div className={cn(
       "border rounded-lg p-3 text-xs",
@@ -700,9 +724,17 @@ function SampleCard({ sample, canEdit, cardId, onMarkArrived, isMarkingArrived, 
       sample.decision === 'rejected' && "border-red-300 bg-red-50/50 dark:bg-red-900/20"
     )}>
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Package className="h-3 w-3 text-muted-foreground" />
-          <span className="font-medium">{sample.quantity} sample{(sample.quantity || 1) > 1 ? 's' : ''}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <Package className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+            <span className="font-medium">{sample.quantity} sample{(sample.quantity || 1) > 1 ? 's' : ''}</span>
+          </div>
+          {/* Product Names */}
+          {productNames && productNames.length > 0 && (
+            <div className="text-[10px] text-muted-foreground mt-1 truncate">
+              📦 {isAllProducts ? 'All items' : productNames.join(', ')}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1">
           {sample.decision && (
