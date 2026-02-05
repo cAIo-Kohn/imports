@@ -75,6 +75,40 @@ function SampleCountBadge({ cardId }: { cardId: string }) {
   );
 }
 
+// Helper component to show commercial data count badge
+function CommercialCountBadge({ cardId }: { cardId: string }) {
+  const { data: count = 0 } = useQuery({
+    queryKey: ['commercial-count', cardId],
+    queryFn: async () => {
+      // Count completed commercial_review tasks (approved ones)
+      const { data, error } = await supabase
+        .from('development_card_tasks')
+        .select('id, metadata')
+        .eq('card_id', cardId)
+        .eq('task_type', 'commercial_review')
+        .eq('status', 'completed');
+      
+      if (error) throw error;
+      
+      // Count how many have approved_by in metadata
+      const approvedCount = (data || []).filter(t => {
+        const meta = t.metadata as Record<string, unknown> | null;
+        return !!meta?.approved_by;
+      }).length;
+      
+      return approvedCount;
+    },
+  });
+
+  if (count === 0) return null;
+
+  return (
+    <Badge variant="secondary" className="text-[10px] h-4 ml-2">
+      {count} approved
+    </Badge>
+  );
+}
+
 // Map new status to old status for database
 const mapNewToOldStatus = (newStatus: DevelopmentCardStatus): string => {
   switch (newStatus) {
@@ -553,8 +587,9 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                 <span className="flex items-center gap-2 text-muted-foreground">
                   <DollarSign className="h-4 w-4" />
                   Commercial Data
+                  <CommercialCountBadge cardId={item.id} />
                   {(itemWithNewFields.fob_price_usd || itemWithNewFields.moq) && (
-                    <Badge variant="secondary" className="text-[10px] h-4 ml-2">
+                    <Badge variant="secondary" className="text-[10px] h-4">
                       {itemWithNewFields.fob_price_usd ? `$${itemWithNewFields.fob_price_usd}` : ''}
                       {itemWithNewFields.fob_price_usd && itemWithNewFields.moq ? ' • ' : ''}
                       {itemWithNewFields.moq ? `MOQ: ${itemWithNewFields.moq}` : ''}
