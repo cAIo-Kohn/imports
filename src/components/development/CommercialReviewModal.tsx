@@ -17,6 +17,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { FileText } from 'lucide-react';
+import type { UploadedAttachment } from './TimelineUploadButton';
 
 interface CommercialReviewModalProps {
   open: boolean;
@@ -55,6 +57,8 @@ export function CommercialReviewModal({
     submitted_at: string;
     rejection_reason?: string;
   }>) || [];
+  const attachments = (metadata.attachments || []) as UploadedAttachment[];
+  const submissionType = metadata.submission_type as string | undefined;
 
   const submitMutation = useMutation({
     mutationFn: async (decision: 'approve' | 'reject') => {
@@ -309,7 +313,34 @@ export function CommercialReviewModal({
                 Revision #{revisionNumber}
               </p>
             )}
+            
+            {submissionType === 'file_only' && (
+              <p className="text-sm text-muted-foreground italic mt-3 pt-3 border-t">
+                Data provided via file attachment — review the uploaded document(s).
+              </p>
+            )}
           </div>
+
+          {/* Attached Documents */}
+          {attachments.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Attached Documents</Label>
+              <div className="flex flex-wrap gap-2">
+                {attachments.map((file) => (
+                  <a
+                    key={file.id}
+                    href={file.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 bg-muted rounded px-2 py-1.5 text-xs hover:bg-muted/80 transition-colors"
+                  >
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="max-w-[150px] truncate">{file.name}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Previous Submissions History */}
           {previousSubmissions.length > 0 && (
