@@ -46,7 +46,19 @@ export const DepartmentSection = React.memo(function DepartmentSection({
   const color = ROLE_COLORS[role] || ROLE_COLORS.admin;
   const label = ROLE_LABELS[role] || title;
 
-  if (items.length === 0) return null;
+  // Sort items: urgent first, then by priority order, then by created_at (oldest first)
+  const PRIORITY_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
+  const sortedItems = [...items].sort((a, b) => {
+    // First sort by priority
+    const priorityA = PRIORITY_ORDER[a.priority] ?? 4;
+    const priorityB = PRIORITY_ORDER[b.priority] ?? 4;
+    if (priorityA !== priorityB) return priorityA - priorityB;
+    
+    // Then by created_at (oldest first = ascending)
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+  });
+
+  if (sortedItems.length === 0) return null;
 
   return (
     <div
@@ -62,12 +74,12 @@ export const DepartmentSection = React.memo(function DepartmentSection({
           {label}
         </h3>
         <span className="text-xs text-muted-foreground bg-background/80 px-2 py-0.5 rounded-full">
-          {items.length} card{items.length !== 1 ? 's' : ''}
+          {sortedItems.length} card{sortedItems.length !== 1 ? 's' : ''}
         </span>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {items.map((item) => (
+        {sortedItems.map((item) => (
           <DevelopmentCard
             key={item.id}
             item={item}
