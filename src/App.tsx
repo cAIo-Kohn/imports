@@ -20,6 +20,7 @@ import PurchaseOrderDetails from "./pages/PurchaseOrderDetails";
 import TraderDashboard from "./pages/TraderDashboard";
 import Users from "./pages/Users";
 import Development from "./pages/Development";
+import NewProducts from "./pages/NewProducts";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -115,6 +116,11 @@ const AppRoutes = () => (
     } />
     
     {/* Rotas que traders NÃO podem acessar */}
+    <Route path="/new-products" element={
+      <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'quality', 'marketing', 'viewer']}>
+        <NewProducts />
+      </RoleProtectedRoute>
+    } />
     <Route path="/products" element={
       <RoleProtectedRoute allowedRoles={['admin', 'buyer', 'quality', 'marketing', 'viewer']}>
         <Products />
