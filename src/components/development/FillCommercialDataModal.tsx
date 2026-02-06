@@ -26,6 +26,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { TimelineUploadButton, UploadedAttachment, ALLOWED_FORMATS_HINT } from './TimelineUploadButton';
 import { useFileUpload } from '@/hooks/useFileUpload';
+import { parseBrazilianNumber } from '@/lib/utils';
 
 interface FillCommercialDataModalProps {
   open: boolean;
@@ -59,6 +60,29 @@ export function FillCommercialDataModal({
   const [packingTypeFile, setPackingTypeFile] = useState<UploadedAttachment | null>(null);
   const [qtyPerMasterInner, setQtyPerMasterInner] = useState('');
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
+
+  // Format FOB price with comma as decimal separator (e.g., 1,50 for $1.50)
+  const handleFobPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let input = e.target.value;
+    // Allow only digits and comma
+    input = input.replace(/[^\d,]/g, '');
+    // Ensure only one comma
+    const parts = input.split(',');
+    if (parts.length > 2) input = parts[0] + ',' + parts.slice(1).join('');
+    // Limit decimal places to 2
+    if (parts[1]?.length > 2) input = parts[0] + ',' + parts[1].slice(0, 2);
+    // Format integer part with thousand separators
+    const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const formatted = parts.length > 1 ? `${integerPart},${parts[1]}` : integerPart;
+    setFobPrice(formatted);
+  };
+
+  // Format integer fields with dot as thousand separator (e.g., 10.000 for 10000)
+  const handleIntegerChange = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const digits = e.target.value.replace(/\D/g, '');
+    const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    setter(formatted);
+  };
 
   const hasManualData = fobPrice && moq && qtyPerContainer && containerType && 
                         packingType && packingTypeFile && qtyPerMasterInner;
@@ -95,9 +119,9 @@ export function FillCommercialDataModal({
       if (!user?.id) throw new Error('Not authenticated');
 
       const commercialData = {
-        fob_price_usd: parseFloat(fobPrice),
-        moq: parseInt(moq, 10),
-        qty_per_container: parseInt(qtyPerContainer, 10),
+        fob_price_usd: parseBrazilianNumber(fobPrice),
+        moq: parseBrazilianNumber(moq),
+        qty_per_container: parseBrazilianNumber(qtyPerContainer),
         container_type: containerType,
         packing_type: packingType || null,
         packing_type_file_url: packingTypeFile?.url || null,
@@ -259,12 +283,11 @@ export function FillCommercialDataModal({
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
               <Input
                 id="fob-price"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
                 value={fobPrice}
-                onChange={(e) => setFobPrice(e.target.value)}
+                onChange={handleFobPriceChange}
                 className="pl-7"
               />
             </div>
@@ -274,11 +297,11 @@ export function FillCommercialDataModal({
             <Label htmlFor="moq">MOQ *</Label>
             <Input
               id="moq"
-              type="number"
-              min="0"
-              placeholder="1000"
+              type="text"
+              inputMode="numeric"
+              placeholder="1.000"
               value={moq}
-              onChange={(e) => setMoq(e.target.value)}
+              onChange={handleIntegerChange(setMoq)}
             />
           </div>
 
@@ -286,11 +309,11 @@ export function FillCommercialDataModal({
             <Label htmlFor="qty-container">Qty / Container *</Label>
             <Input
               id="qty-container"
-              type="number"
-              min="0"
-              placeholder="50000"
+              type="text"
+              inputMode="numeric"
+              placeholder="50.000"
               value={qtyPerContainer}
-              onChange={(e) => setQtyPerContainer(e.target.value)}
+              onChange={handleIntegerChange(setQtyPerContainer)}
             />
           </div>
 
