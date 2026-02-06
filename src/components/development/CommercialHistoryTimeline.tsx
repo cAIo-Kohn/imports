@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
-import { FileText, CheckCircle2, XCircle, Send, ClipboardList, User, Clock } from 'lucide-react';
+import { FileText, CheckCircle2, XCircle, Send, ClipboardList, User, Clock, Image as ImageIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { UploadedAttachment } from './TimelineUploadButton';
 
@@ -259,7 +259,23 @@ function CommercialCycleCard({ cycle }: { cycle: CommercialCycle }) {
                 </span>
               )}
               {cycle.finalData.packing_type && (
-                <span className="text-muted-foreground">📦 {cycle.finalData.packing_type}</span>
+                cycle.packingTypeFile ? (
+                  <a
+                    href={cycle.packingTypeFile.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-muted-foreground hover:text-primary flex items-center gap-1"
+                  >
+                    📦 {cycle.finalData.packing_type}
+                    {cycle.packingTypeFile.type?.startsWith('image/') ? (
+                      <ImageIcon className="h-3 w-3" />
+                    ) : (
+                      <FileText className="h-3 w-3" />
+                    )}
+                  </a>
+                ) : (
+                  <span className="text-muted-foreground">📦 {cycle.finalData.packing_type}</span>
+                )
               )}
               {cycle.finalData.qty_per_master_inner && (
                 <span className="text-muted-foreground">M/I: {cycle.finalData.qty_per_master_inner}</span>
@@ -278,10 +294,27 @@ function CommercialCycleCard({ cycle }: { cycle: CommercialCycle }) {
         )}
       </div>
 
-      {/* Attachments */}
-      {cycle.attachments && cycle.attachments.length > 0 && (
+      {/* All Files (attachments + packing file) */}
+      {(cycle.attachments && cycle.attachments.length > 0 || cycle.packingTypeFile) && (
         <div className="flex flex-wrap gap-1.5 mb-2">
-          {cycle.attachments.map((file) => (
+          {/* Packing file - shown first with special label */}
+          {cycle.packingTypeFile && (
+            <a
+              href={cycle.packingTypeFile.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 bg-primary/10 rounded px-1.5 py-0.5 hover:bg-primary/20 transition-colors text-[10px]"
+            >
+              {cycle.packingTypeFile.type?.startsWith('image/') ? (
+                <ImageIcon className="h-3 w-3 text-primary" />
+              ) : (
+                <FileText className="h-3 w-3 text-primary" />
+              )}
+              <span className="truncate max-w-[100px]">Packing: {cycle.packingTypeFile.name}</span>
+            </a>
+          )}
+          {/* Other attachments */}
+          {cycle.attachments?.map((file) => (
             <a
               key={file.id}
               href={file.url}
