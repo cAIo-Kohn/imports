@@ -5,13 +5,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { usePendingActionNotifications } from '@/hooks/usePendingActionNotifications';
 import { Link } from 'react-router-dom';
-import { Inbox, ArrowRight, Sparkles } from 'lucide-react';
+import { Inbox, ArrowRight, Sparkles, Package } from 'lucide-react';
 import { DevelopmentCard } from '@/components/development/DevelopmentCard';
 import { ItemDetailDrawer } from '@/components/development/ItemDetailDrawer';
+import { ResearchApprovalDrawer } from '@/components/new-products/ResearchApprovalDrawer';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { DevelopmentItem, DevelopmentCardStatus, deriveCardStatus } from './Development';
+import { useNewProductsData, APPROVAL_CONFIG, type ApprovalType, type NewProductApproval } from '@/hooks/useNewProductFlow';
 
 // Role labels for display
 const ROLE_LABELS: Record<string, { emoji: string; name: string }> = {
@@ -31,6 +33,16 @@ export default function Dashboard() {
   
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  
+  // Research approval drawer state
+  const [researchDrawerState, setResearchDrawerState] = useState<{
+    open: boolean;
+    cardId: string;
+    cardTitle: string;
+    cardImageUrl: string | null;
+    approvalType: ApprovalType;
+    approval: NewProductApproval | undefined;
+  } | null>(null);
 
   // Determine user's functional department (admins default to buyer per requirement)
   const userDepartment = useMemo(() => {
@@ -307,6 +319,52 @@ export default function Dashboard() {
     });
   }, [pendingTeamCards]);
 
+  // Fetch New Products data
+  const { data: newProductsData, isLoading: newProductsLoading } = useNewProductsData();
+
+  // Map department to approval type for Step 1
+  const departmentApprovalType: Record<string, ApprovalType | null> = {
+    marketing: 'market_research',
+    quality: 'trademark_patent',
+    buyer: 'customs_research',
+    trader: null, // Trader has no Step 1 tasks
+  };
+
+  // Step 1 label based on department
+  const step1Labels: Record<string, string> = {
+    marketing: 'Pesquisa de Mercado',
+    quality: 'Certificações, Marcas e Patentes',
+    buyer: 'Pesquisa Aduaneira',
+  };
+
+  // Filter pending Step 1 items for user's department
+  const pendingStep1Items = useMemo(() => {
+    if (!newProductsData || userDepartment === 'trader') return [];
+    const myApprovalType = departmentApprovalType[userDepartment];
+    if (!myApprovalType) return [];
+    
+    return newProductsData.step1.filter(item => {
+      const approval = newProductsData.approvals.find(
+        a => a.card_id === item.id && a.approval_type === myApprovalType
+      );
+      return approval?.status === 'pending';
+    });
+  }, [newProductsData, userDepartment]);
+
+  // Step 2: Only Quality
+  const pendingStep2Items = useMemo(() => {
+    if (!newProductsData || userDepartment !== 'quality') return [];
+    return newProductsData.step2;
+  }, [newProductsData, userDepartment]);
+
+  // Step 3: Only Buyer
+  const pendingStep3Items = useMemo(() => {
+    if (!newProductsData || userDepartment !== 'buyer') return [];
+    return newProductsData.step3;
+  }, [newProductsData, userDepartment]);
+
+  const totalPendingNewProducts = pendingStep1Items.length + pendingStep2Items.length + pendingStep3Items.length;
+
   // Handlers
   const handleCardClick = useCallback((itemId: string) => {
     setSelectedItemId(itemId);
@@ -317,7 +375,33 @@ export default function Dashboard() {
     e.dataTransfer.setData('itemId', itemId);
   }, []);
 
-  const selectedItem = items.find(item => item.id === selectedItemId);
+  // Handler for Step 1 research item click
+  const handleStep1ItemClick = useCallback((item: any) => {
+    const myApprovalType = departmentApprovalType[userDepartment];
+    if (!myApprovalType || !newProductsData) return;
+    
+    const approval = newProductsData.approvals.find(
+      a => a.card_id === item.id && a.approval_type === myApprovalType
+    );
+    
+    setResearchDrawerState({
+      open: true,
+      cardId: item.id,
+      cardTitle: item.title,
+      cardImageUrl: item.image_url || null,
+      approvalType: myApprovalType,
+      approval,
+    });
+  }, [userDepartment, newProductsData]);
+
+  // Handler for Step 2/3 item click (opens regular drawer)
+  const handleWorkflowItemClick = useCallback((itemId: string) => {
+    setSelectedItemId(itemId);
+    setSelectedThreadId(null);
+  }, []);
+
+  const selectedItem = items.find(item => item.id === selectedItemId) || 
+    (newProductsData ? [...newProductsData.step2, ...newProductsData.step3].find(i => i.id === selectedItemId) : null);
 
   // Real-time subscription
   const invalidateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -327,6 +411,7 @@ export default function Dashboard() {
       if (invalidateTimeoutRef.current) clearTimeout(invalidateTimeoutRef.current);
       invalidateTimeoutRef.current = setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['development-items'] });
+        queryClient.invalidateQueries({ queryKey: ['new-products'] });
       }, 300);
     };
 
@@ -335,6 +420,7 @@ export default function Dashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'development_items' }, handleInvalidate)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'development_card_activity' }, handleInvalidate)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'card_unresolved_mentions' }, handleInvalidate)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'new_product_approvals' }, handleInvalidate)
       .subscribe();
 
     return () => {
@@ -410,6 +496,137 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* New Products Workflow Section - only for non-traders with pending items */}
+      {userDepartment !== 'trader' && totalPendingNewProducts > 0 && (
+        <div className="rounded-lg border bg-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Package className="h-5 w-5 text-primary" />
+              New Products Workflow
+            </h2>
+            <span className="text-sm font-medium bg-primary/10 text-primary px-3 py-1 rounded-full">
+              {totalPendingNewProducts} task{totalPendingNewProducts !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          <div className="space-y-4">
+            {/* Step 1 Items */}
+            {pendingStep1Items.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Step 1: {step1Labels[userDepartment] || 'Research'}
+                  </span>
+                  <span className="text-xs text-muted-foreground">({pendingStep1Items.length})</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {pendingStep1Items.map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => handleStep1ItemClick(item)}
+                      className="flex items-center gap-2 bg-muted/50 hover:bg-muted rounded-lg px-3 py-2 transition-colors text-left"
+                    >
+                      <div className="w-8 h-8 rounded bg-background flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {item.image_url ? (
+                          <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                        ) : (
+                          <Package className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate max-w-[180px]">{item.title}</p>
+                        {item.product_code && (
+                          <p className="text-xs text-muted-foreground">{item.product_code}</p>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Step 2 Items - Quality only */}
+            {pendingStep2Items.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Step 2: Cadastrar Código
+                  </span>
+                  <span className="text-xs text-muted-foreground">({pendingStep2Items.length})</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {pendingStep2Items.map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => handleWorkflowItemClick(item.id)}
+                      className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg px-3 py-2 transition-colors text-left"
+                    >
+                      <div className="w-8 h-8 rounded bg-background flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {item.image_url ? (
+                          <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                        ) : (
+                          <Package className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate max-w-[180px]">{item.title}</p>
+                        {item.product_code && (
+                          <p className="text-xs text-muted-foreground">{item.product_code}</p>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Step 3 Items - Buyer only */}
+            {pendingStep3Items.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Step 3: Ready for Order
+                  </span>
+                  <span className="text-xs text-muted-foreground">({pendingStep3Items.length})</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {pendingStep3Items.map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => handleWorkflowItemClick(item.id)}
+                      className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2 transition-colors text-left"
+                    >
+                      <div className="w-8 h-8 rounded bg-background flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {item.image_url ? (
+                          <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                        ) : (
+                          <Package className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate max-w-[180px]">{item.title}</p>
+                        {item.product_code && (
+                          <p className="text-xs text-muted-foreground">{item.product_code}</p>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Link to New Products page */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-4 pt-4 border-t">
+            <span>💡</span>
+            <span>View all products in workflow at</span>
+            <Link to="/new-products" className="text-primary hover:underline font-medium">
+              New Products
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Link to full view */}
       {sortedPendingCards.length > 0 && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -423,7 +640,7 @@ export default function Dashboard() {
 
       {/* Item Detail Drawer */}
       <ItemDetailDrawer
-        item={selectedItem || null}
+        item={selectedItem as DevelopmentItem | null}
         open={!!selectedItemId}
         onOpenChange={(open) => {
           if (!open) {
@@ -432,6 +649,25 @@ export default function Dashboard() {
           }
         }}
       />
+
+      {/* Research Approval Drawer for Step 1 items */}
+      {researchDrawerState && (
+        <ResearchApprovalDrawer
+          open={researchDrawerState.open}
+          onOpenChange={(open) => {
+            if (!open) setResearchDrawerState(null);
+          }}
+          cardId={researchDrawerState.cardId}
+          cardTitle={researchDrawerState.cardTitle}
+          cardImageUrl={researchDrawerState.cardImageUrl}
+          approvalType={researchDrawerState.approvalType}
+          approval={researchDrawerState.approval}
+          onOpenOriginalCard={() => {
+            setResearchDrawerState(null);
+            setSelectedItemId(researchDrawerState.cardId);
+          }}
+        />
+      )}
     </div>
   );
 }
