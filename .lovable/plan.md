@@ -1,20 +1,19 @@
 
-## Rename "Marcas e Patentes" and Add Certification Checkboxes
+
+## Add Customs Research Compliance Checklist
 
 ### Overview
-1. Rename "Marcas e Patentes" → "Certificações, Marcas e Patentes" in the approval config
-2. Modify the `ResearchApprovalDrawer` to show two Yes/No checkbox options for the `trademark_patent` approval type
-3. Both checkboxes must be answered before the Approve/Reject buttons appear
+Add a specific compliance checklist for the "Pesquisa Aduaneira" (customs_research) approval type with three questions:
+1. **Possui LI/LPCO?** - Sim / Não (radio buttons)
+2. **Qual a NCM?** - Text input limited to 8 digits
+3. **Descrição Catálogo Produto** - Expandable textarea that grows as user types
 
-### Visual Flow
+### Visual Layout
 
 ```text
 ┌─────────────────────────────────────────────────────┐
-│ ✅ Certificações, Marcas e Patentes                 │
-│    Quality                           [View Card]    │
-├─────────────────────────────────────────────────────┤
-│ [Product Image] Product Title                       │
-│                 ⏳ Pending                          │
+│ 🛒 Pesquisa Aduaneira                               │
+│    Buyer                            [View Card]     │
 ├─────────────────────────────────────────────────────┤
 │                                                     │
 │  [Chat Timeline with comments & uploads]            │
@@ -24,63 +23,82 @@
 ├─────────────────────────────────────────────────────┤
 │ ─────────────────────────────────────────────────── │
 │                                                     │
-│ 📋 Compliance Checklist                             │
+│ 📋 Customs Compliance                               │
 │                                                     │
-│ Certificações                                       │
-│ ○ Sim   ○ Não                                      │
+│ Possui LI/LPCO?                                     │
+│ ○ Sim   ○ Não                                       │
 │                                                     │
-│ Marcas e Patentes                                   │
-│ ○ Sim   ○ Não                                      │
+│ Qual a NCM?                                         │
+│ ┌──────────────────────┐                            │
+│ │ 12345678             │  ← Max 8 digits only       │
+│ └──────────────────────┘                            │
+│                                                     │
+│ Descrição Catálogo Produto                          │
+│ ┌──────────────────────────────────────────────┐   │
+│ │ Product description...                        │   │
+│ │ (expands as you type)                         │   │
+│ └──────────────────────────────────────────────┘   │
 │                                                     │
 │ 📤 Upload Research                                  │
 │ [Upload Files]                                      │
 │                                                     │
 │ ┌─────────────┐ ┌─────────────┐                    │
-│ │   Reject    │ │   Approve   │  ← Only visible    │
-│ └─────────────┘ └─────────────┘    when both       │
-│                                    checkboxes are   │
-│                                    answered         │
+│ │   Reject    │ │   Approve   │  ← Visible when    │
+│ └─────────────┘ └─────────────┘    all fields      │
+│                                    filled          │
 └─────────────────────────────────────────────────────┘
 ```
 
 ### Technical Changes
 
-#### 1. Update `src/hooks/useNewProductFlow.ts`
-- Change the `labelPt` for `trademark_patent` from "Marcas e Patentes" to "Certificações, Marcas e Patentes"
+**File: `src/components/new-products/ResearchApprovalDrawer.tsx`**
 
-#### 2. Update `src/components/new-products/ResearchApprovalDrawer.tsx`
+1. **Add state for customs checklist:**
+   ```tsx
+   // Customs research checklist state (for customs_research type only)
+   const [hasLiLpco, setHasLiLpco] = useState<boolean | null>(null);
+   const [ncmCode, setNcmCode] = useState('');
+   const [productDescription, setProductDescription] = useState('');
+   ```
 
-**Add state for checkboxes:**
-```tsx
-const [certifications, setCertifications] = useState<boolean | null>(null);
-const [trademarksPatents, setTrademarksPatents] = useState<boolean | null>(null);
-```
+2. **Add conditional rendering for customs_research type:**
+   - Show customs-specific checklist when `approvalType === 'customs_research'`
+   - NCM input: restrict to numeric characters only, max 8 characters
+   - Product description: use textarea with auto-resize behavior
 
-**Add conditional logic for trademark_patent type:**
-- Show a "Compliance Checklist" section with two radio button groups
-- "Certificações" - Sim / Não
-- "Marcas e Patentes" - Sim / Não
-- Both must be answered (not null) to enable the Approve/Reject buttons
-- Include checkbox answers in the decision metadata for audit trail
+3. **Update validation logic:**
+   ```tsx
+   const isCustomsResearch = approvalType === 'customs_research';
+   const customsChecklistComplete = isCustomsResearch
+     ? hasLiLpco !== null && ncmCode.length === 8 && productDescription.trim().length > 0
+     : true;
+   ```
 
-**Update validation logic:**
-```tsx
-// For trademark_patent, require both checkboxes to be answered
-const canSubmitDecision = approvalType === 'trademark_patent'
-  ? certifications !== null && trademarksPatents !== null
-  : hasResearchFiles;
-```
+4. **Update canSubmitDecision:**
+   ```tsx
+   const canSubmitDecision = 
+     isTrademarkPatent ? checklistComplete : 
+     isCustomsResearch ? (customsChecklistComplete && hasResearchFiles) : 
+     hasResearchFiles;
+   ```
 
-#### 3. Store Checklist Data
-- Include `certifications_ok` and `trademarks_patents_ok` in the approval notes/metadata when submitting the decision
-- This provides an audit trail of what was checked
+5. **Store customs checklist data in decision metadata:**
+   - Include `has_li_lpco`, `ncm_code`, and `product_catalog_description` in notes and metadata
+
+6. **Reset customs state on submit:**
+   ```tsx
+   setHasLiLpco(null);
+   setNcmCode('');
+   setProductDescription('');
+   ```
+
+### Validation Rules
+- **NCM Code**: Exactly 8 numeric digits required
+- **Product Description**: Non-empty required
+- **LI/LPCO**: Must select Yes or No
+- **Research Files**: Still required for customs research (like market research)
 
 ### Files to Modify
 
-1. `src/hooks/useNewProductFlow.ts` - Update label for trademark_patent
-2. `src/components/new-products/ResearchApprovalDrawer.tsx` - Add checklist UI and validation logic
+1. `src/components/new-products/ResearchApprovalDrawer.tsx` - Add customs checklist UI, state, and validation logic
 
-### UI Components Used
-- `RadioGroup` from Radix UI (already in project) for Yes/No selection
-- Existing `TimelineUploadButton` for file uploads
-- Existing `MentionInput` for chat
