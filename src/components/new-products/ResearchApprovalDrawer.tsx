@@ -90,6 +90,11 @@ export function ResearchApprovalDrawer({
   // Compliance checklist state (for trademark_patent type only)
   const [certificationsOk, setCertificationsOk] = useState<boolean | null>(null);
   const [trademarksPatentsOk, setTrademarksPatentsOk] = useState<boolean | null>(null);
+  
+  // Customs research checklist state (for customs_research type only)
+  const [hasLiLpco, setHasLiLpco] = useState<boolean | null>(null);
+  const [ncmCode, setNcmCode] = useState('');
+  const [productDescription, setProductDescription] = useState('');
 
   const config = APPROVAL_CONFIG[approvalType];
   const canApprove = roles.includes(config.role as AppRole) || roles.includes('admin');
@@ -102,7 +107,19 @@ export function ResearchApprovalDrawer({
   const checklistComplete = isTrademarkPatent 
     ? certificationsOk !== null && trademarksPatentsOk !== null
     : true;
-  const canSubmitDecision = isTrademarkPatent ? checklistComplete : hasResearchFiles;
+  
+  // For customs_research, require all fields filled + research files
+  const isCustomsResearch = approvalType === 'customs_research';
+  const customsChecklistComplete = isCustomsResearch
+    ? hasLiLpco !== null && ncmCode.length === 8 && productDescription.trim().length > 0
+    : true;
+  
+  // Determine if decision can be submitted based on approval type
+  const canSubmitDecision = isTrademarkPatent 
+    ? checklistComplete 
+    : isCustomsResearch 
+      ? (customsChecklistComplete && hasResearchFiles) 
+      : hasResearchFiles;
   const isRejected = approval?.status === 'rejected';
 
   // Fetch comments for this research type
@@ -255,6 +272,11 @@ export function ResearchApprovalDrawer({
         if (researchFiles.length > 0) {
           notes += `. Files: ${researchFiles.map(f => f.name).join(', ')}`;
         }
+      } else if (isCustomsResearch) {
+        notes = `LI/LPCO: ${hasLiLpco ? 'Sim' : 'Não'}, NCM: ${ncmCode}, Descrição: ${productDescription.trim()}`;
+        if (researchFiles.length > 0) {
+          notes += `. Files: ${researchFiles.map(f => f.name).join(', ')}`;
+        }
       } else if (researchFiles.length > 0) {
         notes = `Research files uploaded: ${researchFiles.map(f => f.name).join(', ')}`;
       }
@@ -289,6 +311,12 @@ export function ResearchApprovalDrawer({
           ...(isTrademarkPatent && {
             certifications_ok: certificationsOk,
             trademarks_patents_ok: trademarksPatentsOk,
+          }),
+          // Include checklist data for customs_research
+          ...(isCustomsResearch && {
+            has_li_lpco: hasLiLpco,
+            ncm_code: ncmCode,
+            product_catalog_description: productDescription.trim(),
           }),
         },
       });
@@ -327,6 +355,9 @@ export function ResearchApprovalDrawer({
       setResearchFiles([]);
       setCertificationsOk(null);
       setTrademarksPatentsOk(null);
+      setHasLiLpco(null);
+      setNcmCode('');
+      setProductDescription('');
       onOpenChange(false);
     },
     onError: (error: Error) => {
@@ -575,6 +606,84 @@ export function ResearchApprovalDrawer({
               </div>
             )}
             
+            {/* Customs Compliance Checklist - Only for customs_research */}
+            {isCustomsResearch && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">📋 Customs Compliance</span>
+                </div>
+                
+                {/* Possui LI/LPCO? */}
+                <div className="space-y-1.5">
+                  <label className="text-sm text-muted-foreground">Possui LI/LPCO?</label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="liLpco"
+                        checked={hasLiLpco === true}
+                        onChange={() => setHasLiLpco(true)}
+                        className="w-4 h-4 text-primary"
+                      />
+                      <span className="text-sm">Sim</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="liLpco"
+                        checked={hasLiLpco === false}
+                        onChange={() => setHasLiLpco(false)}
+                        className="w-4 h-4 text-primary"
+                      />
+                      <span className="text-sm">Não</span>
+                    </label>
+                  </div>
+                </div>
+                
+                {/* Qual a NCM? */}
+                <div className="space-y-1.5">
+                  <label className="text-sm text-muted-foreground">Qual a NCM?</label>
+                  <input
+                    type="text"
+                    value={ncmCode}
+                    onChange={(e) => {
+                      // Only allow digits, max 8 characters
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 8);
+                      setNcmCode(val);
+                    }}
+                    placeholder="12345678"
+                    className="w-full px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                    maxLength={8}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    {ncmCode.length}/8 dígitos
+                  </p>
+                </div>
+                
+                {/* Descrição Catálogo Produto */}
+                <div className="space-y-1.5">
+                  <label className="text-sm text-muted-foreground">Descrição Catálogo Produto</label>
+                  <textarea
+                    value={productDescription}
+                    onChange={(e) => setProductDescription(e.target.value)}
+                    placeholder="Digite a descrição do produto..."
+                    className="w-full px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none min-h-[60px]"
+                    style={{
+                      height: 'auto',
+                      minHeight: '60px',
+                    }}
+                    onInput={(e) => {
+                      const target = e.target as HTMLTextAreaElement;
+                      target.style.height = 'auto';
+                      target.style.height = `${target.scrollHeight}px`;
+                    }}
+                  />
+                </div>
+                
+                <Separator />
+              </div>
+            )}
+            
             {/* Upload Research Section */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -637,7 +746,9 @@ export function ResearchApprovalDrawer({
               <p className="text-xs text-center text-muted-foreground">
                 {isTrademarkPatent 
                   ? 'Answer both checklist items to enable approval'
-                  : 'Upload research files to enable approval'
+                  : isCustomsResearch
+                    ? 'Complete all checklist fields and upload research files to enable approval'
+                    : 'Upload research files to enable approval'
                 }
               </p>
             )}
