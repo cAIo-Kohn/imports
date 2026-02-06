@@ -22,7 +22,7 @@ export interface NewProductApproval {
 
 export const APPROVAL_CONFIG: Record<ApprovalType, { label: string; labelPt: string; role: string; icon: string }> = {
   market_research: { label: 'Market Research', labelPt: 'Pesquisa de Mercado', role: 'marketing', icon: '📢' },
-  trademark_patent: { label: 'Trademarks & Patents', labelPt: 'Marcas e Patentes', role: 'quality', icon: '✅' },
+  trademark_patent: { label: 'Certifications, Trademarks & Patents', labelPt: 'Certificações, Marcas e Patentes', role: 'quality', icon: '✅' },
   customs_research: { label: 'Customs Research', labelPt: 'Pesquisa Aduaneira', role: 'buyer', icon: '🛒' },
 };
 

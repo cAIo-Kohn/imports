@@ -86,12 +86,23 @@ export function ResearchApprovalDrawer({
   const [messageContent, setMessageContent] = useState('');
   const [messageAttachments, setMessageAttachments] = useState<UploadedAttachment[]>([]);
   const [researchFiles, setResearchFiles] = useState<UploadedAttachment[]>([]);
+  
+  // Compliance checklist state (for trademark_patent type only)
+  const [certificationsOk, setCertificationsOk] = useState<boolean | null>(null);
+  const [trademarksPatentsOk, setTrademarksPatentsOk] = useState<boolean | null>(null);
 
   const config = APPROVAL_CONFIG[approvalType];
   const canApprove = roles.includes(config.role as AppRole) || roles.includes('admin');
   const hasResearchFiles = researchFiles.length > 0;
   const isPending = approval?.status === 'pending';
   const isApproved = approval?.status === 'approved';
+  
+  // For trademark_patent, require both checkboxes to be answered
+  const isTrademarkPatent = approvalType === 'trademark_patent';
+  const checklistComplete = isTrademarkPatent 
+    ? certificationsOk !== null && trademarksPatentsOk !== null
+    : true;
+  const canSubmitDecision = isTrademarkPatent ? checklistComplete : hasResearchFiles;
   const isRejected = approval?.status === 'rejected';
 
   // Fetch comments for this research type
@@ -237,6 +248,17 @@ export function ResearchApprovalDrawer({
     mutationFn: async (decision: 'approved' | 'rejected') => {
       if (!user?.id || !approval?.id) throw new Error('Missing data');
 
+      // Build notes with checklist data if applicable
+      let notes = '';
+      if (isTrademarkPatent) {
+        notes = `Certificações: ${certificationsOk ? 'Sim' : 'Não'}, Marcas e Patentes: ${trademarksPatentsOk ? 'Sim' : 'Não'}`;
+        if (researchFiles.length > 0) {
+          notes += `. Files: ${researchFiles.map(f => f.name).join(', ')}`;
+        }
+      } else if (researchFiles.length > 0) {
+        notes = `Research files uploaded: ${researchFiles.map(f => f.name).join(', ')}`;
+      }
+
       // Update approval record
       const { error: approvalError } = await supabase
         .from('new_product_approvals')
@@ -244,7 +266,7 @@ export function ResearchApprovalDrawer({
           status: decision,
           approved_by: user.id,
           approved_at: new Date().toISOString(),
-          notes: researchFiles.length > 0 ? `Research files uploaded: ${researchFiles.map(f => f.name).join(', ')}` : null,
+          notes: notes || null,
         })
         .eq('id', approval.id);
 
@@ -263,6 +285,11 @@ export function ResearchApprovalDrawer({
           research_type: approvalType,
           decision,
           research_files: researchFiles,
+          // Include checklist data for trademark_patent
+          ...(isTrademarkPatent && {
+            certifications_ok: certificationsOk,
+            trademarks_patents_ok: trademarksPatentsOk,
+          }),
         },
       });
 
@@ -298,6 +325,8 @@ export function ResearchApprovalDrawer({
         description: `${config.labelPt} ${decision}`,
       });
       setResearchFiles([]);
+      setCertificationsOk(null);
+      setTrademarksPatentsOk(null);
       onOpenChange(false);
     },
     onError: (error: Error) => {
@@ -481,6 +510,71 @@ export function ResearchApprovalDrawer({
           <div className="border-t bg-muted/30 p-4 flex-shrink-0 space-y-3">
             <Separator />
             
+            {/* Compliance Checklist - Only for trademark_patent */}
+            {isTrademarkPatent && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">📋 Compliance Checklist</span>
+                </div>
+                
+                {/* Certificações */}
+                <div className="space-y-1.5">
+                  <label className="text-sm text-muted-foreground">Certificações</label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="certifications"
+                        checked={certificationsOk === true}
+                        onChange={() => setCertificationsOk(true)}
+                        className="w-4 h-4 text-primary"
+                      />
+                      <span className="text-sm">Sim</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="certifications"
+                        checked={certificationsOk === false}
+                        onChange={() => setCertificationsOk(false)}
+                        className="w-4 h-4 text-primary"
+                      />
+                      <span className="text-sm">Não</span>
+                    </label>
+                  </div>
+                </div>
+                
+                {/* Marcas e Patentes */}
+                <div className="space-y-1.5">
+                  <label className="text-sm text-muted-foreground">Marcas e Patentes</label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="trademarks"
+                        checked={trademarksPatentsOk === true}
+                        onChange={() => setTrademarksPatentsOk(true)}
+                        className="w-4 h-4 text-primary"
+                      />
+                      <span className="text-sm">Sim</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="trademarks"
+                        checked={trademarksPatentsOk === false}
+                        onChange={() => setTrademarksPatentsOk(false)}
+                        className="w-4 h-4 text-primary"
+                      />
+                      <span className="text-sm">Não</span>
+                    </label>
+                  </div>
+                </div>
+                
+                <Separator />
+              </div>
+            )}
+            
             {/* Upload Research Section */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -488,7 +582,10 @@ export function ResearchApprovalDrawer({
                 <span className="text-sm font-medium">Upload Research</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Upload your research files ({ALLOWED_FORMATS_HINT}) to enable approval.
+                {isTrademarkPatent 
+                  ? `Optionally upload supporting documents (${ALLOWED_FORMATS_HINT}).`
+                  : `Upload your research files (${ALLOWED_FORMATS_HINT}) to enable approval.`
+                }
               </p>
               <TimelineUploadButton
                 attachments={researchFiles}
@@ -513,30 +610,35 @@ export function ResearchApprovalDrawer({
             )}
 
             {/* Approve/Reject Buttons */}
-            <div className="flex gap-2 pt-2">
-              <Button
-                variant="destructive"
-                className="flex-1"
-                onClick={() => decisionMutation.mutate('rejected')}
-                disabled={decisionMutation.isPending}
-              >
-                <XCircle className="h-4 w-4 mr-2" />
-                Reject
-              </Button>
-              <Button
-                variant="default"
-                className="flex-1"
-                onClick={() => decisionMutation.mutate('approved')}
-                disabled={!hasResearchFiles || decisionMutation.isPending}
-              >
-                <CheckCircle2 className="h-4 w-4 mr-2" />
-                Approve
-              </Button>
-            </div>
+            {canSubmitDecision && (
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => decisionMutation.mutate('rejected')}
+                  disabled={decisionMutation.isPending}
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Reject
+                </Button>
+                <Button
+                  variant="default"
+                  className="flex-1"
+                  onClick={() => decisionMutation.mutate('approved')}
+                  disabled={decisionMutation.isPending}
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Approve
+                </Button>
+              </div>
+            )}
             
-            {!hasResearchFiles && (
+            {!canSubmitDecision && (
               <p className="text-xs text-center text-muted-foreground">
-                Upload research files to enable approval
+                {isTrademarkPatent 
+                  ? 'Answer both checklist items to enable approval'
+                  : 'Upload research files to enable approval'
+                }
               </p>
             )}
           </div>
