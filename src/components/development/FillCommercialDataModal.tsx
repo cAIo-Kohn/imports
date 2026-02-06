@@ -1,10 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { sendTaskNotification } from '@/hooks/useCardTasks';
 import type { CardTask } from '@/hooks/useCardTasks';
-import { Upload, X, FileText, Image as ImageIcon } from 'lucide-react';
+import { Upload, X, FileText, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -26,7 +26,8 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { TimelineUploadButton, UploadedAttachment, ALLOWED_FORMATS_HINT } from './TimelineUploadButton';
 import { useFileUpload } from '@/hooks/useFileUpload';
-import { parseBrazilianNumber } from '@/lib/utils';
+import { parseBrazilianNumber, formatBrazilianNumber } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 interface FillCommercialDataModalProps {
   open: boolean;
@@ -40,6 +41,15 @@ const CONTAINER_TYPES = [
   { value: '40ft', label: '40ft Container' },
   { value: '40hq', label: '40ft High Cube' },
 ];
+
+const FIELD_LABELS: Record<string, string> = {
+  fob_price_usd: 'FOB Price',
+  moq: 'MOQ',
+  qty_per_container: 'Qty/Container',
+  container_type: 'Container Type',
+  packing_type: 'Packing Type',
+  qty_per_master_inner: 'Qty per Master/Inner',
+};
 
 export function FillCommercialDataModal({
   open,
@@ -60,6 +70,55 @@ export function FillCommercialDataModal({
   const [packingTypeFile, setPackingTypeFile] = useState<UploadedAttachment | null>(null);
   const [qtyPerMasterInner, setQtyPerMasterInner] = useState('');
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
+
+  // Get revision info from task metadata
+  const taskMetadata = task.metadata || {};
+  const fieldsToRevise = (taskMetadata.fields_to_revise || []) as string[];
+  const preservedData = taskMetadata.preserved_data as Record<string, any> | undefined;
+  const isRevision = taskMetadata.needs_revision === true;
+  const rejectionReason = taskMetadata.rejection_reason as string | undefined;
+
+  // Pre-populate preserved data on mount/open
+  useEffect(() => {
+    if (open && preservedData) {
+      // Only pre-fill fields that are NOT flagged for revision
+      if (!fieldsToRevise.includes('fob_price_usd') && preservedData.fob_price_usd != null) {
+        setFobPrice(formatBrazilianNumber(preservedData.fob_price_usd, 2));
+      }
+      if (!fieldsToRevise.includes('moq') && preservedData.moq != null) {
+        setMoq(formatBrazilianNumber(preservedData.moq, 0));
+      }
+      if (!fieldsToRevise.includes('qty_per_container') && preservedData.qty_per_container != null) {
+        setQtyPerContainer(formatBrazilianNumber(preservedData.qty_per_container, 0));
+      }
+      if (!fieldsToRevise.includes('container_type') && preservedData.container_type) {
+        setContainerType(preservedData.container_type);
+      }
+      if (!fieldsToRevise.includes('packing_type') && preservedData.packing_type) {
+        setPackingType(preservedData.packing_type);
+      }
+      if (!fieldsToRevise.includes('packing_type') && preservedData.packing_type_file) {
+        setPackingTypeFile(preservedData.packing_type_file);
+      }
+      if (!fieldsToRevise.includes('qty_per_master_inner') && preservedData.qty_per_master_inner) {
+        setQtyPerMasterInner(preservedData.qty_per_master_inner);
+      }
+    }
+  }, [open, preservedData, fieldsToRevise]);
+
+  // Reset form when modal closes
+  useEffect(() => {
+    if (!open) {
+      setFobPrice('');
+      setMoq('');
+      setQtyPerContainer('');
+      setContainerType('');
+      setPackingType('');
+      setPackingTypeFile(null);
+      setQtyPerMasterInner('');
+      setAttachments([]);
+    }
+  }, [open]);
 
   // Format FOB price with comma as decimal separator (e.g., 1,50 for $1.50)
   const handleFobPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -276,9 +335,27 @@ export function FillCommercialDataModal({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Revision alert */}
+        {isRevision && rejectionReason && (
+          <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg mb-4">
+            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+            <div className="text-sm">
+              <p className="font-medium text-amber-800 dark:text-amber-200">Revision requested</p>
+              <p className="text-amber-700 dark:text-amber-300 mt-1">{rejectionReason}</p>
+              {fieldsToRevise.length > 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                  Fields to update: {fieldsToRevise.map(f => FIELD_LABELS[f] || f).join(', ')}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="fob-price">FOB Price (USD) *</Label>
+            <Label htmlFor="fob-price" className={cn(fieldsToRevise.includes('fob_price_usd') && "text-amber-600 dark:text-amber-400")}>
+              FOB Price (USD) * {fieldsToRevise.includes('fob_price_usd') && '⚠️'}
+            </Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
               <Input
@@ -288,13 +365,15 @@ export function FillCommercialDataModal({
                 placeholder="0,00"
                 value={fobPrice}
                 onChange={handleFobPriceChange}
-                className="pl-7"
+                className={cn("pl-7", fieldsToRevise.includes('fob_price_usd') && "border-amber-400 focus-visible:ring-amber-400")}
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="moq">MOQ *</Label>
+            <Label htmlFor="moq" className={cn(fieldsToRevise.includes('moq') && "text-amber-600 dark:text-amber-400")}>
+              MOQ * {fieldsToRevise.includes('moq') && '⚠️'}
+            </Label>
             <Input
               id="moq"
               type="text"
@@ -302,11 +381,14 @@ export function FillCommercialDataModal({
               placeholder="1.000"
               value={moq}
               onChange={handleIntegerChange(setMoq)}
+              className={cn(fieldsToRevise.includes('moq') && "border-amber-400 focus-visible:ring-amber-400")}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="qty-container">Qty / Container *</Label>
+            <Label htmlFor="qty-container" className={cn(fieldsToRevise.includes('qty_per_container') && "text-amber-600 dark:text-amber-400")}>
+              Qty / Container * {fieldsToRevise.includes('qty_per_container') && '⚠️'}
+            </Label>
             <Input
               id="qty-container"
               type="text"
@@ -314,13 +396,16 @@ export function FillCommercialDataModal({
               placeholder="50.000"
               value={qtyPerContainer}
               onChange={handleIntegerChange(setQtyPerContainer)}
+              className={cn(fieldsToRevise.includes('qty_per_container') && "border-amber-400 focus-visible:ring-amber-400")}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="container-type">Container Type *</Label>
+            <Label htmlFor="container-type" className={cn(fieldsToRevise.includes('container_type') && "text-amber-600 dark:text-amber-400")}>
+              Container Type * {fieldsToRevise.includes('container_type') && '⚠️'}
+            </Label>
             <Select value={containerType} onValueChange={setContainerType}>
-              <SelectTrigger id="container-type">
+              <SelectTrigger id="container-type" className={cn(fieldsToRevise.includes('container_type') && "border-amber-400 focus-visible:ring-amber-400")}>
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
               <SelectContent>
@@ -334,18 +419,23 @@ export function FillCommercialDataModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="qty-master-inner">Qty per Master/Inner *</Label>
+            <Label htmlFor="qty-master-inner" className={cn(fieldsToRevise.includes('qty_per_master_inner') && "text-amber-600 dark:text-amber-400")}>
+              Qty per Master/Inner * {fieldsToRevise.includes('qty_per_master_inner') && '⚠️'}
+            </Label>
             <Input
               id="qty-master-inner"
               type="text"
               placeholder="e.g. 12/6"
               value={qtyPerMasterInner}
               onChange={(e) => setQtyPerMasterInner(e.target.value)}
+              className={cn(fieldsToRevise.includes('qty_per_master_inner') && "border-amber-400 focus-visible:ring-amber-400")}
             />
           </div>
 
           <div className="space-y-2 col-span-2">
-            <Label htmlFor="packing-type">Packing Type *</Label>
+            <Label htmlFor="packing-type" className={cn(fieldsToRevise.includes('packing_type') && "text-amber-600 dark:text-amber-400")}>
+              Packing Type * {fieldsToRevise.includes('packing_type') && '⚠️'}
+            </Label>
             <div className="flex gap-2">
               <Input
                 id="packing-type"
@@ -353,7 +443,7 @@ export function FillCommercialDataModal({
                 placeholder="e.g. Carton box, Blister pack"
                 value={packingType}
                 onChange={(e) => setPackingType(e.target.value)}
-                className="flex-1"
+                className={cn("flex-1", fieldsToRevise.includes('packing_type') && "border-amber-400 focus-visible:ring-amber-400")}
               />
               <input
                 ref={packingFileInputRef}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { FileText } from 'lucide-react';
@@ -33,6 +34,15 @@ const CONTAINER_LABELS: Record<string, string> = {
   '40hq': '40ft High Cube',
 };
 
+const FIELD_LABELS: Record<string, string> = {
+  fob_price_usd: 'FOB Price',
+  moq: 'MOQ',
+  qty_per_container: 'Qty/Container',
+  container_type: 'Container Type',
+  packing_type: 'Packing Type',
+  qty_per_master_inner: 'Qty per Master/Inner',
+};
+
 export function CommercialReviewModal({
   open,
   onOpenChange,
@@ -43,6 +53,15 @@ export function CommercialReviewModal({
   const queryClient = useQueryClient();
   
   const [feedback, setFeedback] = useState('');
+  const [fieldsToRevise, setFieldsToRevise] = useState<Set<string>>(new Set());
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!open) {
+      setFeedback('');
+      setFieldsToRevise(new Set());
+    }
+  }, [open]);
 
   const metadata = task.metadata || {};
   const fobPrice = metadata.fob_price_usd as number | undefined;
@@ -139,6 +158,7 @@ export function CommercialReviewModal({
         }
       } else {
         // Rejection - create new commercial_request task for revision
+        const fieldsArray = Array.from(fieldsToRevise);
         const updatedSubmissions = [
           ...previousSubmissions,
           {
@@ -146,11 +166,25 @@ export function CommercialReviewModal({
             moq: moq,
             qty_per_container: qtyPerContainer,
             container_type: containerType,
+            packing_type: packingType,
+            qty_per_master_inner: qtyPerMasterInner,
             submitted_at: metadata.filled_at || new Date().toISOString(),
             submitted_by: filledBy,
             rejection_reason: feedback,
+            fields_flagged: fieldsArray,
           },
         ];
+
+        // Build preserved data - only keep fields NOT flagged for revision
+        const preservedData = {
+          fob_price_usd: !fieldsToRevise.has('fob_price_usd') ? fobPrice : null,
+          moq: !fieldsToRevise.has('moq') ? moq : null,
+          qty_per_container: !fieldsToRevise.has('qty_per_container') ? qtyPerContainer : null,
+          container_type: !fieldsToRevise.has('container_type') ? containerType : null,
+          packing_type: !fieldsToRevise.has('packing_type') ? packingType : null,
+          packing_type_file: !fieldsToRevise.has('packing_type') ? packingTypeFile : null,
+          qty_per_master_inner: !fieldsToRevise.has('qty_per_master_inner') ? qtyPerMasterInner : null,
+        };
 
         // Create new commercial_request task for trader
         const { error: newTaskError } = await (supabase
@@ -169,6 +203,8 @@ export function CommercialReviewModal({
               rejection_reason: feedback,
               rejected_by: user.id,
               rejected_at: new Date().toISOString(),
+              fields_to_revise: fieldsArray,
+              preserved_data: preservedData,
             },
           });
 
@@ -192,17 +228,19 @@ export function CommercialReviewModal({
 
         if (taskError) throw taskError;
 
-        // Log to timeline
+        // Log to timeline with specific fields needing revision
+        const fieldsListText = fieldsArray.map(f => FIELD_LABELS[f] || f).join(', ');
         await supabase.from('development_card_activity').insert({
           card_id: task.card_id,
           user_id: user.id,
           activity_type: 'message',
-          content: `⚠️ Commercial data revision requested: "${feedback}"`,
+          content: `⚠️ Revision requested for: ${fieldsListText}. Feedback: "${feedback}"`,
           metadata: { 
             task_id: task.id, 
             task_type: 'commercial_rejected',
             revision_number: revisionNumber + 1,
             rejected_price: fobPrice,
+            fields_to_revise: fieldsArray,
           },
         });
 
@@ -272,8 +310,30 @@ export function CommercialReviewModal({
       });
       return;
     }
+    if (fieldsToRevise.size === 0) {
+      toast({
+        title: 'Select fields to revise',
+        description: 'Please check at least one field that needs revision',
+        variant: 'destructive',
+      });
+      return;
+    }
     submitMutation.mutate('reject');
   };
+
+  const toggleField = (field: string) => {
+    setFieldsToRevise(prev => {
+      const next = new Set(prev);
+      if (next.has(field)) {
+        next.delete(field);
+      } else {
+        next.add(field);
+      }
+      return next;
+    });
+  };
+
+  const canRequestRevision = feedback.trim() && fieldsToRevise.size > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -285,57 +345,111 @@ export function CommercialReviewModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Submitted Data */}
+        {/* Submitted Data with Checkboxes for Revision Selection */}
         <div className="space-y-4 py-4">
           <div className="rounded-lg border p-4 bg-muted/30">
+            <p className="text-xs text-muted-foreground mb-3">Check the fields that need revision:</p>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-xs text-muted-foreground">FOB Price (USD)</p>
-                <p className="text-lg font-semibold text-foreground">
-                  ${fobPrice?.toFixed(2) || '—'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">MOQ</p>
-                <p className="text-lg font-semibold text-foreground">
-                  {moq?.toLocaleString() || '—'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Qty / Container</p>
-                <p className="text-sm font-medium text-foreground">
-                  {qtyPerContainer?.toLocaleString() || '—'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Container Type</p>
-                <p className="text-sm font-medium text-foreground">
-                  {containerType ? CONTAINER_LABELS[containerType] || containerType : '—'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Qty per Master/Inner</p>
-                <p className="text-sm font-medium text-foreground">
-                  {qtyPerMasterInner || '—'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Packing Type</p>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-foreground">
-                    {packingType || '—'}
+              {/* FOB Price */}
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="revise-fob"
+                  checked={fieldsToRevise.has('fob_price_usd')}
+                  onCheckedChange={() => toggleField('fob_price_usd')}
+                />
+                <div className="flex-1">
+                  <label htmlFor="revise-fob" className="text-xs text-muted-foreground cursor-pointer">FOB Price (USD)</label>
+                  <p className="text-lg font-semibold text-foreground">
+                    ${fobPrice?.toFixed(2) || '—'}
                   </p>
-                  {packingTypeFile && (
-                    <a
-                      href={packingTypeFile.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-primary hover:underline"
-                    >
-                      <FileText className="h-3 w-3" />
-                      <span>View</span>
-                    </a>
-                  )}
+                </div>
+              </div>
+              
+              {/* MOQ */}
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="revise-moq"
+                  checked={fieldsToRevise.has('moq')}
+                  onCheckedChange={() => toggleField('moq')}
+                />
+                <div className="flex-1">
+                  <label htmlFor="revise-moq" className="text-xs text-muted-foreground cursor-pointer">MOQ</label>
+                  <p className="text-lg font-semibold text-foreground">
+                    {moq?.toLocaleString() || '—'}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Qty/Container */}
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="revise-qty"
+                  checked={fieldsToRevise.has('qty_per_container')}
+                  onCheckedChange={() => toggleField('qty_per_container')}
+                />
+                <div className="flex-1">
+                  <label htmlFor="revise-qty" className="text-xs text-muted-foreground cursor-pointer">Qty / Container</label>
+                  <p className="text-sm font-medium text-foreground">
+                    {qtyPerContainer?.toLocaleString() || '—'}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Container Type */}
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="revise-container"
+                  checked={fieldsToRevise.has('container_type')}
+                  onCheckedChange={() => toggleField('container_type')}
+                />
+                <div className="flex-1">
+                  <label htmlFor="revise-container" className="text-xs text-muted-foreground cursor-pointer">Container Type</label>
+                  <p className="text-sm font-medium text-foreground">
+                    {containerType ? CONTAINER_LABELS[containerType] || containerType : '—'}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Qty per Master/Inner */}
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="revise-master"
+                  checked={fieldsToRevise.has('qty_per_master_inner')}
+                  onCheckedChange={() => toggleField('qty_per_master_inner')}
+                />
+                <div className="flex-1">
+                  <label htmlFor="revise-master" className="text-xs text-muted-foreground cursor-pointer">Qty per Master/Inner</label>
+                  <p className="text-sm font-medium text-foreground">
+                    {qtyPerMasterInner || '—'}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Packing Type */}
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="revise-packing"
+                  checked={fieldsToRevise.has('packing_type')}
+                  onCheckedChange={() => toggleField('packing_type')}
+                />
+                <div className="flex-1">
+                  <label htmlFor="revise-packing" className="text-xs text-muted-foreground cursor-pointer">Packing Type</label>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-foreground">
+                      {packingType || '—'}
+                    </p>
+                    {packingTypeFile && (
+                      <a
+                        href={packingTypeFile.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-primary hover:underline"
+                      >
+                        <FileText className="h-3 w-3" />
+                        <span>View</span>
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -407,6 +521,11 @@ export function CommercialReviewModal({
               onChange={(e) => setFeedback(e.target.value)}
               rows={3}
             />
+            {!canRequestRevision && feedback.trim() && fieldsToRevise.size === 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                ⚠️ Select at least one field above to request revision
+              </p>
+            )}
           </div>
         </div>
 
@@ -421,9 +540,9 @@ export function CommercialReviewModal({
           <Button
             variant="destructive"
             onClick={handleReject}
-            disabled={submitMutation.isPending || !feedback.trim()}
+            disabled={submitMutation.isPending || !canRequestRevision}
           >
-            {submitMutation.isPending ? 'Processing...' : 'Request Revision'}
+            {submitMutation.isPending ? 'Processing...' : `Request Revision (${fieldsToRevise.size})`}
           </Button>
           <Button 
             onClick={() => submitMutation.mutate('approve')}
