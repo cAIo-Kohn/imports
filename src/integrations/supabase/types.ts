@@ -425,6 +425,7 @@ export type Database = {
           is_solved: boolean | null
           item_type: Database["public"]["Enums"]["development_item_type"] | null
           moq: number | null
+          new_product_flow_status: string | null
           pending_action_due_at: string | null
           pending_action_snoozed_by: string | null
           pending_action_snoozed_until: string | null
@@ -470,6 +471,7 @@ export type Database = {
             | Database["public"]["Enums"]["development_item_type"]
             | null
           moq?: number | null
+          new_product_flow_status?: string | null
           pending_action_due_at?: string | null
           pending_action_snoozed_by?: string | null
           pending_action_snoozed_until?: string | null
@@ -515,6 +517,7 @@ export type Database = {
             | Database["public"]["Enums"]["development_item_type"]
             | null
           moq?: number | null
+          new_product_flow_status?: string | null
           pending_action_due_at?: string | null
           pending_action_snoozed_by?: string | null
           pending_action_snoozed_until?: string | null
@@ -592,6 +595,53 @@ export type Database = {
             columns: ["unit_id"]
             isOneToOne: false
             referencedRelation: "units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      new_product_approvals: {
+        Row: {
+          approval_type: string
+          approved_at: string | null
+          approved_by: string | null
+          assigned_role: string
+          card_id: string
+          created_at: string
+          created_by: string
+          id: string
+          notes: string | null
+          status: string
+        }
+        Insert: {
+          approval_type: string
+          approved_at?: string | null
+          approved_by?: string | null
+          assigned_role: string
+          card_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          notes?: string | null
+          status?: string
+        }
+        Update: {
+          approval_type?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          assigned_role?: string
+          card_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          notes?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "new_product_approvals_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "development_items"
             referencedColumns: ["id"]
           },
         ]
