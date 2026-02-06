@@ -426,6 +426,8 @@ export type Database = {
           item_type: Database["public"]["Enums"]["development_item_type"] | null
           moq: number | null
           new_product_flow_status: string | null
+          packing_type: string | null
+          packing_type_file_url: string | null
           pending_action_due_at: string | null
           pending_action_snoozed_by: string | null
           pending_action_snoozed_until: string | null
@@ -439,6 +441,7 @@ export type Database = {
             | null
           product_code: string | null
           qty_per_container: number | null
+          qty_per_master_inner: string | null
           status: Database["public"]["Enums"]["development_item_status"]
           supplier_id: string | null
           title: string
@@ -472,6 +475,8 @@ export type Database = {
             | null
           moq?: number | null
           new_product_flow_status?: string | null
+          packing_type?: string | null
+          packing_type_file_url?: string | null
           pending_action_due_at?: string | null
           pending_action_snoozed_by?: string | null
           pending_action_snoozed_until?: string | null
@@ -485,6 +490,7 @@ export type Database = {
             | null
           product_code?: string | null
           qty_per_container?: number | null
+          qty_per_master_inner?: string | null
           status?: Database["public"]["Enums"]["development_item_status"]
           supplier_id?: string | null
           title: string
@@ -518,6 +524,8 @@ export type Database = {
             | null
           moq?: number | null
           new_product_flow_status?: string | null
+          packing_type?: string | null
+          packing_type_file_url?: string | null
           pending_action_due_at?: string | null
           pending_action_snoozed_by?: string | null
           pending_action_snoozed_until?: string | null
@@ -531,6 +539,7 @@ export type Database = {
             | null
           product_code?: string | null
           qty_per_container?: number | null
+          qty_per_master_inner?: string | null
           status?: Database["public"]["Enums"]["development_item_status"]
           supplier_id?: string | null
           title?: string

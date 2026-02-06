@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { sendTaskNotification } from '@/hooks/useCardTasks';
 import type { CardTask } from '@/hooks/useCardTasks';
+import { Upload, X, FileText, Image as ImageIcon } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { TimelineUploadButton, UploadedAttachment, ALLOWED_FORMATS_HINT } from './TimelineUploadButton';
+import { useFileUpload } from '@/hooks/useFileUpload';
 
 interface FillCommercialDataModalProps {
   open: boolean;
@@ -46,16 +48,47 @@ export function FillCommercialDataModal({
 }: FillCommercialDataModalProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const packingFileInputRef = useRef<HTMLInputElement>(null);
+  const { uploadFiles, isUploading } = useFileUpload();
   
   const [fobPrice, setFobPrice] = useState('');
   const [moq, setMoq] = useState('');
   const [qtyPerContainer, setQtyPerContainer] = useState('');
   const [containerType, setContainerType] = useState('');
+  const [packingType, setPackingType] = useState('');
+  const [packingTypeFile, setPackingTypeFile] = useState<UploadedAttachment | null>(null);
+  const [qtyPerMasterInner, setQtyPerMasterInner] = useState('');
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([]);
 
-  const hasManualData = fobPrice && moq && qtyPerContainer && containerType;
+  const hasManualData = fobPrice && moq && qtyPerContainer && containerType && 
+                        packingType && packingTypeFile && qtyPerMasterInner;
   const hasFileUpload = attachments.length > 0;
   const isValid = hasManualData || hasFileUpload;
+
+  const handlePackingFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({ title: 'Invalid file type', description: 'Please upload an image or PDF', variant: 'destructive' });
+      return;
+    }
+
+    const results = await uploadFiles([file]);
+    if (results.length > 0) {
+      setPackingTypeFile({
+        id: results[0].id,
+        name: results[0].name,
+        url: results[0].url,
+        type: results[0].type,
+      });
+    }
+    // Reset input
+    if (packingFileInputRef.current) {
+      packingFileInputRef.current.value = '';
+    }
+  };
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -66,6 +99,9 @@ export function FillCommercialDataModal({
         moq: parseInt(moq, 10),
         qty_per_container: parseInt(qtyPerContainer, 10),
         container_type: containerType,
+        packing_type: packingType || null,
+        packing_type_file_url: packingTypeFile?.url || null,
+        qty_per_master_inner: qtyPerMasterInner || null,
       };
 
       // Update the card with commercial data AND update workflow status to buyer
@@ -115,6 +151,7 @@ export function FillCommercialDataModal({
             revision_number: revisionNumber,
             previous_submissions: previousSubmissions,
             attachments: attachments,
+            packing_type_file: packingTypeFile,
             submission_type: hasManualData ? 'manual' : 'file_only',
           },
         });
@@ -141,7 +178,7 @@ export function FillCommercialDataModal({
 
       // Log to timeline
       const timelineContent = hasManualData
-        ? `💰 Commercial data submitted: $${fobPrice} FOB, MOQ ${moq}, ${qtyPerContainer}/${containerType}${revisionNumber > 1 ? ` (Revision #${revisionNumber})` : ''}`
+        ? `💰 Commercial data submitted: $${fobPrice} FOB, MOQ ${moq}, ${qtyPerContainer}/${containerType}, Packing: ${packingType}${revisionNumber > 1 ? ` (Revision #${revisionNumber})` : ''}`
         : `📎 Commercial data submitted via file upload (${attachments.length} file${attachments.length > 1 ? 's' : ''})${revisionNumber > 1 ? ` (Revision #${revisionNumber})` : ''}`;
 
       await (supabase.from('development_card_activity') as any).insert({
@@ -174,6 +211,9 @@ export function FillCommercialDataModal({
       setMoq('');
       setQtyPerContainer('');
       setContainerType('');
+      setPackingType('');
+      setPackingTypeFile(null);
+      setQtyPerMasterInner('');
       setAttachments([]);
     },
     onError: (error: Error & { details?: string }) => {
@@ -201,14 +241,14 @@ export function FillCommercialDataModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Fill Commercial Data</DialogTitle>
           <DialogDescription>
             {productDescription && (
               <span className="block text-xs font-medium mb-1">📦 {productDescription}</span>
             )}
-            Fill all 4 fields OR upload a document. {requesterName} will be notified to review.
+            Fill all 6 fields OR upload a document. {requesterName} will be notified to review.
           </DialogDescription>
         </DialogHeader>
 
@@ -269,6 +309,76 @@ export function FillCommercialDataModal({
               </SelectContent>
             </Select>
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="qty-master-inner">Qty per Master/Inner *</Label>
+            <Input
+              id="qty-master-inner"
+              type="text"
+              placeholder="e.g. 12/6"
+              value={qtyPerMasterInner}
+              onChange={(e) => setQtyPerMasterInner(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2 col-span-2">
+            <Label htmlFor="packing-type">Packing Type *</Label>
+            <div className="flex gap-2">
+              <Input
+                id="packing-type"
+                type="text"
+                placeholder="e.g. Carton box, Blister pack"
+                value={packingType}
+                onChange={(e) => setPackingType(e.target.value)}
+                className="flex-1"
+              />
+              <input
+                ref={packingFileInputRef}
+                type="file"
+                accept="image/*,.pdf"
+                onChange={handlePackingFileChange}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => packingFileInputRef.current?.click()}
+                disabled={isUploading}
+                title="Upload packing image/PDF"
+              >
+                <Upload className="h-4 w-4" />
+              </Button>
+            </div>
+            {packingTypeFile && (
+              <div className="flex items-center gap-2 mt-1 p-2 bg-muted rounded text-xs">
+                {packingTypeFile.type?.startsWith('image/') ? (
+                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                )}
+                <a 
+                  href={packingTypeFile.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="truncate hover:underline flex-1"
+                >
+                  {packingTypeFile.name}
+                </a>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5"
+                  onClick={() => setPackingTypeFile(null)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+            {!packingTypeFile && (
+              <p className="text-[10px] text-muted-foreground">Upload an image or PDF showing the packing</p>
+            )}
+          </div>
         </div>
 
         {/* File Upload Alternative */}
@@ -301,7 +411,7 @@ export function FillCommercialDataModal({
           </Button>
           <Button 
             onClick={() => submitMutation.mutate()} 
-            disabled={!isValid || submitMutation.isPending}
+            disabled={!isValid || submitMutation.isPending || isUploading}
           >
             {submitMutation.isPending ? 'Submitting...' : 'Confirm & Notify Requester'}
           </Button>

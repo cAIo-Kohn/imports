@@ -1,4 +1,4 @@
-import { DollarSign, Package } from 'lucide-react';
+import { DollarSign, Package, FileText, Image as ImageIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CommercialHistoryTimeline } from './CommercialHistoryTimeline';
@@ -10,6 +10,9 @@ interface CommercialDataSectionProps {
   moq: number | null;
   qtyPerContainer: number | null;
   containerType: string | null;
+  packingType?: string | null;
+  packingTypeFileUrl?: string | null;
+  qtyPerMasterInner?: string | null;
   currentOwner: 'mor' | 'arc';
   canEdit: boolean;
   onRequestCommercialData?: () => void;
@@ -28,12 +31,18 @@ export function CommercialDataSection({
   moq,
   qtyPerContainer,
   containerType,
+  packingType,
+  packingTypeFileUrl,
+  qtyPerMasterInner,
   currentOwner,
   canEdit,
   onRequestCommercialData,
 }: CommercialDataSectionProps) {
-  const hasData = fobPriceUsd || moq || qtyPerContainer || containerType;
-  const isComplete = fobPriceUsd && moq && qtyPerContainer && containerType;
+  const hasData = fobPriceUsd || moq || qtyPerContainer || containerType || packingType || qtyPerMasterInner;
+  const isComplete = fobPriceUsd && moq && qtyPerContainer && containerType && packingType && packingTypeFileUrl && qtyPerMasterInner;
+
+  // Determine if the file is an image based on extension
+  const isPackingFileImage = packingTypeFileUrl && /\.(jpg|jpeg|png|gif|webp)$/i.test(packingTypeFileUrl);
 
   return (
     <div className="space-y-3">
@@ -70,6 +79,38 @@ export function CommercialDataSection({
               <p className="text-sm font-medium">
                 {containerType ? CONTAINER_LABELS[containerType] || containerType : '—'}
               </p>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Qty per Master/Inner</p>
+              <p className="text-sm font-medium">
+                {qtyPerMasterInner || '—'}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Packing Type</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium">
+                  {packingType || '—'}
+                </p>
+                {packingTypeFileUrl && (
+                  <a
+                    href={packingTypeFileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                    title="View packing file"
+                  >
+                    {isPackingFileImage ? (
+                      <ImageIcon className="h-3 w-3" />
+                    ) : (
+                      <FileText className="h-3 w-3" />
+                    )}
+                    <span>View</span>
+                  </a>
+                )}
+              </div>
             </div>
           </div>
 

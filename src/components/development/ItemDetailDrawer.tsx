@@ -605,6 +605,9 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                   moq={itemWithNewFields.moq}
                   qtyPerContainer={itemWithNewFields.qty_per_container}
                   containerType={itemWithNewFields.container_type}
+                  packingType={itemWithNewFields.packing_type}
+                  packingTypeFileUrl={itemWithNewFields.packing_type_file_url}
+                  qtyPerMasterInner={itemWithNewFields.qty_per_master_inner}
                   currentOwner={itemWithNewFields.current_owner || 'mor'}
                   canEdit={canManage}
                   onRequestCommercialData={() => setShowRequestCommercialModal(true)}
