@@ -1,49 +1,86 @@
 
+## Rename "Marcas e Patentes" and Add Certification Checkboxes
 
-## Fix Card Click to Open Side Drawer on New Products Page
+### Overview
+1. Rename "Marcas e Patentes" → "Certificações, Marcas e Patentes" in the approval config
+2. Modify the `ResearchApprovalDrawer` to show two Yes/No checkbox options for the `trademark_patent` approval type
+3. Both checkboxes must be answered before the Approve/Reject buttons appear
 
-### Problem
-When clicking on an eligible product card in the "New Products" tab, it navigates to `/development?card={id}` instead of opening the card's detail drawer directly on the current page.
+### Visual Flow
 
-### Solution
-Add the `ItemDetailDrawer` component to the `NewProducts` page and manage state locally, exactly like the Development page does. When a card is clicked, it will open the drawer in-place without navigating.
+```text
+┌─────────────────────────────────────────────────────┐
+│ ✅ Certificações, Marcas e Patentes                 │
+│    Quality                           [View Card]    │
+├─────────────────────────────────────────────────────┤
+│ [Product Image] Product Title                       │
+│                 ⏳ Pending                          │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  [Chat Timeline with comments & uploads]            │
+│                                                     │
+├─────────────────────────────────────────────────────┤
+│ [📎] Add research notes...               [Send]     │
+├─────────────────────────────────────────────────────┤
+│ ─────────────────────────────────────────────────── │
+│                                                     │
+│ 📋 Compliance Checklist                             │
+│                                                     │
+│ Certificações                                       │
+│ ○ Sim   ○ Não                                      │
+│                                                     │
+│ Marcas e Patentes                                   │
+│ ○ Sim   ○ Não                                      │
+│                                                     │
+│ 📤 Upload Research                                  │
+│ [Upload Files]                                      │
+│                                                     │
+│ ┌─────────────┐ ┌─────────────┐                    │
+│ │   Reject    │ │   Approve   │  ← Only visible    │
+│ └─────────────┘ └─────────────┘    when both       │
+│                                    checkboxes are   │
+│                                    answered         │
+└─────────────────────────────────────────────────────┘
+```
 
 ### Technical Changes
 
-**File: `src/pages/NewProducts.tsx`**
+#### 1. Update `src/hooks/useNewProductFlow.ts`
+- Change the `labelPt` for `trademark_patent` from "Marcas e Patentes" to "Certificações, Marcas e Patentes"
 
-1. **Add state management for selected item**:
-   ```tsx
-   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-   ```
+#### 2. Update `src/components/new-products/ResearchApprovalDrawer.tsx`
 
-2. **Update `handleOpenCard` to set state instead of navigate**:
-   ```tsx
-   const handleOpenCard = (cardId: string) => {
-     setSelectedItemId(cardId);
-   };
-   ```
+**Add state for checkboxes:**
+```tsx
+const [certifications, setCertifications] = useState<boolean | null>(null);
+const [trademarksPatents, setTrademarksPatents] = useState<boolean | null>(null);
+```
 
-3. **Fetch full item data for the drawer**:
-   - Query `development_items` to get the selected item's full data when `selectedItemId` is set
-   - Use the same data structure expected by `ItemDetailDrawer`
+**Add conditional logic for trademark_patent type:**
+- Show a "Compliance Checklist" section with two radio button groups
+- "Certificações" - Sim / Não
+- "Marcas e Patentes" - Sim / Não
+- Both must be answered (not null) to enable the Approve/Reject buttons
+- Include checkbox answers in the decision metadata for audit trail
 
-4. **Add ItemDetailDrawer component**:
-   ```tsx
-   <ItemDetailDrawer
-     item={selectedItem || null}
-     open={!!selectedItemId}
-     onOpenChange={(open) => {
-       if (!open) setSelectedItemId(null);
-     }}
-   />
-   ```
+**Update validation logic:**
+```tsx
+// For trademark_patent, require both checkboxes to be answered
+const canSubmitDecision = approvalType === 'trademark_patent'
+  ? certifications !== null && trademarksPatents !== null
+  : hasResearchFiles;
+```
 
-5. **Import required components**:
-   - `ItemDetailDrawer` from `@/components/development/ItemDetailDrawer`
-   - `DevelopmentItem` type from `@/pages/Development`
+#### 3. Store Checklist Data
+- Include `certifications_ok` and `trademarks_patents_ok` in the approval notes/metadata when submitting the decision
+- This provides an audit trail of what was checked
 
 ### Files to Modify
 
-1. `src/pages/NewProducts.tsx` - Add drawer state, fetch logic, and drawer component
+1. `src/hooks/useNewProductFlow.ts` - Update label for trademark_patent
+2. `src/components/new-products/ResearchApprovalDrawer.tsx` - Add checklist UI and validation logic
 
+### UI Components Used
+- `RadioGroup` from Radix UI (already in project) for Yes/No selection
+- Existing `TimelineUploadButton` for file uploads
+- Existing `MentionInput` for chat
