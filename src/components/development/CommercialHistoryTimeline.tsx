@@ -24,8 +24,12 @@ interface CommercialCycle {
     moq?: number | null;
     qty_per_container?: number | null;
     container_type?: string | null;
+    packing_type?: string | null;
+    packing_type_file_url?: string | null;
+    qty_per_master_inner?: string | null;
   };
   attachments?: UploadedAttachment[];
+  packingTypeFile?: UploadedAttachment | null;
   submissionType?: 'manual' | 'file_only';
   revisionCount: number;
   isApproved: boolean;
@@ -150,8 +154,12 @@ export function CommercialHistoryTimeline({ cardId }: CommercialHistoryTimelineP
                 moq: meta.moq as number | null,
                 qty_per_container: meta.qty_per_container as number | null,
                 container_type: meta.container_type as string | null,
+                packing_type: meta.packing_type as string | null,
+                packing_type_file_url: (meta.packing_type_file as UploadedAttachment | undefined)?.url || null,
+                qty_per_master_inner: meta.qty_per_master_inner as string | null,
               };
               cycle.attachments = (meta.attachments as UploadedAttachment[]) || undefined;
+              cycle.packingTypeFile = (meta.packing_type_file as UploadedAttachment | null) || null;
               cycle.submissionType = (meta.submission_type as 'manual' | 'file_only') || undefined;
             }
 
@@ -249,6 +257,12 @@ function CommercialCycleCard({ cycle }: { cycle: CommercialCycle }) {
                 <span className="text-muted-foreground">
                   {cycle.finalData.qty_per_container.toLocaleString()}/{CONTAINER_LABELS[cycle.finalData.container_type || ''] || cycle.finalData.container_type}
                 </span>
+              )}
+              {cycle.finalData.packing_type && (
+                <span className="text-muted-foreground">📦 {cycle.finalData.packing_type}</span>
+              )}
+              {cycle.finalData.qty_per_master_inner && (
+                <span className="text-muted-foreground">M/I: {cycle.finalData.qty_per_master_inner}</span>
               )}
             </div>
           ) : cycle.submissionType === 'file_only' ? (

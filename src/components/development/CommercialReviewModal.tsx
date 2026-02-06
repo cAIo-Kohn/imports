@@ -49,6 +49,9 @@ export function CommercialReviewModal({
   const moq = metadata.moq as number | undefined;
   const qtyPerContainer = metadata.qty_per_container as number | undefined;
   const containerType = metadata.container_type as string | undefined;
+  const packingType = metadata.packing_type as string | undefined;
+  const packingTypeFile = metadata.packing_type_file as UploadedAttachment | undefined;
+  const qtyPerMasterInner = metadata.qty_per_master_inner as string | undefined;
   const filledBy = metadata.filled_by as string | undefined;
   const revisionNumber = (metadata.revision_number as number) || 1;
   const previousSubmissions = (metadata.previous_submissions as Array<{
@@ -59,6 +62,9 @@ export function CommercialReviewModal({
   }>) || [];
   const attachments = (metadata.attachments || []) as UploadedAttachment[];
   const submissionType = metadata.submission_type as string | undefined;
+  
+  // Determine if packing file is an image
+  const isPackingFileImage = packingTypeFile?.type?.startsWith('image/');
 
   const submitMutation = useMutation({
     mutationFn: async (decision: 'approve' | 'reject') => {
@@ -306,6 +312,31 @@ export function CommercialReviewModal({
                 <p className="text-sm font-medium text-foreground">
                   {containerType ? CONTAINER_LABELS[containerType] || containerType : '—'}
                 </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Qty per Master/Inner</p>
+                <p className="text-sm font-medium text-foreground">
+                  {qtyPerMasterInner || '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Packing Type</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-foreground">
+                    {packingType || '—'}
+                  </p>
+                  {packingTypeFile && (
+                    <a
+                      href={packingTypeFile.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <FileText className="h-3 w-3" />
+                      <span>View</span>
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
             {revisionNumber > 1 && (
