@@ -1,134 +1,101 @@
 
 
-## Add New Products Pending Tasks to Dashboard
+## Add "Solve Card" Action Button
 
 ### Overview
-Add a new section to the Dashboard showing pending New Products workflow tasks for the user's team. This section will only appear if the team has assigned tasks in the workflow.
+Add a dedicated "Solve" action button to cards so users can easily mark them as solved when they've served their purpose. The card will then disappear from "ongoing" views but remain accessible via the "Show Solved" filter.
 
-### Team Assignment Mapping
-Based on the New Products workflow:
+### Current State
+- `is_solved` column already exists in `development_items`
+- `derived_status` is already computed from `is_solved`
+- "Show Solved" toggle already filters cards correctly
+- Status can be changed to "Solved" via dropdown, but it's not prominent
 
-| Step | Task | Responsible Role |
-|------|------|-----------------|
-| Step 1 | Pesquisa de Mercado (Market Research) | Marketing |
-| Step 1 | Certificações, Marcas e Patentes (Trademarks/Patents) | Quality |
-| Step 1 | Pesquisa Aduaneira (Customs Research) | Buyer |
-| Step 2 | Cadastrar Código (Code Registration) | Quality |
-| Step 3 | Ready for Order | Buyer |
+### Proposed Changes
 
-**Note:** Trader team has NO pending tasks in this workflow, so they will see nothing in this section.
-
-### Visual Layout
+#### 1. Add "Solve Card" Button in ItemDetailDrawer Header
+Add a visible "Solve" button in the header area, next to the delete button:
 
 ```text
 ┌──────────────────────────────────────────────────────────────────┐
-│  Hello Caio!                                                     │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │  🛒 Your Team's Pending Cards (Buyer)              [12]   │  │
-│  │  ... existing cards section ...                            │  │
-│  └────────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │  📦 New Products Workflow                           [5]   │  │
-│  │                                                            │  │
-│  │  ┌─ Step 1: Pesquisa Aduaneira ──────────────────────────┐│  │
-│  │  │  [Mini Card 1] [Mini Card 2]                          ││  │
-│  │  └───────────────────────────────────────────────────────┘│  │
-│  │                                                            │  │
-│  │  ┌─ Step 3: Ready for Order ─────────────────────────────┐│  │
-│  │  │  [Mini Card 3] [Mini Card 4] [Mini Card 5]            ││  │
-│  │  └───────────────────────────────────────────────────────┘│  │
-│  │                                                            │  │
-│  │  (Empty: No pending tasks for Trader)                     │  │
-│  └────────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  💡 View all in New Products tab                                │
+│  📦 Card Title Here                [Status ▼]  [✓ Solve] [🗑️]   │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### Technical Approach
+- **Button style**: Green accent with checkmark icon
+- **Visibility**: Only show when card is NOT already solved and NOT deleted
+- **Permission**: Same as `canManage` (Buyer, Trader, Admin)
 
-#### 1. Fetch New Products Data
-Reuse the existing `useNewProductsData()` hook which already returns:
-- `eligible` - Products ready to start workflow
-- `step1` - Products in research phase
-- `step2` - Products in code registration
-- `step3` - Products ready for order
-- `approvals` - All Step 1 approval records
+#### 2. Add "Reopen" Button for Solved Cards
+When viewing a solved card, show a "Reopen" button instead of "Solve":
 
-#### 2. Filter Pending Tasks for User's Department
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│  📦 Card Title Here          [Solved ✓]   [↩️ Reopen] [🗑️]      │
+└──────────────────────────────────────────────────────────────────┘
+```
 
-**For Step 1 (Parallel Research):**
+#### 3. Create Mutation for Solving/Reopening
 ```typescript
-// Map department to approval type
-const departmentApprovalType: Record<string, ApprovalType> = {
-  marketing: 'market_research',
-  quality: 'trademark_patent',
-  buyer: 'customs_research',
-};
-
-// Get pending approvals for user's department
-const myApprovalType = departmentApprovalType[userDepartment];
-const pendingStep1 = step1.filter(item => {
-  const approval = approvals.find(a => a.card_id === item.id && a.approval_type === myApprovalType);
-  return approval?.status === 'pending';
+const solveCardMutation = useMutation({
+  mutationFn: async () => {
+    const { error } = await supabase
+      .from('development_items')
+      .update({ 
+        is_solved: true,
+        // Clear any pending workflow state
+        workflow_status: null,
+        current_assignee_role: null,
+        pending_action_type: null,
+        pending_action_due_at: null,
+        pending_action_snoozed_until: null,
+      })
+      .eq('id', item.id);
+    
+    // Log activity
+    await supabase.from('development_card_activity').insert({
+      card_id: item.id,
+      user_id: user.id,
+      activity_type: 'status_change',
+      content: 'Card marked as solved',
+      metadata: { action: 'solved' },
+    });
+  },
+  onSuccess: () => {
+    toast({ title: 'Card solved!', description: 'Card moved to solved items' });
+    queryClient.invalidateQueries({ queryKey: ['development-items'] });
+    onOpenChange(false); // Close drawer since card disappears from list
+  },
 });
 ```
 
-**For Step 2 (Quality only):**
-```typescript
-const pendingStep2 = userDepartment === 'quality' ? step2 : [];
+#### 4. Visual Confirmation
+- Show a brief toast: "Card solved! Use 'Show Solved' filter to view it again."
+- Close the drawer automatically after solving (since the card disappears from the current view)
+
+### UI Mockup
+
+**Before solving (normal card):**
+```text
+[Title] [In Progress ▼]                    [✅ Solve] [🗑️ Delete]
 ```
 
-**For Step 3 (Buyer only):**
-```typescript
-const pendingStep3 = userDepartment === 'buyer' ? step3 : [];
+**Solved card (when viewing via "Show Solved"):**
+```text
+[Title] [Solved ✓]                         [↩️ Reopen] [🗑️ Delete]
 ```
-
-**For Trader:**
-All three arrays will be empty - section won't display.
-
-#### 3. UI Component Structure
-- Add new section below "Pending Cards" section
-- Section only renders if `totalPendingNewProducts > 0`
-- Group items by step with labeled subsections
-- Use mini-card style similar to `Step1ResearchSection`
-- Click opens `ResearchApprovalDrawer` for Step 1 items
-- Click opens `ItemDetailDrawer` for Step 2/3 items
-
-#### 4. Drawer Integration
-- For Step 1 items: Open `ResearchApprovalDrawer` with the correct approval type
-- For Step 2/3 items: Open `ItemDetailDrawer` as currently done
-
-### Data Flow
-1. Add `useNewProductsData()` hook call in Dashboard
-2. Compute pending items per step based on `userDepartment`
-3. Calculate total count for section header
-4. Render subsections only if they have items
-5. Handle click to open appropriate drawer
-
-### Conditional Visibility
-- **Buyer**: Step 1 (Pesquisa Aduaneira) + Step 3 (Ready for Order)
-- **Quality**: Step 1 (Certificações) + Step 2 (Cadastrar Código)
-- **Marketing**: Step 1 (Pesquisa de Mercado) only
-- **Trader**: Section hidden (no tasks)
-- **Admin (defaults to Buyer)**: Same as Buyer
 
 ### Files to Modify
 
-**1. `src/pages/Dashboard.tsx`**
-- Import `useNewProductsData`, `APPROVAL_CONFIG`, `ApprovalType`, `NewProductApproval`
-- Import `ResearchApprovalDrawer` component
-- Add state for research drawer (`researchDrawerState`)
-- Call `useNewProductsData()` hook
-- Compute filtered pending items for each step based on userDepartment
-- Add new section UI with subsections for Step 1/2/3
-- Add `ResearchApprovalDrawer` component at bottom
-- Add click handler to open research drawer for Step 1 items
+**1. `src/components/development/ItemDetailDrawer.tsx`**
+- Import `CheckCircle2` and `RotateCw` icons
+- Add `solveCardMutation` and `reopenCardMutation`
+- Add Solve/Reopen button in header alongside Delete button
+- When solving, clear all workflow state fields
 
-### Empty State
-When a team has no pending New Products tasks:
-- For Trader: Don't show section at all
-- For other teams with 0 items: Don't show section
+### Edge Cases
+- Cannot solve a deleted card (button hidden)
+- Cannot delete a solved card (or can we? - keep delete available)
+- Solving clears all pending tasks/workflows from the card
+- Reopening sets `is_solved = false` but does NOT restore previous workflow state
 
