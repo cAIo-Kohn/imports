@@ -7,7 +7,7 @@ import { useCardTasks, sendTaskNotification } from '@/hooks/useCardTasks';
 import { updateCardWorkflowStatus } from '@/hooks/useCardWorkflow';
 import type { CardTask } from '@/hooks/useCardTasks';
 import { format } from 'date-fns';
-import { Trash2, RotateCcw, DollarSign, Package, History } from 'lucide-react';
+import { Trash2, RotateCcw, DollarSign, Package, History, CheckCircle2, RotateCw } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -283,6 +283,73 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
     },
   });
 
+  // Solve card mutation
+  const solveCardMutation = useMutation({
+    mutationFn: async () => {
+      if (!item?.id || !user?.id) return;
+      
+      const { error } = await (supabase.from('development_items') as any)
+        .update({ 
+          is_solved: true,
+          // Clear any pending workflow state
+          workflow_status: null,
+          current_assignee_role: null,
+          pending_action_type: null,
+          pending_action_due_at: null,
+          pending_action_snoozed_until: null,
+          pending_action_snoozed_by: null,
+        })
+        .eq('id', item.id);
+      if (error) throw error;
+
+      await supabase.from('development_card_activity').insert({
+        card_id: item.id,
+        user_id: user.id,
+        activity_type: 'status_change',
+        content: 'Card marked as solved',
+        metadata: { action: 'solved' },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      toast({ 
+        title: 'Card solved!', 
+        description: 'Use "Show Solved" filter to view it again.' 
+      });
+      onOpenChange(false); // Close drawer since card disappears from list
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to solve card', variant: 'destructive' });
+    },
+  });
+
+  // Reopen card mutation
+  const reopenCardMutation = useMutation({
+    mutationFn: async () => {
+      if (!item?.id || !user?.id) return;
+      
+      const { error } = await (supabase.from('development_items') as any)
+        .update({ is_solved: false })
+        .eq('id', item.id);
+      if (error) throw error;
+
+      await supabase.from('development_card_activity').insert({
+        card_id: item.id,
+        user_id: user.id,
+        activity_type: 'status_change',
+        content: 'Card reopened',
+        metadata: { action: 'reopened' },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['development-items'] });
+      toast({ title: 'Card reopened' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to reopen card', variant: 'destructive' });
+    },
+  });
+
   // Handle task actions from banner
   const handleFillCommercial = (task: CardTask) => {
     setSelectedTask(task);
@@ -551,6 +618,34 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                 </Button>
+              )}
+              {/* Solve/Reopen button */}
+              {!isDeleted && canManage && (
+                currentStatus === 'solved' ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    onClick={() => reopenCardMutation.mutate()}
+                    disabled={reopenCardMutation.isPending}
+                    title="Reopen card"
+                  >
+                    <RotateCw className="h-3.5 w-3.5" />
+                    Reopen
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs border-primary/30 text-primary hover:bg-primary/10 hover:text-primary"
+                    onClick={() => solveCardMutation.mutate()}
+                    disabled={solveCardMutation.isPending}
+                    title="Mark card as solved"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Solve
+                  </Button>
+                )
               )}
               {!isDeleted && canDelete && (
                 <Button
