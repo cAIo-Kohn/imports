@@ -1,108 +1,82 @@
 
 
-## Selective Commercial Data Revision
+## Dashboard Redesign: Personalized Pending Actions View
 
-### Problem
-When requesting a revision for commercial data, the buyer must type feedback but cannot specify **which fields** need revision. This causes **all data to be erased** when it returns to the trader, forcing them to re-enter everything from scratch.
+### Overview
+Replace the current Dashboard (generic stats and next steps) with a personalized view showing:
+1. **Greeting**: "Hello [username]!" (e.g., "Hello Caio!")
+2. **Pending Cards for Your Team**: Cards requiring action from the logged user's department
 
-### Solution
-1. Add **checkboxes** next to each commercial data field in the review modal
-2. Require at least **one field to be marked** for revision (in addition to feedback text)
-3. **Only clear the flagged fields** when the task returns to the trader - preserve the rest
-4. Pre-populate the FillCommercialDataModal with preserved values
+### Key Concept
+The Dashboard will act as if the Department filter in "New Items & Samples" is always active for your team. Since you're an Admin who belongs to the Buyer team, you'll see all cards pending for the Buyer department.
 
-### Visual Layout Change
+### Technical Approach
 
+#### 1. User Profile Greeting
+- Fetch user's `full_name` from `profiles` table using `user.id`
+- Display "Hello {firstName}!" at the top
+
+#### 2. Determine User's Functional Department
+- Use `useUserRole()` hook to get user's roles
+- Priority logic for department:
+  - If `isBuyer` → department = 'buyer'
+  - If `isQuality` → department = 'quality'
+  - If `isMarketing` → department = 'marketing'
+  - If `isTrader` → department = 'trader'
+  - If only `isAdmin` → default to 'buyer' (admin belongs to buyer team per your requirement)
+
+#### 3. Fetch & Filter Cards (Reuse Development.tsx Logic)
+Cards are "pending for your team" if they match ANY of these criteria:
+1. **Action Notifications**: `current_assignee_role` matches your department
+2. **Unresolved Mentions**: Someone in your department has an unresolved @mention
+3. **Created by Department**: Card was created by someone in your department
+
+Additionally, only show cards where `derived_status !== 'solved'` and `deleted_at IS NULL`.
+
+#### 4. UI Layout
 ```text
-┌───────────────────────────────────────────────────────┐
-│ Review Commercial Data                                │
-├───────────────────────────────────────────────────────┤
-│                                                       │
-│  ☐ FOB Price (USD)          ☐ MOQ                    │
-│     $1.00                       1.000                 │
-│                                                       │
-│  ☐ Qty / Container          ☐ Container Type         │
-│     10.000                      40ft High Cube        │
-│                                                       │
-│  ☐ Qty per Master/Inner     ☐ Packing Type           │
-│     12                          Color Box  [View]     │
-│                                                       │
-├───────────────────────────────────────────────────────┤
-│ Feedback (required for revision request)              │
-│ ┌───────────────────────────────────────────────────┐ │
-│ │ Price too high. Target is $2.00...                │ │
-│ └───────────────────────────────────────────────────┘ │
-│                                                       │
-│ ⚠️ Select at least one field to request revision     │
-│                                                       │
-│ [Cancel]  [Request Revision]  [Approve]               │
-└───────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  Hello Caio!                                         │
+│                                                      │
+│  ┌─────────────────────────────────────────────────┐ │
+│  │  🛒 Your Team's Pending Cards (Buyer)     [12] │ │
+│  │                                                 │ │
+│  │  ┌─────────┐ ┌─────────┐ ┌─────────┐          │ │
+│  │  │ Card 1  │ │ Card 2  │ │ Card 3  │  ...     │ │
+│  │  └─────────┘ └─────────┘ └─────────┘          │ │
+│  │                                                 │ │
+│  │  (Empty state: "No pending actions for your    │ │
+│  │   team. Check New Items & Samples for all      │ │
+│  │   ongoing cards.")                              │ │
+│  └─────────────────────────────────────────────────┘ │
+│                                                      │
+│  💡 To see all ongoing cards, go to                 │
+│     New Items & Samples tab                         │
+└──────────────────────────────────────────────────────┘
 ```
-
-### Technical Changes
-
-#### 1. `CommercialReviewModal.tsx`
-- Add state for field selection checkboxes:
-  ```tsx
-  const [fieldsToRevise, setFieldsToRevise] = useState<Set<string>>(new Set());
-  ```
-- Add checkboxes next to each field label (FOB Price, MOQ, Qty/Container, Container Type, Packing Type, Qty per Master/Inner)
-- Update validation: `handleReject` now requires both `feedback.trim()` AND `fieldsToRevise.size > 0`
-- Include `fields_to_revise` array in the new task metadata when creating the revision request
-- Include which fields were flagged in the rejection history
-- Update the timeline message to list which fields need revision
-- Reset checkboxes on modal close
-
-#### 2. `FillCommercialDataModal.tsx`
-- Read preserved values from task metadata when opening the modal
-- Pre-populate form state with values that were NOT flagged for revision
-- Initialize state using `useEffect` or on-mount logic based on task metadata:
-  ```tsx
-  const taskMetadata = task.metadata || {};
-  const preservedData = taskMetadata.preserved_data as Record<string, any>;
-  const fieldsToRevise = (taskMetadata.fields_to_revise || []) as string[];
-  
-  // On mount: pre-fill preserved values
-  useEffect(() => {
-    if (preservedData) {
-      if (!fieldsToRevise.includes('fob_price_usd') && preservedData.fob_price_usd) {
-        setFobPrice(formatBrazilianNumber(preservedData.fob_price_usd, 2));
-      }
-      // ... same for other fields
-    }
-  }, [open]);
-  ```
-
-#### 3. Metadata Structure Update
-When creating the revision request task, include:
-```tsx
-metadata: {
-  needs_revision: true,
-  revision_number: revisionNumber + 1,
-  previous_submissions: updatedSubmissions,
-  rejection_reason: feedback,
-  rejected_by: user.id,
-  rejected_at: new Date().toISOString(),
-  fields_to_revise: Array.from(fieldsToRevise), // NEW: which fields need revision
-  preserved_data: { // NEW: data to preserve
-    fob_price_usd: !fieldsToRevise.has('fob_price_usd') ? fobPrice : null,
-    moq: !fieldsToRevise.has('moq') ? moq : null,
-    qty_per_container: !fieldsToRevise.has('qty_per_container') ? qtyPerContainer : null,
-    container_type: !fieldsToRevise.has('container_type') ? containerType : null,
-    packing_type: !fieldsToRevise.has('packing_type') ? packingType : null,
-    packing_type_file: !fieldsToRevise.has('packing_type') ? packingTypeFile : null,
-    qty_per_master_inner: !fieldsToRevise.has('qty_per_master_inner') ? qtyPerMasterInner : null,
-  },
-}
-```
-
-### Validation Rules
-- **Request Revision** button is disabled unless:
-  1. Feedback text is not empty
-  2. At least one field checkbox is checked
-- Visual hint shown when no fields are selected
 
 ### Files to Modify
-1. `src/components/development/CommercialReviewModal.tsx` - Add checkboxes, validation, and metadata
-2. `src/components/development/FillCommercialDataModal.tsx` - Pre-populate preserved values on mount
+
+**1. `src/pages/Dashboard.tsx`** - Complete rewrite:
+- Remove all current content (stats, next steps, purchase orders card)
+- Add profile query to fetch user's full_name
+- Add development items query (same as Development.tsx)
+- Add user roles query for department filtering
+- Implement department filtering logic
+- Render cards using `DevelopmentCard` component
+- Add `ItemDetailDrawer` for card click interaction
+- Add empty state with link to New Items & Samples
+
+### Components to Reuse
+- `DevelopmentCard` - for rendering individual cards
+- `ItemDetailDrawer` - for card detail view
+- `useUserRole` hook - for department detection
+- `useAuth` hook - for user ID
+
+### Data Flow
+1. Fetch user profile → Extract first name for greeting
+2. Fetch development items with enrichment (samples, mentions, etc.)
+3. Fetch all user roles → Build userRolesMap for mention filtering
+4. Apply department filter (always on for user's team)
+5. Render filtered cards in a grid layout
 
