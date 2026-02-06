@@ -1,65 +1,108 @@
 
 
-## Add New Commercial Data Fields: Packing Type & Quantity per Master/Inner
+## Selective Commercial Data Revision
 
-### Overview
-Add two new fields to the Commercial Invoice data section:
-1. **Packing Type**: Text input + mandatory file upload (image/PDF) - both must be provided to fulfill
-2. **Quantity per Master/Inner**: Text input field
+### Problem
+When requesting a revision for commercial data, the buyer must type feedback but cannot specify **which fields** need revision. This causes **all data to be erased** when it returns to the trader, forcing them to re-enter everything from scratch.
 
-### Database Changes
+### Solution
+1. Add **checkboxes** next to each commercial data field in the review modal
+2. Require at least **one field to be marked** for revision (in addition to feedback text)
+3. **Only clear the flagged fields** when the task returns to the trader - preserve the rest
+4. Pre-populate the FillCommercialDataModal with preserved values
 
-**Migration: Add columns to `development_items` table**
-```sql
-ALTER TABLE development_items
-ADD COLUMN packing_type TEXT,
-ADD COLUMN packing_type_file_url TEXT,
-ADD COLUMN qty_per_master_inner TEXT;
+### Visual Layout Change
+
+```text
+┌───────────────────────────────────────────────────────┐
+│ Review Commercial Data                                │
+├───────────────────────────────────────────────────────┤
+│                                                       │
+│  ☐ FOB Price (USD)          ☐ MOQ                    │
+│     $1.00                       1.000                 │
+│                                                       │
+│  ☐ Qty / Container          ☐ Container Type         │
+│     10.000                      40ft High Cube        │
+│                                                       │
+│  ☐ Qty per Master/Inner     ☐ Packing Type           │
+│     12                          Color Box  [View]     │
+│                                                       │
+├───────────────────────────────────────────────────────┤
+│ Feedback (required for revision request)              │
+│ ┌───────────────────────────────────────────────────┐ │
+│ │ Price too high. Target is $2.00...                │ │
+│ └───────────────────────────────────────────────────┘ │
+│                                                       │
+│ ⚠️ Select at least one field to request revision     │
+│                                                       │
+│ [Cancel]  [Request Revision]  [Approve]               │
+└───────────────────────────────────────────────────────┘
 ```
 
-### Frontend Changes
+### Technical Changes
 
-#### 1. `FillCommercialDataModal.tsx`
-- Add state for `packingType`, `packingTypeFile`, and `qtyPerMasterInner`
-- Add dedicated file upload for packing type (separate from general attachments)
-- Update `hasManualData` validation: now requires 6 fields (4 existing + packing type with file + qty per master/inner)
-- Include new fields in `commercialData` object sent to database and task metadata
+#### 1. `CommercialReviewModal.tsx`
+- Add state for field selection checkboxes:
+  ```tsx
+  const [fieldsToRevise, setFieldsToRevise] = useState<Set<string>>(new Set());
+  ```
+- Add checkboxes next to each field label (FOB Price, MOQ, Qty/Container, Container Type, Packing Type, Qty per Master/Inner)
+- Update validation: `handleReject` now requires both `feedback.trim()` AND `fieldsToRevise.size > 0`
+- Include `fields_to_revise` array in the new task metadata when creating the revision request
+- Include which fields were flagged in the rejection history
+- Update the timeline message to list which fields need revision
+- Reset checkboxes on modal close
 
-#### 2. `CommercialDataSection.tsx`
-- Add props for `packingType`, `packingTypeFileUrl`, and `qtyPerMasterInner`
-- Expand grid to display new fields
-- Show clickable link/thumbnail for packing type file
-- Update `isComplete` logic to include new fields
+#### 2. `FillCommercialDataModal.tsx`
+- Read preserved values from task metadata when opening the modal
+- Pre-populate form state with values that were NOT flagged for revision
+- Initialize state using `useEffect` or on-mount logic based on task metadata:
+  ```tsx
+  const taskMetadata = task.metadata || {};
+  const preservedData = taskMetadata.preserved_data as Record<string, any>;
+  const fieldsToRevise = (taskMetadata.fields_to_revise || []) as string[];
+  
+  // On mount: pre-fill preserved values
+  useEffect(() => {
+    if (preservedData) {
+      if (!fieldsToRevise.includes('fob_price_usd') && preservedData.fob_price_usd) {
+        setFobPrice(formatBrazilianNumber(preservedData.fob_price_usd, 2));
+      }
+      // ... same for other fields
+    }
+  }, [open]);
+  ```
 
-#### 3. `CommercialReviewModal.tsx`
-- Display new fields in the submitted data summary
-- Show packing type file as downloadable link
+#### 3. Metadata Structure Update
+When creating the revision request task, include:
+```tsx
+metadata: {
+  needs_revision: true,
+  revision_number: revisionNumber + 1,
+  previous_submissions: updatedSubmissions,
+  rejection_reason: feedback,
+  rejected_by: user.id,
+  rejected_at: new Date().toISOString(),
+  fields_to_revise: Array.from(fieldsToRevise), // NEW: which fields need revision
+  preserved_data: { // NEW: data to preserve
+    fob_price_usd: !fieldsToRevise.has('fob_price_usd') ? fobPrice : null,
+    moq: !fieldsToRevise.has('moq') ? moq : null,
+    qty_per_container: !fieldsToRevise.has('qty_per_container') ? qtyPerContainer : null,
+    container_type: !fieldsToRevise.has('container_type') ? containerType : null,
+    packing_type: !fieldsToRevise.has('packing_type') ? packingType : null,
+    packing_type_file: !fieldsToRevise.has('packing_type') ? packingTypeFile : null,
+    qty_per_master_inner: !fieldsToRevise.has('qty_per_master_inner') ? qtyPerMasterInner : null,
+  },
+}
+```
 
-#### 4. `CommercialHistoryTimeline.tsx`
-- Update `finalData` interface to include new fields
-- Display new fields in negotiation history cards
-
-#### 5. `ItemDetailDrawer.tsx`
-- Pass new fields to `CommercialDataSection` component
-
-#### 6. `ActionsPanel.tsx`
-- Add inputs for packing type (text + file upload) and qty per master/inner
-- Update `canSubmitCommercial` validation
+### Validation Rules
+- **Request Revision** button is disabled unless:
+  1. Feedback text is not empty
+  2. At least one field checkbox is checked
+- Visual hint shown when no fields are selected
 
 ### Files to Modify
-1. **Database migration** (new file)
-2. `src/components/development/FillCommercialDataModal.tsx`
-3. `src/components/development/CommercialDataSection.tsx`
-4. `src/components/development/CommercialReviewModal.tsx`
-5. `src/components/development/CommercialHistoryTimeline.tsx`
-6. `src/components/development/ItemDetailDrawer.tsx`
-7. `src/components/development/ActionsPanel.tsx`
-
-### Validation Logic
-For manual submission, ALL 6 fields are required:
-- FOB Price, MOQ, Qty/Container, Container Type (existing)
-- Packing Type (text) + Packing Type File (new)
-- Qty per Master/Inner (new)
-
-Alternative: Upload document only (existing behavior preserved)
+1. `src/components/development/CommercialReviewModal.tsx` - Add checkboxes, validation, and metadata
+2. `src/components/development/FillCommercialDataModal.tsx` - Pre-populate preserved values on mount
 
