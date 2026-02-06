@@ -1,20 +1,28 @@
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useMemo } from 'react';
 import { Sparkles, ClipboardList, ShoppingCart, ArrowDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useNewProductsData } from '@/hooks/useNewProductFlow';
 import { EligibleProductCard } from '@/components/new-products/EligibleProductCard';
 import { Step1ResearchSection } from '@/components/new-products/Step1ResearchSection';
 import { WorkflowStepSection } from '@/components/new-products/WorkflowStepSection';
+import { ItemDetailDrawer } from '@/components/development/ItemDetailDrawer';
+import type { DevelopmentItem } from '@/pages/Development';
 
 export default function NewProducts() {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   
   const { data, isLoading, error } = useNewProductsData();
 
   const handleOpenCard = (cardId: string) => {
-    navigate(`/development?card=${cardId}`);
+    setSelectedItemId(cardId);
   };
+
+  // Find the selected item from all available items
+  const selectedItem = useMemo(() => {
+    if (!selectedItemId || !data) return null;
+    const allItems = [...(data.eligible || []), ...(data.step1 || []), ...(data.step2 || []), ...(data.step3 || [])];
+    return allItems.find((item: DevelopmentItem) => item.id === selectedItemId) || null;
+  }, [selectedItemId, data]);
 
   if (isLoading) {
     return (
@@ -133,6 +141,15 @@ export default function NewProducts() {
         onOpenCard={handleOpenCard}
         colorScheme="blue"
         icon={<ShoppingCart className="h-5 w-5 text-blue-600" />}
+      />
+
+      {/* Item Detail Drawer */}
+      <ItemDetailDrawer
+        item={selectedItem as DevelopmentItem | null}
+        open={!!selectedItemId}
+        onOpenChange={(open) => {
+          if (!open) setSelectedItemId(null);
+        }}
       />
     </div>
   );
