@@ -1,4 +1,4 @@
-import { Package, Factory, Building2, FolderTree, LayoutDashboard, LogOut, Settings, TrendingUp, ShoppingCart, UserCheck, Users, Lightbulb } from 'lucide-react';
+import { Package, Factory, Building2, FolderTree, LayoutDashboard, LogOut, Settings, TrendingUp, ShoppingCart, UserCheck, Users, Lightbulb, Sparkles } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,6 +21,7 @@ import { NotificationCenter } from '@/components/notifications/NotificationCente
 const menuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
   { title: 'New Items & Samples', url: '/development', icon: Lightbulb },
+  { title: 'New Products', url: '/new-products', icon: Sparkles },
   { title: 'Products', url: '/products', icon: Package },
   { title: 'Suppliers', url: '/suppliers', icon: Factory },
   { title: 'Units', url: '/units', icon: Building2 },
