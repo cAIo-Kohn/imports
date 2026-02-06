@@ -1,101 +1,116 @@
 
 
-## Add "Solve Card" Action Button
+## Fix: Display Packing File in Negotiation History
 
-### Overview
-Add a dedicated "Solve" action button to cards so users can easily mark them as solved when they've served their purpose. The card will then disappear from "ongoing" views but remain accessible via the "Show Solved" filter.
+### Problem
+The packing type file (`packing_type_file`) uploaded during commercial data submission is:
+1. **Stored correctly** in the cycle data (`cycle.packingTypeFile`)
+2. **Never rendered** in the `CommercialCycleCard` component
 
-### Current State
-- `is_solved` column already exists in `development_items`
-- `derived_status` is already computed from `is_solved`
-- "Show Solved" toggle already filters cards correctly
-- Status can be changed to "Solved" via dropdown, but it's not prominent
+The screenshot shows `📦 Color Box` text but no clickable link to access the uploaded packing file.
 
-### Proposed Changes
+### Root Cause
+In `CommercialHistoryTimeline.tsx`, line 261-262 renders:
+```tsx
+{cycle.finalData.packing_type && (
+  <span className="text-muted-foreground">📦 {cycle.finalData.packing_type}</span>
+)}
+```
+This only shows the packing type **text** (e.g., "Color Box"), but does NOT include a link to the `packingTypeFile`.
 
-#### 1. Add "Solve Card" Button in ItemDetailDrawer Header
-Add a visible "Solve" button in the header area, next to the delete button:
+Additionally, the `packingTypeFile` is stored separately from the `attachments` array, so it's never shown in the attachments section either.
 
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│  📦 Card Title Here                [Status ▼]  [✓ Solve] [🗑️]   │
-└──────────────────────────────────────────────────────────────────┘
+### Solution
+Update the packing type display to include a clickable link to the packing file, and also render the packing file in the attachments section if it exists.
+
+### Implementation
+
+**File: `src/components/development/CommercialHistoryTimeline.tsx`**
+
+#### 1. Import Image icon for image files
+Add `Image as ImageIcon` to the lucide-react imports (to distinguish image vs document files).
+
+#### 2. Update packing type display (lines 261-263)
+Make the packing type text a clickable link when `packingTypeFile` exists:
+
+```tsx
+{cycle.finalData.packing_type && (
+  cycle.packingTypeFile ? (
+    <a
+      href={cycle.packingTypeFile.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-muted-foreground hover:text-primary flex items-center gap-1"
+    >
+      📦 {cycle.finalData.packing_type}
+      {cycle.packingTypeFile.type?.startsWith('image/') ? (
+        <ImageIcon className="h-3 w-3" />
+      ) : (
+        <FileText className="h-3 w-3" />
+      )}
+    </a>
+  ) : (
+    <span className="text-muted-foreground">📦 {cycle.finalData.packing_type}</span>
+  )
+)}
 ```
 
-- **Button style**: Green accent with checkmark icon
-- **Visibility**: Only show when card is NOT already solved and NOT deleted
-- **Permission**: Same as `canManage` (Buyer, Trader, Admin)
+#### 3. Include packing file in attachments section (lines 281-297)
+Also display the packing file as a separate attachment chip so users have multiple ways to access it:
 
-#### 2. Add "Reopen" Button for Solved Cards
-When viewing a solved card, show a "Reopen" button instead of "Solve":
-
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│  📦 Card Title Here          [Solved ✓]   [↩️ Reopen] [🗑️]      │
-└──────────────────────────────────────────────────────────────────┘
+```tsx
+{/* All Files (attachments + packing file) */}
+{(cycle.attachments?.length > 0 || cycle.packingTypeFile) && (
+  <div className="flex flex-wrap gap-1.5 mb-2">
+    {/* Packing file - shown first with special label */}
+    {cycle.packingTypeFile && (
+      <a
+        href={cycle.packingTypeFile.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-1 bg-primary/10 rounded px-1.5 py-0.5 hover:bg-primary/20 transition-colors text-[10px]"
+      >
+        {cycle.packingTypeFile.type?.startsWith('image/') ? (
+          <ImageIcon className="h-3 w-3 text-primary" />
+        ) : (
+          <FileText className="h-3 w-3 text-primary" />
+        )}
+        <span className="truncate max-w-[100px]">Packing: {cycle.packingTypeFile.name}</span>
+      </a>
+    )}
+    {/* Other attachments */}
+    {cycle.attachments?.map((file) => (
+      <a
+        key={file.id}
+        href={file.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-1 bg-muted rounded px-1.5 py-0.5 hover:bg-muted/80 transition-colors text-[10px]"
+      >
+        <FileText className="h-3 w-3 text-muted-foreground" />
+        <span className="truncate max-w-[100px]">{file.name}</span>
+      </a>
+    ))}
+  </div>
+)}
 ```
 
-#### 3. Create Mutation for Solving/Reopening
-```typescript
-const solveCardMutation = useMutation({
-  mutationFn: async () => {
-    const { error } = await supabase
-      .from('development_items')
-      .update({ 
-        is_solved: true,
-        // Clear any pending workflow state
-        workflow_status: null,
-        current_assignee_role: null,
-        pending_action_type: null,
-        pending_action_due_at: null,
-        pending_action_snoozed_until: null,
-      })
-      .eq('id', item.id);
-    
-    // Log activity
-    await supabase.from('development_card_activity').insert({
-      card_id: item.id,
-      user_id: user.id,
-      activity_type: 'status_change',
-      content: 'Card marked as solved',
-      metadata: { action: 'solved' },
-    });
-  },
-  onSuccess: () => {
-    toast({ title: 'Card solved!', description: 'Card moved to solved items' });
-    queryClient.invalidateQueries({ queryKey: ['development-items'] });
-    onOpenChange(false); // Close drawer since card disappears from list
-  },
-});
+### Visual Result
+
+**Before:**
+```
+$1.00 FOB  MOQ 1.000  20.000/40HQ  📦 Color Box  M/I: 12
 ```
 
-#### 4. Visual Confirmation
-- Show a brief toast: "Card solved! Use 'Show Solved' filter to view it again."
-- Close the drawer automatically after solving (since the card disappears from the current view)
+**After:**
+```
+$1.00 FOB  MOQ 1.000  20.000/40HQ  📦 Color Box [📎]  M/I: 12
 
-### UI Mockup
-
-**Before solving (normal card):**
-```text
-[Title] [In Progress ▼]                    [✅ Solve] [🗑️ Delete]
+[🖼️ Packing: photo.jpg]  [📄 other-doc.pdf]
 ```
 
-**Solved card (when viewing via "Show Solved"):**
-```text
-[Title] [Solved ✓]                         [↩️ Reopen] [🗑️ Delete]
-```
+The packing type now has a clickable icon, and the packing file appears as a highlighted attachment chip at the start of the attachments section.
 
 ### Files to Modify
-
-**1. `src/components/development/ItemDetailDrawer.tsx`**
-- Import `CheckCircle2` and `RotateCw` icons
-- Add `solveCardMutation` and `reopenCardMutation`
-- Add Solve/Reopen button in header alongside Delete button
-- When solving, clear all workflow state fields
-
-### Edge Cases
-- Cannot solve a deleted card (button hidden)
-- Cannot delete a solved card (or can we? - keep delete available)
-- Solving clears all pending tasks/workflows from the card
-- Reopening sets `is_solved = false` but does NOT restore previous workflow state
+- `src/components/development/CommercialHistoryTimeline.tsx`
 
