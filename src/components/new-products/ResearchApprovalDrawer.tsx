@@ -118,7 +118,7 @@ export function ResearchApprovalDrawer({
   const canSubmitDecision = isTrademarkPatent 
     ? checklistComplete 
     : isCustomsResearch 
-      ? (customsChecklistComplete && hasResearchFiles) 
+      ? customsChecklistComplete  // Customs only needs the 3 checklist fields, no file required
       : hasResearchFiles;
   const isRejected = approval?.status === 'rejected';
 
