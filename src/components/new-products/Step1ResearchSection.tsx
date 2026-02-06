@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Package, Clock, CheckCircle2, XCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { APPROVAL_CONFIG, type NewProductApproval, type ApprovalType } from '@/hooks/useNewProductFlow';
+import { ResearchApprovalDrawer } from './ResearchApprovalDrawer';
 
 interface Step1Item {
   id: string;
@@ -22,7 +24,7 @@ const APPROVAL_TYPES: ApprovalType[] = ['market_research', 'trademark_patent', '
 function ApprovalStatusBadge({ status }: { status: string }) {
   if (status === 'approved') {
     return (
-      <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px]">
+      <Badge variant="secondary" className="text-[10px] border-green-300 bg-green-100/50 dark:bg-green-900/30">
         <CheckCircle2 className="h-3 w-3 mr-1" />
         Approved
       </Badge>
@@ -30,7 +32,7 @@ function ApprovalStatusBadge({ status }: { status: string }) {
   }
   if (status === 'rejected') {
     return (
-      <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px]">
+      <Badge variant="destructive" className="text-[10px]">
         <XCircle className="h-3 w-3 mr-1" />
         Rejected
       </Badge>
@@ -47,10 +49,12 @@ function ApprovalStatusBadge({ status }: { status: string }) {
 function ProductMiniCard({ 
   item, 
   approval,
+  approvalType,
   onClick 
 }: { 
   item: Step1Item; 
   approval: NewProductApproval | undefined;
+  approvalType: ApprovalType;
   onClick: () => void;
 }) {
   return (
@@ -82,6 +86,15 @@ function ProductMiniCard({
 }
 
 export function Step1ResearchSection({ items, approvals, onOpenCard }: Step1ResearchSectionProps) {
+  const [drawerState, setDrawerState] = useState<{
+    open: boolean;
+    cardId: string;
+    cardTitle: string;
+    cardImageUrl: string | null;
+    approvalType: ApprovalType;
+    approval: NewProductApproval | undefined;
+  } | null>(null);
+
   if (items.length === 0) return null;
 
   // Group approvals by type
@@ -89,62 +102,95 @@ export function Step1ResearchSection({ items, approvals, onOpenCard }: Step1Rese
     return approvals.filter(a => a.approval_type === type);
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <h3 className="font-semibold text-sm">Step 1: Research & Compliance</h3>
-        <Badge variant="outline" className="text-xs">
-          {items.length} product{items.length !== 1 ? 's' : ''}
-        </Badge>
-      </div>
-      
-      <p className="text-xs text-muted-foreground">
-        Three departments review in parallel. All must approve before proceeding.
-      </p>
+  const handleOpenResearchDrawer = (item: Step1Item, type: ApprovalType, approval: NewProductApproval | undefined) => {
+    setDrawerState({
+      open: true,
+      cardId: item.id,
+      cardTitle: item.title,
+      cardImageUrl: item.image_url,
+      approvalType: type,
+      approval,
+    });
+  };
 
-      {/* 3-column layout for parallel approvals */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {APPROVAL_TYPES.map(type => {
-          const config = APPROVAL_CONFIG[type];
-          const typeApprovals = getApprovalsForType(type);
-          
-          return (
-            <div
-              key={type}
-              className={cn(
-                "rounded-lg border p-3",
-                type === 'market_research' && "border-purple-200 bg-purple-50/30 dark:bg-purple-950/20",
-                type === 'trademark_patent' && "border-green-200 bg-green-50/30 dark:bg-green-950/20",
-                type === 'customs_research' && "border-blue-200 bg-blue-50/30 dark:bg-blue-950/20"
-              )}
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-lg">{config.icon}</span>
-                <div>
-                  <p className="text-xs font-semibold">{config.labelPt}</p>
-                  <p className="text-[10px] text-muted-foreground capitalize">
-                    {config.role}
-                  </p>
+  return (
+    <>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-sm">Step 1: Research & Compliance</h3>
+          <Badge variant="outline" className="text-xs">
+            {items.length} product{items.length !== 1 ? 's' : ''}
+          </Badge>
+        </div>
+        
+        <p className="text-xs text-muted-foreground">
+          Three departments review in parallel. All must approve before proceeding.
+        </p>
+
+        {/* 3-column layout for parallel approvals */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {APPROVAL_TYPES.map(type => {
+            const config = APPROVAL_CONFIG[type];
+            const typeApprovals = getApprovalsForType(type);
+            
+            return (
+              <div
+                key={type}
+                className={cn(
+                  "rounded-lg border p-3",
+                  type === 'market_research' && "border-purple-200 bg-purple-50/30 dark:bg-purple-950/20",
+                  type === 'trademark_patent' && "border-green-200 bg-green-50/30 dark:bg-green-950/20",
+                  type === 'customs_research' && "border-blue-200 bg-blue-50/30 dark:bg-blue-950/20"
+                )}
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">{config.icon}</span>
+                  <div>
+                    <p className="text-xs font-semibold">{config.labelPt}</p>
+                    <p className="text-[10px] text-muted-foreground capitalize">
+                      {config.role}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {items.map(item => {
+                    const approval = typeApprovals.find(a => a.card_id === item.id);
+                    return (
+                      <ProductMiniCard
+                        key={item.id}
+                        item={item}
+                        approval={approval}
+                        approvalType={type}
+                        onClick={() => handleOpenResearchDrawer(item, type, approval)}
+                      />
+                    );
+                  })}
                 </div>
               </div>
-
-              <div className="space-y-2">
-                {items.map(item => {
-                  const approval = typeApprovals.find(a => a.card_id === item.id);
-                  return (
-                    <ProductMiniCard
-                      key={item.id}
-                      item={item}
-                      approval={approval}
-                      onClick={() => onOpenCard(item.id)}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-    </div>
+
+      {/* Research Approval Drawer */}
+      {drawerState && (
+        <ResearchApprovalDrawer
+          open={drawerState.open}
+          onOpenChange={(open) => {
+            if (!open) setDrawerState(null);
+          }}
+          cardId={drawerState.cardId}
+          cardTitle={drawerState.cardTitle}
+          cardImageUrl={drawerState.cardImageUrl}
+          approvalType={drawerState.approvalType}
+          approval={drawerState.approval}
+          onOpenOriginalCard={() => {
+            setDrawerState(null);
+            onOpenCard(drawerState.cardId);
+          }}
+        />
+      )}
+    </>
   );
 }
