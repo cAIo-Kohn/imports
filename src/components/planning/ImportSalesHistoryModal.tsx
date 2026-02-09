@@ -81,6 +81,15 @@ function parseMonthHeader(header: string): Date | null {
     }
   }
 
+  // Fallback: try parsing as Excel date serial number
+  const num = parseFloat(normalized);
+  if (!isNaN(num) && num > 1000) {
+    const excelDate = XLSX.SSF.parse_date_code(num);
+    if (excelDate) {
+      return new Date(excelDate.y, excelDate.m - 1, 1);
+    }
+  }
+
   return null;
 }
 
@@ -173,7 +182,13 @@ export function ImportSalesHistoryModal({ open, onOpenChange, onSuccess }: Impor
         throw new Error('Arquivo vazio ou sem dados');
       }
 
-      const headerRow = data[0].map(String);
+      // Extract headers using format_cell to preserve original text (e.g. "Jan-26" instead of serial number)
+      const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
+      const headerRow: string[] = [];
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cell = sheet[XLSX.utils.encode_cell({ r: range.s.r, c })];
+        headerRow.push(cell ? XLSX.utils.format_cell(cell) : '');
+      }
       setHeaders(headerRow);
       setRawData(data.slice(1));
       setFile(f);
