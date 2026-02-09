@@ -442,6 +442,7 @@ export type Database = {
           product_code: string | null
           qty_per_container: number | null
           qty_per_master_inner: string | null
+          registered_product_id: string | null
           status: Database["public"]["Enums"]["development_item_status"]
           supplier_id: string | null
           title: string
@@ -491,6 +492,7 @@ export type Database = {
           product_code?: string | null
           qty_per_container?: number | null
           qty_per_master_inner?: string | null
+          registered_product_id?: string | null
           status?: Database["public"]["Enums"]["development_item_status"]
           supplier_id?: string | null
           title: string
@@ -540,6 +542,7 @@ export type Database = {
           product_code?: string | null
           qty_per_container?: number | null
           qty_per_master_inner?: string | null
+          registered_product_id?: string | null
           status?: Database["public"]["Enums"]["development_item_status"]
           supplier_id?: string | null
           title?: string

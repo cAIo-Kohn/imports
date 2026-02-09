@@ -16,7 +16,7 @@ interface WorkflowStepSectionProps {
   responsibleRole: string;
   items: WorkflowItem[];
   onOpenCard: (cardId: string) => void;
-  colorScheme: 'green' | 'blue' | 'amber';
+  colorScheme: 'green' | 'blue' | 'amber' | 'emerald';
   icon: React.ReactNode;
 }
 
@@ -24,6 +24,7 @@ const COLOR_SCHEMES = {
   green: 'border-green-200 bg-green-50/30 dark:bg-green-950/20',
   blue: 'border-blue-200 bg-blue-50/30 dark:bg-blue-950/20',
   amber: 'border-amber-200 bg-amber-50/30 dark:bg-amber-950/20',
+  emerald: 'border-emerald-200 bg-emerald-50/30 dark:bg-emerald-950/20',
 };
 
 export function WorkflowStepSection({

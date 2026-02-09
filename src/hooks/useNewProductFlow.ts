@@ -249,11 +249,52 @@ export function useNewProductsData() {
       // Fetch products in Step 3
       const { data: step3Items, error: step3Error } = await supabase
         .from('development_items')
-        .select('id, title, card_type, image_url, supplier_id, product_code, new_product_flow_status')
+        .select('id, title, card_type, image_url, supplier_id, product_code, new_product_flow_status, registered_product_id')
         .eq('new_product_flow_status', 'step3_ready_for_order')
         .is('deleted_at', null);
 
       if (step3Error) throw step3Error;
+
+      // Auto-detect first order for Step 3 cards with registered_product_id
+      const step3WithProduct = (step3Items || []).filter(item => item.registered_product_id);
+      const registeredProductIds = step3WithProduct.map(item => item.registered_product_id!);
+      let orderedProductIds = new Set<string>();
+      if (registeredProductIds.length > 0) {
+        const { data: orderItems } = await supabase
+          .from('purchase_order_items')
+          .select('product_id')
+          .in('product_id', registeredProductIds);
+        if (orderItems) {
+          orderedProductIds = new Set(orderItems.map(oi => oi.product_id));
+        }
+      }
+
+      // Separate step3 into still-waiting and auto-completed
+      const autoCompletedCardIds: string[] = [];
+      const remainingStep3 = (step3Items || []).filter(item => {
+        if (item.registered_product_id && orderedProductIds.has(item.registered_product_id)) {
+          autoCompletedCardIds.push(item.id);
+          return false;
+        }
+        return true;
+      });
+
+      // Auto-advance cards that have been ordered
+      if (autoCompletedCardIds.length > 0) {
+        await supabase
+          .from('development_items')
+          .update({ new_product_flow_status: 'completed' })
+          .in('id', autoCompletedCardIds);
+      }
+
+      // Fetch completed items
+      const { data: completedItems, error: completedError } = await supabase
+        .from('development_items')
+        .select('id, title, card_type, image_url, supplier_id, product_code, new_product_flow_status')
+        .eq('new_product_flow_status', 'completed')
+        .is('deleted_at', null);
+
+      if (completedError) throw completedError;
 
       // Fetch all approvals for Step 1 items
       const step1Ids = step1Items?.map(item => item.id) || [];
@@ -285,7 +326,8 @@ export function useNewProductsData() {
         eligible: Array.from(eligibleMap.values()),
         step1: step1Items || [],
         step2: enrichedStep2,
-        step3: step3Items || [],
+        step3: remainingStep3,
+        completed: completedItems || [],
         approvals,
       };
     },

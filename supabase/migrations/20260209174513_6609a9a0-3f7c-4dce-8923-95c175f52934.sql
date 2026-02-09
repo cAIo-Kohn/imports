@@ -1,0 +1,1 @@
+ALTER TABLE public.development_items ADD COLUMN registered_product_id uuid DEFAULT NULL;
