@@ -453,12 +453,15 @@ export default function Dashboard() {
             <span>{roleLabel.emoji}</span>
             Your Team's Pending Cards
             <span className="text-sm font-normal text-muted-foreground">({roleLabel.name})</span>
+            {sortedPendingCards.length > 0 && (
+              <span className="text-sm font-medium bg-primary/10 text-primary px-3 py-1 rounded-full">
+                {sortedPendingCards.length}
+              </span>
+            )}
           </h2>
-          {sortedPendingCards.length > 0 && (
-            <span className="text-sm font-medium bg-primary/10 text-primary px-3 py-1 rounded-full">
-              {sortedPendingCards.length} card{sortedPendingCards.length !== 1 ? 's' : ''}
-            </span>
-          )}
+          <Link to="/development" className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+            See all <ArrowRight className="h-3 w-3" />
+          </Link>
         </div>
 
         {isLoading ? (
@@ -503,10 +506,13 @@ export default function Dashboard() {
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <Package className="h-5 w-5 text-primary" />
               New Products Workflow
+              <span className="text-sm font-medium bg-primary/10 text-primary px-3 py-1 rounded-full">
+                {totalPendingNewProducts}
+              </span>
             </h2>
-            <span className="text-sm font-medium bg-primary/10 text-primary px-3 py-1 rounded-full">
-              {totalPendingNewProducts} task{totalPendingNewProducts !== 1 ? 's' : ''}
-            </span>
+            <Link to="/new-products" className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+              See all <ArrowRight className="h-3 w-3" />
+            </Link>
           </div>
 
           <div className="space-y-4">
@@ -616,25 +622,6 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Link to New Products page */}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-4 pt-4 border-t">
-            <span>💡</span>
-            <span>View all products in workflow at</span>
-            <Link to="/new-products" className="text-primary hover:underline font-medium">
-              New Products
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {/* Link to full view */}
-      {sortedPendingCards.length > 0 && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>💡</span>
-          <span>To see all ongoing cards, go to</span>
-          <Link to="/development" className="text-primary hover:underline font-medium">
-            New Items & Samples
-          </Link>
         </div>
       )}
 
