@@ -204,7 +204,7 @@ export function ImportSalesHistoryModal({ open, onOpenChange, onSuccess }: Impor
       return;
     }
 
-    const codeColIndex = findColumnIndex(headers, ['codigo item', 'codigo produto', 'codigo', 'code', 'sku']);
+    const codeColIndex = findColumnIndex(headers, ['item', 'codigo item', 'codigo produto', 'codigo', 'code', 'sku']);
     if (codeColIndex === -1) {
       toast({ title: 'Coluna de código não encontrada', variant: 'destructive' });
       return;
