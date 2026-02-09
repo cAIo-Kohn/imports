@@ -83,26 +83,35 @@ export const PerformanceIndicator: React.FC<PerformanceIndicatorProps> = ({
     return delta.toLocaleString('pt-BR');
   };
 
+  const fmtNum = (n: number) => n.toLocaleString('pt-BR');
+
   const tooltipContent = (
-    <div className="space-y-2 text-xs">
-      <div className="font-semibold border-b pb-1">PV vs Actual (Last {performanceData.length}M)</div>
-      {performanceData.map((d) => {
-        const monthStatus = getStatus(d.percentage);
-        return (
-          <div key={d.monthKey} className="flex justify-between gap-4">
-            <span>{d.monthLabel}:</span>
-            <span className={getStatusColor(monthStatus)}>
-              {d.percentage}% ({formatDelta(d.delta)})
-            </span>
-          </div>
-        );
-      })}
-      <div className="border-t pt-1 font-semibold flex justify-between gap-4">
-        <span>Total:</span>
-        <span className={getStatusColor(status)}>
-          {avgPercentage}% ({formatDelta(totalDelta)})
-        </span>
+    <div className="text-xs">
+      <div className="font-semibold border-b pb-1 mb-1.5">PV vs Actual (Last {performanceData.length}M)</div>
+      <div className="grid grid-cols-4 gap-x-3 gap-y-0.5 items-center">
+        <span />
+        <span className="text-muted-foreground font-medium text-right">PV</span>
+        <span className="text-muted-foreground font-medium text-right">Hist.</span>
+        <span className="text-muted-foreground font-medium text-right">Delta</span>
+        {performanceData.map((d) => {
+          const monthStatus = getStatus(d.percentage);
+          return (
+            <React.Fragment key={d.monthKey}>
+              <span>{d.monthLabel}</span>
+              <span className="text-right">{fmtNum(d.forecast)}</span>
+              <span className="text-right">{fmtNum(d.actual)}</span>
+              <span className={`text-right ${getStatusColor(monthStatus)}`}>{formatDelta(d.delta)}</span>
+            </React.Fragment>
+          );
+        })}
       </div>
+      <div className="border-t mt-1.5 pt-1 grid grid-cols-4 gap-x-3 font-semibold items-center">
+        <span>Total</span>
+        <span className="text-right">{fmtNum(totalForecast)}</span>
+        <span className="text-right">{fmtNum(totalActual)}</span>
+        <span className={`text-right ${getStatusColor(status)}`}>{formatDelta(totalDelta)}</span>
+      </div>
+      <div className={`text-right mt-0.5 font-semibold ${getStatusColor(status)}`}>({avgPercentage}%)</div>
     </div>
   );
 
