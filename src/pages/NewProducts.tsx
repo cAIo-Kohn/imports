@@ -48,6 +48,8 @@ export default function NewProducts() {
       qty_master_box: qtyMasterBox,
       image_url: card.image_url || undefined,
       moq: card.moq || undefined,
+      container_type: card.container_type || undefined,
+      qty_per_container: card.qty_per_container || undefined,
     };
   };
 

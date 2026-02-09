@@ -807,6 +807,7 @@ export type Database = {
           brand: string | null
           category_id: string | null
           code: string
+          container_type: string | null
           created_at: string
           customs_value: number | null
           dun_14: string | null
@@ -835,6 +836,7 @@ export type Database = {
           product_width: number | null
           qty_inner: number | null
           qty_master_box: number | null
+          qty_per_container: number | null
           subcategory_id: string | null
           supplier_id: string | null
           supplier_specs: string | null
@@ -853,6 +855,7 @@ export type Database = {
           brand?: string | null
           category_id?: string | null
           code: string
+          container_type?: string | null
           created_at?: string
           customs_value?: number | null
           dun_14?: string | null
@@ -881,6 +884,7 @@ export type Database = {
           product_width?: number | null
           qty_inner?: number | null
           qty_master_box?: number | null
+          qty_per_container?: number | null
           subcategory_id?: string | null
           supplier_id?: string | null
           supplier_specs?: string | null
@@ -899,6 +903,7 @@ export type Database = {
           brand?: string | null
           category_id?: string | null
           code?: string
+          container_type?: string | null
           created_at?: string
           customs_value?: number | null
           dun_14?: string | null
@@ -927,6 +932,7 @@ export type Database = {
           product_width?: number | null
           qty_inner?: number | null
           qty_master_box?: number | null
+          qty_per_container?: number | null
           subcategory_id?: string | null
           supplier_id?: string | null
           supplier_specs?: string | null
