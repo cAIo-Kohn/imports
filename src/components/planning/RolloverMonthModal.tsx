@@ -6,11 +6,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { CheckCircle2, XCircle, Calendar, AlertTriangle, RotateCcw, Upload, FileSpreadsheet, Ship, TrendingUp, Package } from 'lucide-react';
+import { CheckCircle2, XCircle, Calendar, AlertTriangle, RotateCcw, Upload, FileSpreadsheet, Ship, TrendingUp, Package, Loader2 } from 'lucide-react';
 import { ImportForecastModal } from './ImportForecastModal';
 import { ImportInventoryModal } from './ImportInventoryModal';
 import { ImportSalesHistoryModal } from './ImportSalesHistoryModal';
 import { ImportArrivalsModal } from './ImportArrivalsModal';
+import { toast } from 'sonner';
 
 interface RolloverMonthModalProps {
   open: boolean;
@@ -22,6 +23,9 @@ interface ValidationStatus {
   valid: boolean;
   message: string;
   date?: string;
+  partial?: boolean;
+  missingMonths?: string[];
+  historyAvailable?: boolean;
 }
 
 export const RolloverMonthModal: React.FC<RolloverMonthModalProps> = ({
@@ -135,52 +139,82 @@ export const RolloverMonthModal: React.FC<RolloverMonthModalProps> = ({
     enabled: open,
   });
 
-  // Query: Check if forecasts cover the new period
+  // Query: Check if forecasts cover the new period, detect missing months
   const { data: forecastStatus, refetch: refetchForecast } = useQuery({
     queryKey: ['rollover-forecast-check', format(currentMonth, 'yyyy-MM'), format(endOfNewPeriod, 'yyyy-MM')],
     queryFn: async () => {
+      // Build list of all 12 required months
+      const requiredMonths: Date[] = [];
+      for (let i = 0; i < 12; i++) {
+        requiredMonths.push(addMonths(currentMonth, i));
+      }
+
       const startKey = format(currentMonth, 'yyyy-MM-dd');
       const endKey = format(endOfNewPeriod, 'yyyy-MM-dd');
-      
+
+      // Get distinct months that have forecasts
       const { data, error } = await supabase
         .from('sales_forecasts')
         .select('year_month')
         .gte('year_month', startKey)
-        .lte('year_month', endKey)
-        .order('year_month', { ascending: false })
-        .limit(1);
-      
+        .lte('year_month', endKey);
+
       if (error) throw error;
-      
-      if (data && data.length > 0) {
-        const lastMonth = data[0].year_month.substring(0, 7);
-        const targetLastMonth = format(endOfNewPeriod, 'yyyy-MM');
-        
-        if (lastMonth >= targetLastMonth) {
-          return {
-            valid: true,
-            message: `Covers until ${format(endOfNewPeriod, 'MMM/yyyy')}`,
-          } as ValidationStatus;
-        }
+
+      const coveredSet = new Set((data || []).map(r => r.year_month.substring(0, 7)));
+      const missing = requiredMonths.filter(m => !coveredSet.has(format(m, 'yyyy-MM')));
+
+      if (missing.length === 0) {
         return {
-          valid: false,
-          message: `Only until ${lastMonth}`,
+          valid: true,
+          message: `Covers until ${format(endOfNewPeriod, 'MMM/yyyy')}`,
         } as ValidationStatus;
       }
+
+      if (missing.length === requiredMonths.length) {
+        return {
+          valid: false,
+          message: 'No forecasts for new period',
+          missingMonths: missing.map(m => format(m, 'MMM/yyyy')),
+        } as ValidationStatus;
+      }
+
+      // Partial: check if history exists for missing months (1 year prior)
+      const historyChecks = await Promise.all(
+        missing.map(async (m) => {
+          const histMonth = format(subMonths(m, 12), 'yyyy-MM-dd');
+          const { count } = await supabase
+            .from('sales_history')
+            .select('id', { count: 'exact', head: true })
+            .eq('year_month', histMonth);
+          return (count || 0) > 0;
+        })
+      );
+      const historyAvailable = historyChecks.every(Boolean);
+      const missingLabels = missing.map(m => format(m, 'MMM/yyyy'));
+
       return {
         valid: false,
-        message: 'No forecasts for new period',
+        partial: true,
+        historyAvailable,
+        missingMonths: missingLabels,
+        message: historyAvailable
+          ? `Will auto-fill ${missingLabels.join(', ')} from history`
+          : `Missing ${missingLabels.join(', ')} (no history fallback)`,
       } as ValidationStatus;
     },
     enabled: open,
   });
 
   // Check if all validations pass
+  // Forecast is ok if fully valid OR partial with history available
+  const forecastOk = forecastStatus?.valid || (forecastStatus?.partial && forecastStatus?.historyAvailable);
+
   const allValid = dateValid && 
     inventoryStatus?.valid && 
     historyStatus?.valid && 
     arrivalsStatus?.valid && 
-    forecastStatus?.valid;
+    forecastOk;
 
   const handleRefreshAll = () => {
     refetchInventory();
@@ -193,10 +227,54 @@ export const RolloverMonthModal: React.FC<RolloverMonthModalProps> = ({
     handleRefreshAll();
   };
 
-  const handleRollover = () => {
-    // The system doesn't need to actually "rollover" anything - 
-    // the 12-month window naturally shifts based on current date.
-    // This modal just validates that all required data is in place.
+  const [isRollingOver, setIsRollingOver] = useState(false);
+
+  const handleRollover = async () => {
+    // Auto-fill missing forecast months from history if needed
+    if (forecastStatus?.partial && forecastStatus?.historyAvailable && forecastStatus?.missingMonths) {
+      setIsRollingOver(true);
+      try {
+        for (let i = 0; i < 12; i++) {
+          const month = addMonths(currentMonth, i);
+          const monthKey = format(month, 'yyyy-MM-dd');
+          
+          // Check if this month has forecasts
+          const { count } = await supabase
+            .from('sales_forecasts')
+            .select('id', { count: 'exact', head: true })
+            .eq('year_month', monthKey);
+          
+          if ((count || 0) === 0) {
+            // Fetch history from 12 months prior
+            const histMonthKey = format(subMonths(month, 12), 'yyyy-MM-dd');
+            const { data: historyRows } = await supabase
+              .from('sales_history')
+              .select('product_id, unit_id, quantity')
+              .eq('year_month', histMonthKey);
+            
+            if (historyRows && historyRows.length > 0) {
+              const inserts = historyRows.map(h => ({
+                product_id: h.product_id,
+                unit_id: h.unit_id,
+                year_month: monthKey,
+                quantity: h.quantity,
+                version: 'auto-history',
+              }));
+              const { error } = await supabase.from('sales_forecasts').insert(inserts);
+              if (error) throw error;
+            }
+          }
+        }
+        toast.success('Missing forecast months auto-filled from history');
+      } catch (err) {
+        console.error('Auto-fill error:', err);
+        toast.error('Failed to auto-fill forecasts from history');
+        setIsRollingOver(false);
+        return;
+      }
+      setIsRollingOver(false);
+    }
+
     onSuccess();
     onOpenChange(false);
   };
@@ -303,12 +381,34 @@ export const RolloverMonthModal: React.FC<RolloverMonthModalProps> = ({
                   arrivalsStatus,
                   () => setImportArrivalsOpen(true)
                 )}
-                {renderValidationRow(
-                  <TrendingUp className="h-4 w-4" />,
-                  'Forecast',
-                  forecastStatus,
-                  () => setImportForecastOpen(true)
-                )}
+                {/* Custom forecast row with partial support */}
+                <div className="flex items-center justify-between py-2 border-b last:border-b-0">
+                  <div className="flex items-center gap-2">
+                    {forecastStatus?.valid ? (
+                      <CheckCircle2 className="h-5 w-5 text-green-500" />
+                    ) : forecastStatus?.partial && forecastStatus?.historyAvailable ? (
+                      <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                    ) : (
+                      <XCircle className="h-5 w-5 text-destructive" />
+                    )}
+                    <span className="flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4" />
+                      Forecast
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge 
+                      variant={forecastStatus?.valid ? "default" : forecastStatus?.partial && forecastStatus?.historyAvailable ? "secondary" : "destructive"} 
+                      className={`text-xs ${forecastStatus?.partial && forecastStatus?.historyAvailable ? 'bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-400' : ''}`}
+                    >
+                      {forecastStatus?.message || 'Checking...'}
+                    </Badge>
+                    <Button variant="outline" size="sm" onClick={() => setImportForecastOpen(true)}>
+                      <Upload className="h-3.5 w-3.5 mr-1" />
+                      Upload
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -318,7 +418,9 @@ export const RolloverMonthModal: React.FC<RolloverMonthModalProps> = ({
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                 <AlertTitle className="text-green-700 dark:text-green-400">Ready to Rollover</AlertTitle>
                 <AlertDescription className="text-green-600 dark:text-green-500">
-                  All required data is in place. You can proceed with the rollover.
+                  {forecastStatus?.partial 
+                    ? `All data is in place. Missing forecast months (${forecastStatus.missingMonths?.join(', ')}) will be auto-filled from previous year history.`
+                    : 'All required data is in place. You can proceed with the rollover.'}
                 </AlertDescription>
               </Alert>
             )}
@@ -328,9 +430,13 @@ export const RolloverMonthModal: React.FC<RolloverMonthModalProps> = ({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleRollover} disabled={!allValid}>
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Confirm Rollover
+            <Button onClick={handleRollover} disabled={!allValid || isRollingOver}>
+              {isRollingOver ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCcw className="mr-2 h-4 w-4" />
+              )}
+              {isRollingOver ? 'Auto-filling...' : 'Confirm Rollover'}
             </Button>
           </DialogFooter>
         </DialogContent>
