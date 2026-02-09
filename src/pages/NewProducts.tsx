@@ -1,20 +1,64 @@
 import { useState, useMemo } from 'react';
 import { Sparkles, ClipboardList, ShoppingCart, ArrowDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { useNewProductsData } from '@/hooks/useNewProductFlow';
+import { useNewProductsData, useNewProductFlow } from '@/hooks/useNewProductFlow';
 import { EligibleProductCard } from '@/components/new-products/EligibleProductCard';
 import { Step1ResearchSection } from '@/components/new-products/Step1ResearchSection';
 import { WorkflowStepSection } from '@/components/new-products/WorkflowStepSection';
 import { ItemDetailDrawer } from '@/components/development/ItemDetailDrawer';
+import { CreateProductModal, type ProductPrefillData } from '@/components/products/CreateProductModal';
 import type { DevelopmentItem } from '@/pages/Development';
 
 export default function NewProducts() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [step2Card, setStep2Card] = useState<any>(null);
   
   const { data, isLoading, error } = useNewProductsData();
+  const { advanceStep } = useNewProductFlow();
 
   const handleOpenCard = (cardId: string) => {
     setSelectedItemId(cardId);
+  };
+
+  const handleStep2CardClick = (cardId: string) => {
+    if (!data?.step2) return;
+    const card = data.step2.find((item: any) => item.id === cardId);
+    if (card) {
+      setStep2Card(card);
+    }
+  };
+
+  const buildPrefillData = (card: any): ProductPrefillData => {
+    // Parse qty_per_master_inner to number if possible
+    let qtyMasterBox: number | undefined;
+    if (card.qty_per_master_inner) {
+      const parsed = parseInt(card.qty_per_master_inner, 10);
+      if (!isNaN(parsed)) qtyMasterBox = parsed;
+    }
+
+    // Use customs description if available, otherwise card title + description
+    const description = card._customs_description || 
+      [card.title, card.description].filter(Boolean).join(' - ');
+
+    return {
+      technical_description: description || undefined,
+      ncm: card._customs_ncm || undefined,
+      fob_price_usd: card.fob_price_usd || undefined,
+      supplier_id: card.supplier_id || undefined,
+      qty_master_box: qtyMasterBox,
+      image_url: card.image_url || undefined,
+      moq: card.moq || undefined,
+    };
+  };
+
+  const handleProductCreated = (productId?: string) => {
+    if (step2Card && productId) {
+      advanceStep({
+        targetCardId: step2Card.id,
+        nextStatus: 'step3_ready_for_order',
+      });
+    }
+    setStep2Card(null);
   };
 
   // Find the selected item from all available items
@@ -114,13 +158,13 @@ export default function NewProducts() {
         </div>
       )}
 
-      {/* Step 2: Cadastrar Codigo */}
+      {/* Step 2: Cadastrar Codigo — opens CreateProductModal */}
       <WorkflowStepSection
         title="Step 2: Cadastrar Código"
         subtitle="Code Registration"
         responsibleRole="Quality"
         items={step2}
-        onOpenCard={handleOpenCard}
+        onOpenCard={handleStep2CardClick}
         colorScheme="green"
         icon={<ClipboardList className="h-5 w-5 text-green-600" />}
       />
@@ -143,13 +187,23 @@ export default function NewProducts() {
         icon={<ShoppingCart className="h-5 w-5 text-blue-600" />}
       />
 
-      {/* Item Detail Drawer */}
+      {/* Item Detail Drawer (for non-Step2 cards) */}
       <ItemDetailDrawer
         item={selectedItem as DevelopmentItem | null}
         open={!!selectedItemId}
         onOpenChange={(open) => {
           if (!open) setSelectedItemId(null);
         }}
+      />
+
+      {/* Step 2: Product Registration Modal */}
+      <CreateProductModal
+        open={!!step2Card}
+        onOpenChange={(open) => {
+          if (!open) setStep2Card(null);
+        }}
+        onSuccess={handleProductCreated}
+        prefillData={step2Card ? buildPrefillData(step2Card) : undefined}
       />
     </div>
   );

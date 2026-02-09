@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -27,6 +27,8 @@ const formSchema = z.object({
   qty_master_box: z.coerce.number().int().positive().optional().or(z.literal('')),
   fob_price_usd: z.coerce.number().positive().optional().or(z.literal('')),
   supplier_id: z.string().optional().or(z.literal('')),
+  moq: z.coerce.number().int().positive().optional().or(z.literal('')),
+  image_url: z.string().optional().or(z.literal('')),
 });
 
 interface Supplier {
@@ -37,14 +39,25 @@ interface Supplier {
 
 type FormData = z.infer<typeof formSchema>;
 
+export interface ProductPrefillData {
+  technical_description?: string;
+  ncm?: string;
+  fob_price_usd?: number;
+  supplier_id?: string;
+  qty_master_box?: number;
+  image_url?: string;
+  moq?: number;
+}
+
 interface CreateProductModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess: () => void;
+  onSuccess: (productId?: string) => void;
   defaultSupplierId?: string;
+  prefillData?: ProductPrefillData;
 }
 
-export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSupplierId }: CreateProductModalProps) {
+export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSupplierId, prefillData }: CreateProductModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: suppliers } = useQuery({
@@ -74,13 +87,50 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
       qty_master_box: '',
       fob_price_usd: '',
       supplier_id: defaultSupplierId || '',
+      moq: '',
+      image_url: '',
     },
   });
+
+  // Apply prefill data when modal opens
+  useEffect(() => {
+    if (open && prefillData) {
+      form.reset({
+        code: '',
+        technical_description: prefillData.technical_description || '',
+        unit_of_measure: 'pcs',
+        ncm: prefillData.ncm || '',
+        ean_13: '',
+        brand: '',
+        warehouse_status: '',
+        qty_master_box: prefillData.qty_master_box ?? '',
+        fob_price_usd: prefillData.fob_price_usd ?? '',
+        supplier_id: prefillData.supplier_id || defaultSupplierId || '',
+        moq: prefillData.moq ?? '',
+        image_url: prefillData.image_url || '',
+      });
+    } else if (open && !prefillData) {
+      form.reset({
+        code: '',
+        technical_description: '',
+        unit_of_measure: 'pcs',
+        ncm: '',
+        ean_13: '',
+        brand: '',
+        warehouse_status: '',
+        qty_master_box: '',
+        fob_price_usd: '',
+        supplier_id: defaultSupplierId || '',
+        moq: '',
+        image_url: '',
+      });
+    }
+  }, [open, prefillData, defaultSupplierId]);
 
   const onSubmit = async (data: FormData) => {
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.from('products').insert({
+      const { data: inserted, error } = await supabase.from('products').insert({
         code: data.code.trim(),
         technical_description: data.technical_description.trim(),
         unit_of_measure: data.unit_of_measure as any,
@@ -91,7 +141,9 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
         qty_master_box: data.qty_master_box ? Number(data.qty_master_box) : null,
         fob_price_usd: data.fob_price_usd ? Number(data.fob_price_usd) : null,
         supplier_id: data.supplier_id || null,
-      });
+        moq: data.moq ? Number(data.moq) : null,
+        image_url: data.image_url?.trim() || null,
+      }).select('id').single();
 
       if (error) {
         if (error.code === '23505') {
@@ -105,7 +157,7 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
       toast.success('Produto cadastrado com sucesso!');
       form.reset();
       onOpenChange(false);
-      onSuccess();
+      onSuccess(inserted?.id);
     } catch (error: any) {
       console.error('Erro ao cadastrar produto:', error);
       toast.error('Erro ao cadastrar produto: ' + error.message);
@@ -114,13 +166,21 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
     }
   };
 
+  const isPrefilled = (fieldName: string) => {
+    if (!prefillData) return false;
+    const val = (prefillData as any)[fieldName];
+    return val !== undefined && val !== null && val !== '';
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Novo Produto</DialogTitle>
+          <DialogTitle>{prefillData ? 'Cadastrar Novo Produto' : 'Novo Produto'}</DialogTitle>
           <DialogDescription>
-            Preencha os dados para cadastrar um novo produto.
+            {prefillData
+              ? 'Dados pré-preenchidos do fluxo de desenvolvimento. Complete os campos restantes.'
+              : 'Preencha os dados para cadastrar um novo produto.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -147,7 +207,7 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Unidade de Medida *</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione" />
@@ -172,7 +232,9 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
               name="technical_description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Descrição Técnica *</FormLabel>
+                  <FormLabel className={isPrefilled('technical_description') ? 'text-muted-foreground' : ''}>
+                    Descrição Técnica * {isPrefilled('technical_description') && <span className="text-xs">(pré-preenchido)</span>}
+                  </FormLabel>
                   <FormControl>
                     <Textarea 
                       placeholder="Descreva o produto..."
@@ -192,7 +254,9 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
                 name="ncm"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>NCM</FormLabel>
+                    <FormLabel className={isPrefilled('ncm') ? 'text-muted-foreground' : ''}>
+                      NCM {isPrefilled('ncm') && <span className="text-xs">(pré-preenchido)</span>}
+                    </FormLabel>
                     <FormControl>
                       <Input placeholder="Ex: 8471.30.19" {...field} />
                     </FormControl>
@@ -252,7 +316,9 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
                 name="qty_master_box"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Qtd. Master Box</FormLabel>
+                    <FormLabel className={isPrefilled('qty_master_box') ? 'text-muted-foreground' : ''}>
+                      Qtd. Master Box {isPrefilled('qty_master_box') && <span className="text-xs">(pré-preenchido)</span>}
+                    </FormLabel>
                     <FormControl>
                       <Input type="number" placeholder="Ex: 24" {...field} />
                     </FormControl>
@@ -266,7 +332,9 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
                 name="fob_price_usd"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Preço FOB (USD)</FormLabel>
+                    <FormLabel className={isPrefilled('fob_price_usd') ? 'text-muted-foreground' : ''}>
+                      Preço FOB (USD) {isPrefilled('fob_price_usd') && <span className="text-xs">(pré-preenchido)</span>}
+                    </FormLabel>
                     <FormControl>
                       <Input type="number" step="0.01" placeholder="Ex: 10.50" {...field} />
                     </FormControl>
@@ -276,30 +344,50 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="supplier_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Fornecedor</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || ''}>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="moq"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className={isPrefilled('moq') ? 'text-muted-foreground' : ''}>
+                      MOQ {isPrefilled('moq') && <span className="text-xs">(pré-preenchido)</span>}
+                    </FormLabel>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione um fornecedor" />
-                      </SelectTrigger>
+                      <Input type="number" placeholder="Ex: 1000" {...field} />
                     </FormControl>
-                    <SelectContent>
-                      {suppliers?.map((supplier) => (
-                        <SelectItem key={supplier.id} value={supplier.id}>
-                          {supplier.trade_name || supplier.company_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="supplier_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className={isPrefilled('supplier_id') ? 'text-muted-foreground' : ''}>
+                      Fornecedor {isPrefilled('supplier_id') && <span className="text-xs">(pré-preenchido)</span>}
+                    </FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ''}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione um fornecedor" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {suppliers?.map((supplier) => (
+                          <SelectItem key={supplier.id} value={supplier.id}>
+                            {supplier.trade_name || supplier.company_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
