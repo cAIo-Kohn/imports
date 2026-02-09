@@ -29,6 +29,8 @@ const formSchema = z.object({
   supplier_id: z.string().optional().or(z.literal('')),
   moq: z.coerce.number().int().positive().optional().or(z.literal('')),
   image_url: z.string().optional().or(z.literal('')),
+  container_type: z.string().max(50).optional().or(z.literal('')),
+  qty_per_container: z.coerce.number().int().positive().optional().or(z.literal('')),
 });
 
 interface Supplier {
@@ -47,6 +49,8 @@ export interface ProductPrefillData {
   qty_master_box?: number;
   image_url?: string;
   moq?: number;
+  container_type?: string;
+  qty_per_container?: number;
 }
 
 interface CreateProductModalProps {
@@ -89,6 +93,8 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
       supplier_id: defaultSupplierId || '',
       moq: '',
       image_url: '',
+      container_type: '',
+      qty_per_container: '',
     },
   });
 
@@ -108,6 +114,8 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
         supplier_id: prefillData.supplier_id || defaultSupplierId || '',
         moq: prefillData.moq ?? '',
         image_url: prefillData.image_url || '',
+        container_type: prefillData.container_type || '',
+        qty_per_container: prefillData.qty_per_container ?? '',
       });
     } else if (open && !prefillData) {
       form.reset({
@@ -123,6 +131,8 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
         supplier_id: defaultSupplierId || '',
         moq: '',
         image_url: '',
+        container_type: '',
+        qty_per_container: '',
       });
     }
   }, [open, prefillData, defaultSupplierId]);
@@ -143,6 +153,8 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
         supplier_id: data.supplier_id || null,
         moq: data.moq ? Number(data.moq) : null,
         image_url: data.image_url?.trim() || null,
+        container_type: data.container_type?.trim() || null,
+        qty_per_container: data.qty_per_container ? Number(data.qty_per_container) : null,
       }).select('id').single();
 
       if (error) {
@@ -383,6 +395,40 @@ export function CreateProductModal({ open, onOpenChange, onSuccess, defaultSuppl
                         ))}
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="container_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className={isPrefilled('container_type') ? 'text-muted-foreground' : ''}>
+                      Tipo Container {isPrefilled('container_type') && <span className="text-xs">(pré-preenchido)</span>}
+                    </FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ex: 40HQ" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="qty_per_container"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className={isPrefilled('qty_per_container') ? 'text-muted-foreground' : ''}>
+                      Qtd. por Container {isPrefilled('qty_per_container') && <span className="text-xs">(pré-preenchido)</span>}
+                    </FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="Ex: 5000" {...field} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
