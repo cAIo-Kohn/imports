@@ -1,120 +1,84 @@
 
 
-## Step 2: Pre-filled Product Registration
+## Step 3: Auto-Complete on First Order Placement
 
 ### Overview
-When clicking a card in Step 2 of New Products, instead of opening the ItemDetailDrawer, open the CreateProductModal pre-filled with data accumulated throughout the card's lifecycle. After the product is successfully created, the card automatically advances to Step 3.
+Step 3 ("Ready for Order") cards remain visible until the product created in Step 2 appears in at least one purchase order. When that happens, the card automatically moves to a new "Completed" section -- a visible archive of products that have gone through the full workflow and been ordered.
 
-### Data Sources and Auto-fill Mapping
+### Key Requirement
+We need to **link** the development card to the catalog `products.id` so we can detect when a `purchase_order_items` row references that product.
 
-| Product Field | Source | Location |
-|---|---|---|
-| `supplier_id` | Card | `development_items.supplier_id` |
-| `fob_price_usd` | Card | `development_items.fob_price_usd` |
-| `moq` | Card | `development_items.moq` (mapped to product MOQ) |
-| `qty_master_box` | Card | `development_items.qty_per_master_inner` (parsed) |
-| `image_url` | Card | `development_items.image_url` |
-| `technical_description` | Card + Customs | Card title/description, or customs `product_catalog_description` from activity metadata |
-| `ncm` | Customs Approval | `development_card_activity.metadata->>'ncm_code'` for customs research activity |
+### Implementation
 
-**User must fill manually:** `code` (required), `unit_of_measure`, `brand`, `ean_13`, `warehouse_status`
+#### 1. Add `registered_product_id` column to `development_items`
+A new nullable UUID column that stores the `products.id` created during Step 2. This is the bridge between the card and the catalog.
 
-### Implementation Steps
-
-#### 1. Expand Step 2 query in `useNewProductFlow.ts`
-Update the `useNewProductsData` step2 fetch to include the commercial fields:
-
-```
-select: 'id, title, description, card_type, image_url, supplier_id, product_code,
-         new_product_flow_status, fob_price_usd, moq, qty_per_master_inner,
-         container_type, qty_per_container'
+```text
+development_items.registered_product_id  -->  products.id
 ```
 
-Also fetch customs approval activity metadata for step2 card IDs to extract `ncm_code` and `product_catalog_description`.
+#### 2. Save the product ID when Step 2 completes
+In `NewProducts.tsx`, the `handleProductCreated` callback already receives `productId`. We add a Supabase update to store it on the card:
 
-#### 2. Enhance `CreateProductModal` to accept pre-fill data
-Add an optional `prefillData` prop to the modal:
-
-```typescript
-interface PrefillData {
-  technical_description?: string;
-  ncm?: string;
-  fob_price_usd?: number;
-  supplier_id?: string;
-  qty_master_box?: number;
-  image_url?: string;
-  moq?: number;
-}
-
-interface CreateProductModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSuccess: (productId?: string) => void;  // now returns product ID
-  defaultSupplierId?: string;
-  prefillData?: PrefillData;
-}
+```
+UPDATE development_items
+SET registered_product_id = <productId>
+WHERE id = <cardId>
 ```
 
-When `prefillData` is provided:
-- Use `form.reset(...)` with the pre-filled values when the modal opens
-- Pre-filled fields are shown populated but still editable
-- Visual hint (e.g., muted label text) to show which fields were auto-filled
+This happens alongside the existing `advanceStep` call.
 
-#### 3. Update `onSuccess` to return the created product ID
-Modify `CreateProductModal.onSubmit` to return the new product's ID via a `.select('id')` on the insert, and pass it to the `onSuccess` callback.
+#### 3. Detect first order in `useNewProductsData`
+For all Step 3 cards, check if their `registered_product_id` exists in `purchase_order_items`:
 
-#### 4. Handle Step 2 card clicks differently in `NewProducts.tsx`
-Add state for the Step 2 modal:
-
-```typescript
-const [step2CardForRegistration, setStep2CardForRegistration] = useState(null);
+```text
+Step 3 cards  -->  get registered_product_id list
+                   -->  query purchase_order_items where product_id IN (...)
+                   -->  cards with a match = "completed"
 ```
 
-For Step 2's `WorkflowStepSection`, use a different `onOpenCard` handler that:
-1. Finds the card data (with commercial fields + NCM from customs activity)
-2. Opens `CreateProductModal` with `prefillData` instead of `ItemDetailDrawer`
+Cards with at least one order match get auto-advanced to `completed` status. This check runs every time the New Products page loads.
 
-#### 5. Auto-advance to Step 3 after product creation
-When the product is created from a Step 2 card:
-1. Call `advanceStep({ targetCardId, nextStatus: 'step3_ready_for_order' })`
-2. Log activity: "Product registered (code: XXX) - moved to Ready for Order"
-3. Close the modal and show a success toast
-4. Invalidate queries to refresh the page
+#### 4. Add "Completed" section to the page
+A new section below Step 3, styled similarly to the "Solved" cards pattern:
+- Uses a muted/success color scheme (e.g., green checkmark)
+- Shows the product title, image, and product code
+- Collapsible by default (toggle "Show completed") so it doesn't clutter the active workflow
+- Clicking a completed card opens the ItemDetailDrawer for reference
+
+#### 5. Fetch completed items in the hook
+Add a query for `new_product_flow_status = 'completed'` items in `useNewProductsData`, returning them as a `completed` array.
 
 ### Files to Modify
 
 | File | Changes |
 |---|---|
-| `src/hooks/useNewProductFlow.ts` | Expand step2 select to include commercial fields; fetch customs activity metadata for NCM |
-| `src/components/products/CreateProductModal.tsx` | Add `prefillData` prop; use it to set default form values; return product ID on success |
-| `src/pages/NewProducts.tsx` | Add state for step2 registration modal; pass different handler for step2 cards; wire up auto-advance on product creation |
+| Database migration | Add `registered_product_id` (uuid, nullable) to `development_items` |
+| `src/hooks/useNewProductFlow.ts` | Save `registered_product_id` on step2 completion; fetch completed items; auto-detect first order for step3 cards |
+| `src/pages/NewProducts.tsx` | Store product ID on card after creation; add Completed section with collapsible toggle |
+| `src/components/new-products/WorkflowStepSection.tsx` | Minor: support a "completed" color scheme variant |
 
-### Flow Diagram
+### Page Layout After Changes
 
 ```text
-User clicks Step 2 card
-        |
-        v
-CreateProductModal opens
-(pre-filled: supplier, FOB, MOQ, NCM, description, image, qty master box)
-        |
-        v
-User fills: Code, Unit of Measure, Brand, EAN-13, Warehouse Status
-        |
-        v
-User clicks "Cadastrar"
-        |
-        v
-Product inserted in `products` table
-        |
-        v
-Card auto-advances to Step 3 (step3_ready_for_order)
-Activity logged, toast shown, modal closes
+Eligible Products
+      |
+Step 1: Research & Compliance
+      |
+Step 2: Cadastrar Codigo
+      |
+Step 3: Ready for Order        <-- stays here until ordered
+      |
+[v] Show Completed (4)         <-- collapsible archive
+    - Product A  (ordered 2026-01-15)
+    - Product B  (ordered 2026-02-01)
+    ...
 ```
 
-### Edge Cases
-- If NCM or description not found in customs activity (e.g., approval was rejected/skipped), those fields remain empty for manual entry
-- If card has no commercial data (fob, moq), fields are left blank
-- Duplicate product code error is already handled by the existing modal (shows toast)
-- The "View Card" option is still available via a small link in the modal header for context
+### Auto-Detection Logic
+Each page load, for Step 3 cards with a `registered_product_id`:
+1. Query `purchase_order_items` for matching `product_id` values
+2. For any matches found, call `advanceStep` to move the card to `completed`
+3. Log activity: "First order placed -- product workflow complete"
 
+This is a lightweight check (single query) that keeps the workflow progressing without manual intervention.
