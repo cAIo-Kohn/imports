@@ -1,17 +1,20 @@
 import { useState, useMemo } from 'react';
-import { Sparkles, ClipboardList, ShoppingCart, ArrowDown } from 'lucide-react';
+import { Sparkles, ClipboardList, ShoppingCart, ArrowDown, CheckCircle2, ChevronDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useNewProductsData, useNewProductFlow } from '@/hooks/useNewProductFlow';
 import { EligibleProductCard } from '@/components/new-products/EligibleProductCard';
 import { Step1ResearchSection } from '@/components/new-products/Step1ResearchSection';
 import { WorkflowStepSection } from '@/components/new-products/WorkflowStepSection';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ItemDetailDrawer } from '@/components/development/ItemDetailDrawer';
 import { CreateProductModal, type ProductPrefillData } from '@/components/products/CreateProductModal';
+import { supabase } from '@/integrations/supabase/client';
 import type { DevelopmentItem } from '@/pages/Development';
 
 export default function NewProducts() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [step2Card, setStep2Card] = useState<any>(null);
+  const [completedOpen, setCompletedOpen] = useState(false);
   
   const { data, isLoading, error } = useNewProductsData();
   const { advanceStep } = useNewProductFlow();
@@ -53,8 +56,14 @@ export default function NewProducts() {
     };
   };
 
-  const handleProductCreated = (productId?: string) => {
+  const handleProductCreated = async (productId?: string) => {
     if (step2Card && productId) {
+      // Store registered_product_id on the card
+      await supabase
+        .from('development_items')
+        .update({ registered_product_id: productId })
+        .eq('id', step2Card.id);
+
       advanceStep({
         targetCardId: step2Card.id,
         nextStatus: 'step3_ready_for_order',
@@ -66,7 +75,7 @@ export default function NewProducts() {
   // Find the selected item from all available items
   const selectedItem = useMemo(() => {
     if (!selectedItemId || !data) return null;
-    const allItems = [...(data.eligible || []), ...(data.step1 || []), ...(data.step2 || []), ...(data.step3 || [])];
+    const allItems = [...(data.eligible || []), ...(data.step1 || []), ...(data.step2 || []), ...(data.step3 || []), ...(data.completed || [])];
     return allItems.find((item: DevelopmentItem) => item.id === selectedItemId) || null;
   }, [selectedItemId, data]);
 
@@ -86,11 +95,13 @@ export default function NewProducts() {
     );
   }
 
-  const { eligible, step1, step2, step3, approvals } = data || {
+
+  const { eligible, step1, step2, step3, completed, approvals } = data || {
     eligible: [],
     step1: [],
     step2: [],
     step3: [],
+    completed: [],
     approvals: [],
   };
 
@@ -188,6 +199,29 @@ export default function NewProducts() {
         colorScheme="blue"
         icon={<ShoppingCart className="h-5 w-5 text-blue-600" />}
       />
+
+      {/* Completed Section */}
+      {completed.length > 0 && (
+        <Collapsible open={completedOpen} onOpenChange={setCompletedOpen}>
+          <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium hover:underline cursor-pointer">
+            <ChevronDown className={`h-4 w-4 transition-transform ${completedOpen ? '' : '-rotate-90'}`} />
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <span>Completed</span>
+            <Badge variant="outline" className="text-xs">{completed.length}</Badge>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-3">
+            <WorkflowStepSection
+              title="Completed"
+              subtitle="Products that completed the workflow and were ordered"
+              responsibleRole=""
+              items={completed}
+              onOpenCard={handleOpenCard}
+              colorScheme="emerald"
+              icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+            />
+          </CollapsibleContent>
+        </Collapsible>
+      )}
 
       {/* Item Detail Drawer (for non-Step2 cards) */}
       <ItemDetailDrawer
