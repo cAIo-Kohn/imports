@@ -207,14 +207,44 @@ export function useNewProductsData() {
 
       if (step1Error) throw step1Error;
 
-      // Fetch products in Step 2
+      // Fetch products in Step 2 (include commercial fields for pre-fill)
       const { data: step2Items, error: step2Error } = await supabase
         .from('development_items')
-        .select('id, title, card_type, image_url, supplier_id, product_code, new_product_flow_status')
+        .select('id, title, description, card_type, image_url, supplier_id, product_code, new_product_flow_status, fob_price_usd, moq, qty_per_master_inner, container_type, qty_per_container')
         .eq('new_product_flow_status', 'step2_code_registration')
         .is('deleted_at', null);
 
       if (step2Error) throw step2Error;
+
+      // Fetch customs activity metadata for step2 cards to extract NCM and product description
+      const step2Ids = step2Items?.map(item => item.id) || [];
+      let step2CustomsData: Record<string, { ncm_code?: string; product_catalog_description?: string }> = {};
+      if (step2Ids.length > 0) {
+        const { data: customsActivities } = await supabase
+          .from('development_card_activity')
+          .select('card_id, metadata')
+          .in('card_id', step2Ids)
+          .not('metadata', 'is', null);
+
+        if (customsActivities) {
+          for (const activity of customsActivities) {
+            const meta = activity.metadata as any;
+            if (meta?.ncm_code || meta?.product_catalog_description) {
+              step2CustomsData[activity.card_id] = {
+                ncm_code: meta.ncm_code || step2CustomsData[activity.card_id]?.ncm_code,
+                product_catalog_description: meta.product_catalog_description || step2CustomsData[activity.card_id]?.product_catalog_description,
+              };
+            }
+          }
+        }
+      }
+
+      // Enrich step2 items with customs data
+      const enrichedStep2 = (step2Items || []).map(item => ({
+        ...item,
+        _customs_ncm: step2CustomsData[item.id]?.ncm_code || null,
+        _customs_description: step2CustomsData[item.id]?.product_catalog_description || null,
+      }));
 
       // Fetch products in Step 3
       const { data: step3Items, error: step3Error } = await supabase
@@ -254,7 +284,7 @@ export function useNewProductsData() {
       return {
         eligible: Array.from(eligibleMap.values()),
         step1: step1Items || [],
-        step2: step2Items || [],
+        step2: enrichedStep2,
         step3: step3Items || [],
         approvals,
       };
