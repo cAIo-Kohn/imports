@@ -1,55 +1,47 @@
 
 
-## Fix: XLSX Parsing Date Headers as Serial Numbers
+## Fix: Auto-Fill Missing Forecast Months from History
 
 ### Problem
-When XLSX reads your file, it interprets column headers like `Jan-26` as Excel date values and converts them to serial numbers (e.g., `46052`). The `parseMonthHeader` function then receives `"46052"` instead of `"Jan-26"`, finds zero month columns, and shows a toast "Nenhuma coluna de mes encontrada" -- which is easy to miss.
-
-### Root Cause
-Line 167: `XLSX.read(buffer, { type: 'array' })` parses dates automatically.
-Line 170: `sheet_to_json` returns the parsed date serial numbers, not the original text.
+The rollover validation requires forecasts covering Feb 2026 through Jan 2027 (12 months). You uploaded forecasts only until Dec 2026, so Jan 2027 is missing, blocking the rollover.
 
 ### Solution
-Two changes in `src/components/planning/ImportSalesHistoryModal.tsx`:
+Change the forecast validation logic in `RolloverMonthModal.tsx` so that when the forecast doesn't fully cover the new period, the system automatically fills the gap using sales history from the same month of the previous year (e.g., Jan 2026 history becomes Jan 2027 forecast).
 
-**1. Read with `raw: true` to prevent date parsing on headers**
+This happens at rollover confirmation time -- when the user clicks "Confirm Rollover", any missing months are auto-filled before proceeding.
 
-Update `processFile` to read the sheet with raw values, then extract headers as the original cell strings:
+### How It Works
 
-```typescript
-const workbook = XLSX.read(buffer, { type: 'array', raw: false });
-const sheet = workbook.Sheets[sheetName];
+1. **Relaxed validation**: The forecast check will still show which months are covered, but instead of blocking when the last month is missing, it will indicate "Will use history for missing months" and allow proceeding.
 
-// Get raw header strings using the sheet range
-const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
-const rawHeaders: string[] = [];
-for (let c = range.s.c; c <= range.e.c; c++) {
-  const cell = sheet[XLSX.utils.encode_cell({ r: range.s.r, c })];
-  rawHeaders.push(cell ? XLSX.utils.format_cell(cell) : '');
-}
-```
+2. **Auto-fill on confirm**: When the user confirms the rollover, for each month in the new 12-month window that has no forecast data:
+   - Query `sales_history` for the same month one year prior (e.g., for Jan 2027, look up Jan 2026)
+   - Insert those values as `sales_forecasts` rows with a version tag like `"auto-history"`
+   - This fills the gap seamlessly
 
-This ensures `Jan-26` stays as the string `"Jan-26"` rather than becoming a serial number.
+3. **Validation display update**: The forecast row will show a yellow "partial" state (e.g., "Until 2026-12, will auto-fill Jan/2027 from history") instead of a hard red block.
 
-**2. Add fallback: parse Excel date serial numbers in `parseMonthHeader`**
+### Technical Details
 
-As a safety net, if the regex doesn't match, try interpreting the header as an Excel date serial number:
+**File: `src/components/planning/RolloverMonthModal.tsx`**
 
-```typescript
-// Fallback: try parsing as Excel date serial number
-const num = parseFloat(normalized);
-if (!isNaN(num) && num > 1000) {
-  const excelDate = XLSX.SSF.parse_date_code(num);
-  if (excelDate) {
-    return new Date(excelDate.y, excelDate.m - 1, 1);
-  }
-}
-```
+1. Update the forecast validation query (lines 138-176) to also detect which specific months are missing and whether history exists for those months as fallback.
 
-### File to Modify
-| File | Change |
-|---|---|
-| `src/components/planning/ImportSalesHistoryModal.tsx` | Fix header extraction to preserve original text; add serial number fallback in `parseMonthHeader` |
+2. Update `allValid` check: forecast is valid if either fully covered OR partial + history fallback available.
 
-### Why this fixes the "nothing happens" symptom
-The toast "Nenhuma coluna de mes encontrada" fires but may be missed if another toast is showing or the dialog is in focus. With this fix, `Jan-26` will be correctly recognized as January 2026, month columns will be detected, and the flow will proceed to the preview step.
+3. Update `handleRollover` (line 196): before calling `onSuccess()`, run an auto-fill step:
+   ```
+   For each missing forecast month:
+     1. Query sales_history WHERE year_month = (missing_month - 12 months)
+     2. Insert into sales_forecasts with version = 'auto-history'
+   ```
+
+4. Update the validation row display to show a warning badge ("Will auto-fill from history") instead of a hard failure.
+
+**No other files need to change.** The projection system already handles reading forecasts normally -- once the auto-filled rows exist in `sales_forecasts`, everything works.
+
+### UI Change
+The Forecast validation row will show one of three states:
+- **Green**: Forecasts cover the full period
+- **Yellow/Warning**: Partial coverage, missing months will be auto-filled from previous year history
+- **Red**: No forecasts at all for the new period
