@@ -1,18 +1,60 @@
 
 
-## Fix: "Fill by Target Month" Should Only Update Existing Items
+## Add "Purchase Orders" Section to Dashboard
 
-### Problem
-When using "Equilibrar Mes", the logic adds new products that are not in the draft order. The expected behavior is to only increase quantities of items already present in the order to cover their deficits until the target month.
+### What It Does
+Adds a new section to the Dashboard showing all purchase orders organized by status in a visual pipeline flow. Each status is a column/group showing the count and listing the orders in that stage.
 
-### Fix
+### Visual Layout
+A horizontal flow of status groups, each showing:
+- Status name with icon and count badge
+- List of orders in that status (reference number, supplier, value, date)
+- Click navigates to the order detail page
 
-**File: `src/components/planning/OrderSimulationFooter.tsx`**
+The flow follows the natural order:
+**Draft** -> **Awaiting Trader** -> **Pending Changes** -> **Confirmed** -> **Shipped** -> **Received**
 
-Remove the second loop (lines 430-453) that iterates over `productProjections` looking for products NOT in the draft. The function should only process `draft.items` (the first loop, lines 405-428), which are the products already in the order.
+(Cancelled orders shown separately if any exist)
 
-This is a deletion of ~22 lines. No other changes needed.
+### Technical Details
 
-### Result
-When filling by target month, only products already in the draft will have their quantities increased to cover stock deficits. No new products will be added to the order.
+**File: `src/pages/Dashboard.tsx`**
 
+1. **New query**: Fetch purchase orders with supplier info, grouped by status
+   ```typescript
+   const { data: purchaseOrders } = useQuery({
+     queryKey: ['dashboard-purchase-orders'],
+     queryFn: async () => {
+       const { data } = await supabase
+         .from('purchase_orders')
+         .select('id, order_number, reference_number, status, etd, total_value_usd, created_at, suppliers(company_name)')
+         .order('created_at', { ascending: false });
+       return data || [];
+     },
+   });
+   ```
+
+2. **Group orders by status** using a `useMemo` that creates a map of status -> orders[]
+
+3. **Define pipeline stages** as an ordered array matching the STATUS_CONFIG from PurchaseOrders.tsx:
+   - `draft` (Draft)
+   - `pending_trader_review` (Awaiting Trader)
+   - `pending_buyer_approval` (Pending Changes)
+   - `confirmed` (Confirmed)
+   - `shipped` (Shipped)
+   - `received` (Received)
+
+4. **Render section** after the "New Products Workflow" section (visible to all non-trader roles):
+   - Section header: "Purchase Orders" with ShoppingCart icon and link to /purchase-orders
+   - Horizontal scrollable row of status columns
+   - Each column: icon + label + count badge, then compact order cards
+   - Each order card shows: reference number (or order number), supplier name, total value
+   - Clicking a card navigates to `/purchase-orders/{id}`
+
+5. **Add realtime subscription** for `purchase_orders` table changes to auto-refresh
+
+6. **Imports**: Add `ShoppingCart`, `useNavigate`, and reuse status config icons (Clock, AlertTriangle, CheckCircle, Truck, Container)
+
+### Visibility
+- Show for all roles except pure traders (consistent with other dashboard sections)
+- Traders already have their own Trader Dashboard with pending orders
