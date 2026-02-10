@@ -427,31 +427,6 @@ export function OrderSimulationFooter({
       deficitItems.push({ productId: item.productId, neededQty, neededVolume, deficit });
     });
 
-    // Also check products from productProjections that are NOT in the draft yet
-    // but belong to this supplier
-    productProjections.forEach(pp => {
-      if (draft.items.some(i => i.productId === pp.product.id)) return; // already handled
-      
-      const product = products.find(p => p.id === pp.product.id);
-      if (!product?.qty_master_box || !product?.master_box_volume) return;
-      if (selectedSupplier !== 'all' && product.supplier_id !== selectedSupplier) return;
-
-      const relevantProjections = pp.projections.filter(
-        p => p.monthKey >= draft.monthKey && p.monthKey <= targetMonth
-      );
-      if (relevantProjections.length === 0) return;
-
-      const minBalance = Math.min(...relevantProjections.map(p => p.finalBalance));
-      if (minBalance >= 0) return;
-
-      const deficit = Math.abs(minBalance);
-      const neededBoxes = Math.ceil(deficit / product.qty_master_box);
-      const neededQty = neededBoxes * product.qty_master_box;
-      const neededVolume = neededBoxes * product.master_box_volume;
-
-      deficitItems.push({ productId: pp.product.id, neededQty, neededVolume, deficit });
-    });
-
     // Sort by deficit severity (largest first)
     deficitItems.sort((a, b) => b.deficit - a.deficit);
 
