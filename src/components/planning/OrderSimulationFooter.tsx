@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { format, subDays, isBefore, startOfDay, addMonths, startOfMonth } from 'date-fns';
+import { format, parse, subDays, isBefore, startOfDay, addMonths, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -458,7 +458,8 @@ export function OrderSimulationFooter({
       onUpdateArrivals(updates);
       toast.success(`${addedCount} produto(s) adicionado(s) para equilibrar estoque!`);
     } else {
-      toast.info('Nenhum produto precisa de reposição para o mês alvo selecionado');
+      const monthLabel = format(parse(targetMonth, 'yyyy-MM', new Date()), 'MMM/yy', { locale: ptBR });
+      toast.info(`Todos os produtos do pedido já estão equilibrados até ${monthLabel}. Nenhum ajuste necessário.`);
     }
   }, [products, productProjections, onUpdateArrivals, customContainerVolumes, getEffectiveContainerVolume, selectedSupplier]);
 
