@@ -4,8 +4,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { usePendingActionNotifications } from '@/hooks/usePendingActionNotifications';
-import { Link } from 'react-router-dom';
-import { Inbox, ArrowRight, Sparkles, Package } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Inbox, ArrowRight, Sparkles, Package, ShoppingCart, Clock, AlertTriangle, CheckCircle, Truck, Container, FileText } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { DevelopmentCard } from '@/components/development/DevelopmentCard';
 import { ItemDetailDrawer } from '@/components/development/ItemDetailDrawer';
 import { ResearchApprovalDrawer } from '@/components/new-products/ResearchApprovalDrawer';
@@ -25,8 +26,9 @@ const ROLE_LABELS: Record<string, { emoji: string; name: string }> = {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { isBuyer, isQuality, isMarketing, isTrader, isAdmin } = useUserRole();
+  const { isBuyer, isQuality, isMarketing, isTrader, isAdmin, isOnlyTrader } = useUserRole();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   
   // Enable pending action notifications
   usePendingActionNotifications();
@@ -365,6 +367,44 @@ export default function Dashboard() {
 
   const totalPendingNewProducts = pendingStep1Items.length + pendingStep2Items.length + pendingStep3Items.length;
 
+  // Purchase Orders query
+  const { data: purchaseOrders = [] } = useQuery({
+    queryKey: ['dashboard-purchase-orders'],
+    staleTime: 30 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('purchase_orders')
+        .select('id, order_number, reference_number, status, total_value_usd, created_at, suppliers(company_name)')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const PO_PIPELINE_STAGES = [
+    { key: 'draft', label: 'Draft', icon: FileText, color: 'text-muted-foreground' },
+    { key: 'pending_trader_review', label: 'Awaiting Trader', icon: Clock, color: 'text-orange-500' },
+    { key: 'pending_buyer_approval', label: 'Pending Changes', icon: AlertTriangle, color: 'text-yellow-500' },
+    { key: 'confirmed', label: 'Confirmed', icon: CheckCircle, color: 'text-green-500' },
+    { key: 'shipped', label: 'Shipped', icon: Truck, color: 'text-blue-500' },
+    { key: 'received', label: 'Received', icon: Container, color: 'text-primary' },
+  ] as const;
+
+  const ordersByStatus = useMemo(() => {
+    const map: Record<string, typeof purchaseOrders> = {};
+    for (const stage of PO_PIPELINE_STAGES) {
+      map[stage.key] = [];
+    }
+    for (const order of purchaseOrders) {
+      if (map[order.status]) {
+        map[order.status].push(order);
+      }
+    }
+    return map;
+  }, [purchaseOrders]);
+
+
+
   // Handlers
   const handleCardClick = useCallback((itemId: string) => {
     setSelectedItemId(itemId);
@@ -412,6 +452,7 @@ export default function Dashboard() {
       invalidateTimeoutRef.current = setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['development-items'] });
         queryClient.invalidateQueries({ queryKey: ['new-products'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard-purchase-orders'] });
       }, 300);
     };
 
@@ -421,6 +462,7 @@ export default function Dashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'development_card_activity' }, handleInvalidate)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'card_unresolved_mentions' }, handleInvalidate)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'new_product_approvals' }, handleInvalidate)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, handleInvalidate)
       .subscribe();
 
     return () => {
@@ -622,6 +664,61 @@ export default function Dashboard() {
             )}
           </div>
 
+        </div>
+      )}
+
+      {/* Purchase Orders Pipeline Section */}
+      {!isOnlyTrader && purchaseOrders.length > 0 && (
+        <div className="rounded-lg border bg-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5 text-primary" />
+              Purchase Orders
+              <span className="text-sm font-medium bg-primary/10 text-primary px-3 py-1 rounded-full">
+                {purchaseOrders.length}
+              </span>
+            </h2>
+            <Link to="/purchase-orders" className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+              See all <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+
+          <div className="flex gap-4 overflow-x-auto pb-2">
+            {PO_PIPELINE_STAGES.map(stage => {
+              const orders = ordersByStatus[stage.key] || [];
+              const StageIcon = stage.icon;
+              return (
+                <div key={stage.key} className="flex-shrink-0 min-w-[200px] max-w-[240px]">
+                  <div className="flex items-center gap-2 mb-2">
+                    <StageIcon className={cn("h-4 w-4", stage.color)} />
+                    <span className="text-sm font-medium">{stage.label}</span>
+                    <Badge variant="secondary" className="text-xs px-1.5 py-0">{orders.length}</Badge>
+                  </div>
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    {orders.length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic py-2">No orders</p>
+                    ) : (
+                      orders.map(order => (
+                        <button
+                          key={order.id}
+                          onClick={() => navigate(`/purchase-orders/${order.id}`)}
+                          className="w-full text-left rounded-md border bg-background p-2.5 hover:bg-muted/50 transition-colors cursor-pointer"
+                        >
+                          <p className="text-sm font-medium truncate">{order.reference_number || order.order_number}</p>
+                          <p className="text-xs text-muted-foreground truncate">{(order.suppliers as any)?.company_name}</p>
+                          {order.total_value_usd && (
+                            <p className="text-xs font-medium mt-1">
+                              ${Number(order.total_value_usd).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </p>
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
