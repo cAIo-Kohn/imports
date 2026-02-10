@@ -19,6 +19,27 @@ import { Input } from '@/components/ui/input';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/contexts/AuthContext';
 
+/**
+ * Paginated fetch helper to avoid Supabase's 1000-row limit.
+ */
+async function fetchAllPaged<T>(
+  buildQuery: () => any,
+  batchSize = 1000
+): Promise<T[]> {
+  const allData: T[] = [];
+  let page = 0;
+  let hasMore = true;
+  while (hasMore && page < 50) {
+    const from = page * batchSize;
+    const { data, error } = await buildQuery().range(from, from + batchSize - 1);
+    if (error) throw error;
+    if (data && data.length > 0) allData.push(...(data as T[]));
+    hasMore = data !== null && data.length === batchSize;
+    page++;
+  }
+  return allData;
+}
+
 interface Product {
   id: string;
   code: string;
@@ -190,31 +211,21 @@ export default function SupplierPlanning() {
     return { availableUnits: unitsForProducts, autoSelectedUnit: null };
   }, [productUnitsData, units]);
 
-  // Auto-set unit when supplier has products all in one unit
-  useEffect(() => {
-    if (autoSelectedUnit && selectedUnit === 'all') {
-      setSelectedUnit(autoSelectedUnit);
-    }
-  }, [autoSelectedUnit, selectedUnit]);
+  // Note: auto-unit-selection removed to match dashboard calculation (all units)
   
   const { data: forecasts = [], refetch: refetchForecasts } = useQuery({
     queryKey: ['sales-forecasts', selectedUnit, supplierId, productIds],
     queryFn: async () => {
       if (productIds.length === 0) return [];
-      
-      let query = supabase
-        .from('sales_forecasts')
-        .select('product_id, unit_id, year_month, quantity, version')
-        .in('product_id', productIds)
-        .order('year_month');
-      
-      if (selectedUnit !== 'all') {
-        query = query.eq('unit_id', selectedUnit);
-      }
-      
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
+      return fetchAllPaged<{ product_id: string; unit_id: string; year_month: string; quantity: number; version: string }>(() => {
+        let q = supabase
+          .from('sales_forecasts')
+          .select('product_id, unit_id, year_month, quantity, version')
+          .in('product_id', productIds)
+          .order('year_month');
+        if (selectedUnit !== 'all') q = q.eq('unit_id', selectedUnit);
+        return q;
+      });
     },
     enabled: productIds.length > 0,
   });
@@ -224,20 +235,15 @@ export default function SupplierPlanning() {
     queryKey: ['sales-history', selectedUnit, supplierId, productIds],
     queryFn: async () => {
       if (productIds.length === 0) return [];
-      
-      let query = supabase
-        .from('sales_history')
-        .select('product_id, unit_id, year_month, quantity')
-        .in('product_id', productIds)
-        .order('year_month');
-      
-      if (selectedUnit !== 'all') {
-        query = query.eq('unit_id', selectedUnit);
-      }
-      
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
+      return fetchAllPaged<{ product_id: string; unit_id: string; year_month: string; quantity: number }>(() => {
+        let q = supabase
+          .from('sales_history')
+          .select('product_id, unit_id, year_month, quantity')
+          .in('product_id', productIds)
+          .order('year_month');
+        if (selectedUnit !== 'all') q = q.eq('unit_id', selectedUnit);
+        return q;
+      });
     },
     enabled: productIds.length > 0,
   });
@@ -247,20 +253,15 @@ export default function SupplierPlanning() {
     queryKey: ['inventory-snapshots', selectedUnit, supplierId, productIds],
     queryFn: async () => {
       if (productIds.length === 0) return [];
-      
-      let query = supabase
-        .from('inventory_snapshots')
-        .select('product_id, unit_id, snapshot_date, quantity')
-        .in('product_id', productIds)
-        .order('snapshot_date', { ascending: false });
-      
-      if (selectedUnit !== 'all') {
-        query = query.eq('unit_id', selectedUnit);
-      }
-      
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
+      return fetchAllPaged<{ product_id: string; unit_id: string; snapshot_date: string; quantity: number }>(() => {
+        let q = supabase
+          .from('inventory_snapshots')
+          .select('product_id, unit_id, snapshot_date, quantity')
+          .in('product_id', productIds)
+          .order('snapshot_date', { ascending: false });
+        if (selectedUnit !== 'all') q = q.eq('unit_id', selectedUnit);
+        return q;
+      });
     },
     enabled: productIds.length > 0,
   });
@@ -270,19 +271,14 @@ export default function SupplierPlanning() {
     queryKey: ['scheduled-arrivals', selectedUnit, supplierId, productIds],
     queryFn: async () => {
       if (productIds.length === 0) return [];
-      
-      let query = supabase
-        .from('scheduled_arrivals')
-        .select('product_id, unit_id, quantity, arrival_date, process_number')
-        .in('product_id', productIds);
-      
-      if (selectedUnit !== 'all') {
-        query = query.eq('unit_id', selectedUnit);
-      }
-      
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
+      return fetchAllPaged<{ product_id: string; unit_id: string; quantity: number; arrival_date: string; process_number: string | null }>(() => {
+        let q = supabase
+          .from('scheduled_arrivals')
+          .select('product_id, unit_id, quantity, arrival_date, process_number')
+          .in('product_id', productIds);
+        if (selectedUnit !== 'all') q = q.eq('unit_id', selectedUnit);
+        return q;
+      });
     },
     enabled: productIds.length > 0,
   });
@@ -306,19 +302,16 @@ export default function SupplierPlanning() {
       const orderIds = poData.map(po => po.id);
       const orderMap = new Map(poData.map(po => [po.id, { reference_number: po.reference_number, status: po.status }]));
       
-      let itemsQuery = supabase
-        .from('purchase_order_items')
-        .select('product_id, unit_id, quantity, expected_arrival, purchase_order_id')
-        .in('purchase_order_id', orderIds)
-        .in('product_id', productIds)
-        .not('expected_arrival', 'is', null);
-      
-      if (selectedUnit !== 'all') {
-        itemsQuery = itemsQuery.eq('unit_id', selectedUnit);
-      }
-      
-      const { data: itemsData, error: itemsError } = await itemsQuery;
-      if (itemsError) throw itemsError;
+      const itemsData = await fetchAllPaged<{ product_id: string; unit_id: string; quantity: number; expected_arrival: string | null; purchase_order_id: string }>(() => {
+        let q = supabase
+          .from('purchase_order_items')
+          .select('product_id, unit_id, quantity, expected_arrival, purchase_order_id')
+          .in('purchase_order_id', orderIds)
+          .in('product_id', productIds)
+          .not('expected_arrival', 'is', null);
+        if (selectedUnit !== 'all') q = q.eq('unit_id', selectedUnit);
+        return q;
+      });
       
       return (itemsData || []).map(item => ({
         ...item,
