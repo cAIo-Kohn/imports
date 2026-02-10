@@ -93,10 +93,6 @@ function HomeRedirect({ children }: { children: React.ReactNode }) {
     return <Navigate to="/auth" replace />;
   }
 
-  // Se é apenas trader, redireciona para o painel do trader
-  if (isOnlyTrader) {
-    return <Navigate to="/trader" replace />;
-  }
 
   return <DashboardLayout>{children}</DashboardLayout>;
 }

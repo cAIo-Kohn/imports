@@ -103,6 +103,14 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={location.pathname === '/'}>
+                    <NavLink to="/">
+                      <LayoutDashboard className="h-4 w-4" />
+                      <span>Dashboard</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={location.pathname === '/trader'}>
                     <NavLink to="/trader">
                       <UserCheck className="h-4 w-4" />
