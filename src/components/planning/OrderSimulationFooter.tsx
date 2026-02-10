@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { format, subDays, isBefore, startOfDay } from 'date-fns';
+import { format, subDays, isBefore, startOfDay, addMonths, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Package, DollarSign, Scale, Trash2, Ship, ChevronUp, ChevronDown, AlertTriangle, Calendar as CalendarIcon, Plus } from 'lucide-react';
+import { Package, DollarSign, Scale, Trash2, Ship, ChevronUp, ChevronDown, AlertTriangle, Calendar as CalendarIcon, Plus, Target } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/components/ui/sidebar';
@@ -19,6 +19,9 @@ import { Progress } from '@/components/ui/progress';
 import { SimulatorQuantityInput } from './SimulatorQuantityInput';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
+import { FillContainerPopover } from './FillContainerPopover';
 
 interface ProductWithDetails {
   id: string;
@@ -76,10 +79,20 @@ interface SupplierContainerSpecs {
   container_40hq_cbm: number | null;
 }
 
+interface MonthProjectionData {
+  monthKey: string;
+  finalBalance: number;
+}
+
+interface ProductProjectionData {
+  product: { id: string; code: string; qty_master_box: number | null };
+  projections: MonthProjectionData[];
+}
+
 interface OrderSimulationFooterProps {
   pendingArrivals: Record<string, number>;
   products: ProductWithDetails[];
-  productProjections?: unknown; // Kept for backwards compatibility, no longer used
+  productProjections?: ProductProjectionData[];
   selectedSupplier: string;
   supplierName: string;
   supplierCountry: string;
@@ -149,6 +162,7 @@ function calculateRoundedETD(arrivalMonthKey: string, leadTimeDays: number): Dat
 export function OrderSimulationFooter({
   pendingArrivals,
   products,
+  productProjections,
   selectedSupplier,
   supplierName,
   supplierCountry,
@@ -373,6 +387,118 @@ export function OrderSimulationFooter({
       toast.success(`Container preenchido! +${volumePerProduct.toFixed(2)}m³ por produto`);
     }
   }, [products, onUpdateArrivals, customContainerVolumes, getEffectiveContainerVolume]);
+
+  // Fill container by target month - covers deficits until target month
+  const handleFillByTargetMonth = useCallback((draft: OrderDraft, targetMonth: string) => {
+    if (!onUpdateArrivals || !productProjections) return;
+    
+    const effectiveVolume = customContainerVolumes[draft.monthKey] ?? getEffectiveContainerVolume(draft.containerType);
+    const partialVolume = draft.totalVolume % effectiveVolume;
+    let remainingVolume = effectiveVolume - partialVolume;
+    
+    if (remainingVolume <= 0 || remainingVolume >= effectiveVolume) return;
+
+    // Build a list of products that need more quantity to cover deficits
+    type DeficitItem = { productId: string; neededQty: number; neededVolume: number; deficit: number };
+    const deficitItems: DeficitItem[] = [];
+
+    draft.items.forEach(item => {
+      const product = products.find(p => p.id === item.productId);
+      if (!product?.qty_master_box || !product?.master_box_volume) return;
+
+      const pp = productProjections.find(p => p.product.id === item.productId);
+      if (!pp) return;
+
+      // Find the minimum finalBalance from the draft's arrival month through targetMonth
+      const relevantProjections = pp.projections.filter(
+        p => p.monthKey >= draft.monthKey && p.monthKey <= targetMonth
+      );
+
+      if (relevantProjections.length === 0) return;
+
+      const minBalance = Math.min(...relevantProjections.map(p => p.finalBalance));
+      if (minBalance >= 0) return; // No deficit
+
+      const deficit = Math.abs(minBalance);
+      const neededBoxes = Math.ceil(deficit / product.qty_master_box);
+      const neededQty = neededBoxes * product.qty_master_box;
+      const neededVolume = neededBoxes * product.master_box_volume;
+
+      deficitItems.push({ productId: item.productId, neededQty, neededVolume, deficit });
+    });
+
+    // Also check products from productProjections that are NOT in the draft yet
+    // but belong to this supplier
+    productProjections.forEach(pp => {
+      if (draft.items.some(i => i.productId === pp.product.id)) return; // already handled
+      
+      const product = products.find(p => p.id === pp.product.id);
+      if (!product?.qty_master_box || !product?.master_box_volume) return;
+      if (selectedSupplier !== 'all' && product.supplier_id !== selectedSupplier) return;
+
+      const relevantProjections = pp.projections.filter(
+        p => p.monthKey >= draft.monthKey && p.monthKey <= targetMonth
+      );
+      if (relevantProjections.length === 0) return;
+
+      const minBalance = Math.min(...relevantProjections.map(p => p.finalBalance));
+      if (minBalance >= 0) return;
+
+      const deficit = Math.abs(minBalance);
+      const neededBoxes = Math.ceil(deficit / product.qty_master_box);
+      const neededQty = neededBoxes * product.qty_master_box;
+      const neededVolume = neededBoxes * product.master_box_volume;
+
+      deficitItems.push({ productId: pp.product.id, neededQty, neededVolume, deficit });
+    });
+
+    // Sort by deficit severity (largest first)
+    deficitItems.sort((a, b) => b.deficit - a.deficit);
+
+    const updates: Record<string, number> = {};
+    let addedCount = 0;
+
+    for (const item of deficitItems) {
+      if (remainingVolume <= 0) break;
+
+      const product = products.find(p => p.id === item.productId)!;
+      let volumeToAdd = Math.min(item.neededVolume, remainingVolume);
+      
+      // Round to whole master boxes
+      const boxesToAdd = Math.max(1, Math.floor(volumeToAdd / product.master_box_volume!));
+      const actualVolume = boxesToAdd * product.master_box_volume!;
+      const actualQty = boxesToAdd * product.qty_master_box!;
+
+      if (actualVolume > 0) {
+        const key = `${item.productId}::${draft.monthKey}`;
+        const existingItem = draft.items.find(i => i.productId === item.productId);
+        const existingQty = existingItem?.quantity || 0;
+        updates[key] = existingQty + actualQty;
+        remainingVolume -= actualVolume;
+        addedCount++;
+      }
+    }
+
+    if (Object.keys(updates).length > 0) {
+      onUpdateArrivals(updates);
+      toast.success(`${addedCount} produto(s) adicionado(s) para equilibrar estoque!`);
+    } else {
+      toast.info('Nenhum produto precisa de reposição para o mês alvo selecionado');
+    }
+  }, [products, productProjections, onUpdateArrivals, customContainerVolumes, getEffectiveContainerVolume, selectedSupplier]);
+
+  // Month options for target month selector
+  const fillMonthOptions = useMemo(() => {
+    const today = startOfMonth(new Date());
+    const months = [];
+    for (let i = 1; i <= 18; i++) {
+      const date = addMonths(today, i);
+      const key = format(date, 'yyyy-MM-dd');
+      const label = format(date, 'MMM/yy', { locale: ptBR });
+      months.push({ key, label });
+    }
+    return months;
+  }, []);
 
   const createOrderMutation = useMutation({
     mutationFn: async (draft: OrderDraft) => {
@@ -741,20 +867,16 @@ export function OrderSimulationFooter({
                           {renderContainerVisualization(draft)}
                         </div>
                         
-                        {/* Fill container button - inline */}
+                        {/* Fill container popover - two strategies */}
                         {draft.partialContainerPercent > 0 && onUpdateArrivals && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleFillContainer(draft);
-                            }}
-                            className="h-7 text-xs"
-                          >
-                            <Plus className="mr-1 h-3 w-3" />
-                            +{remainingVolume}m³
-                          </Button>
+                          <FillContainerPopover
+                            draft={draft}
+                            remainingVolume={remainingVolume}
+                            monthOptions={fillMonthOptions}
+                            onFillCBM={() => handleFillContainer(draft)}
+                            onFillByMonth={(targetMonth) => handleFillByTargetMonth(draft, targetMonth)}
+                            hasProjections={!!productProjections && productProjections.length > 0}
+                          />
                         )}
                       </div>
                     </div>
