@@ -668,7 +668,7 @@ export default function Dashboard() {
       )}
 
       {/* Purchase Orders Pipeline Section */}
-      {!isOnlyTrader && purchaseOrders.length > 0 && (
+      {purchaseOrders.length > 0 && (
         <div className="rounded-lg border bg-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold flex items-center gap-2">
