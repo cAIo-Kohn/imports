@@ -493,7 +493,8 @@ export default function SupplierPlanning() {
         forecastsByProduct.set(key, new Map());
       }
       const monthKey = f.year_month;
-      forecastsByProduct.get(key)!.set(monthKey, f.quantity);
+      const existingForecast = forecastsByProduct.get(key)!.get(monthKey) || 0;
+      forecastsByProduct.get(key)!.set(monthKey, existingForecast + f.quantity);
     });
 
     const historyByProduct = new Map<string, Map<string, number>>();
@@ -502,7 +503,8 @@ export default function SupplierPlanning() {
       if (!historyByProduct.has(key)) {
         historyByProduct.set(key, new Map());
       }
-      historyByProduct.get(key)!.set(h.year_month, h.quantity);
+      const existingHistory = historyByProduct.get(key)!.get(h.year_month) || 0;
+      historyByProduct.get(key)!.set(h.year_month, existingHistory + h.quantity);
     });
 
     const inventoryByProduct = new Map<string, number>();
