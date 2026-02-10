@@ -247,10 +247,8 @@ export default function DemandPlanning() {
       const supplierProducts = products.filter(p => p.supplier_id === supplier.id);
       
       // Track ruptures per period with product details
-      const rupturesIn3m: RupturedProduct[] = [];
-      const rupturesIn6m: RupturedProduct[] = [];
-      const rupturesIn9m: RupturedProduct[] = [];
-      const rupturesIn12m: RupturedProduct[] = [];
+      const rupturesUnder6m: RupturedProduct[] = [];
+      const ruptures6to12m: RupturedProduct[] = [];
 
       supplierProducts.forEach(product => {
         const initialStock = latestInventoryByProduct.get(product.id) || 0;
@@ -268,14 +266,14 @@ export default function DemandPlanning() {
           const forecast = productForecasts.get(monthKey) || 0;
           const uploadedArrivals = productArrivals.get(monthKey) || 0;
           const appOrderArrivals = productAppOrders.get(monthKey) || 0;
-          const arrivals = uploadedArrivals + appOrderArrivals; // SOMA AMBAS AS FONTES
+          const arrivals = uploadedArrivals + appOrderArrivals;
           
           balance = balance - forecast + arrivals;
           
           if (balance < 0 && firstRuptureMonth === null) {
             firstRuptureMonth = i;
             firstRuptureMonthKey = monthKey;
-            break; // We only need the first rupture month
+            break;
           }
         }
 
@@ -287,14 +285,10 @@ export default function DemandPlanning() {
             firstRuptureMonthKey,
           };
           
-          if (firstRuptureMonth < 3) {
-            rupturesIn3m.push(ruptureInfo);
-          } else if (firstRuptureMonth < 6) {
-            rupturesIn6m.push(ruptureInfo);
-          } else if (firstRuptureMonth < 9) {
-            rupturesIn9m.push(ruptureInfo);
+          if (firstRuptureMonth < 6) {
+            rupturesUnder6m.push(ruptureInfo);
           } else {
-            rupturesIn12m.push(ruptureInfo);
+            ruptures6to12m.push(ruptureInfo);
           }
         }
       });
@@ -312,19 +306,15 @@ export default function DemandPlanning() {
       });
 
       const periods = {
-        threeMonths: createPeriodStats('3 months', rupturesIn3m, 'critical'),
-        sixMonths: createPeriodStats('6 months', rupturesIn6m, 'alert'),
-        nineMonths: createPeriodStats('9 months', rupturesIn9m, 'attention'),
-        twelveMonths: createPeriodStats('12 months', rupturesIn12m, 'ok'),
+        underSixMonths: createPeriodStats('<6 months', rupturesUnder6m, 'critical'),
+        sixToTwelveMonths: createPeriodStats('6-12 months', ruptures6to12m, 'attention'),
       };
 
       // Determine overall status (based on earliest rupture)
       let overallStatus: 'critical' | 'alert' | 'attention' | 'ok' = 'ok';
-      if (rupturesIn3m.length > 0) {
+      if (rupturesUnder6m.length > 0) {
         overallStatus = 'critical';
-      } else if (rupturesIn6m.length > 0) {
-        overallStatus = 'alert';
-      } else if (rupturesIn9m.length > 0) {
+      } else if (ruptures6to12m.length > 0) {
         overallStatus = 'attention';
       }
 
@@ -354,10 +344,8 @@ export default function DemandPlanning() {
           return statusOrder[a.stats.overallStatus] - statusOrder[b.stats.overallStatus];
         }
         // Then by total ruptures
-        const aRuptures = a.stats.periods.threeMonths.ruptureCount + a.stats.periods.sixMonths.ruptureCount + 
-                          a.stats.periods.nineMonths.ruptureCount + a.stats.periods.twelveMonths.ruptureCount;
-        const bRuptures = b.stats.periods.threeMonths.ruptureCount + b.stats.periods.sixMonths.ruptureCount + 
-                          b.stats.periods.nineMonths.ruptureCount + b.stats.periods.twelveMonths.ruptureCount;
+        const aRuptures = a.stats.periods.underSixMonths.ruptureCount + a.stats.periods.sixToTwelveMonths.ruptureCount;
+        const bRuptures = b.stats.periods.underSixMonths.ruptureCount + b.stats.periods.sixToTwelveMonths.ruptureCount;
         if (aRuptures !== bRuptures) {
           return bRuptures - aRuptures;
         }
@@ -368,11 +356,10 @@ export default function DemandPlanning() {
   // Overall stats
   const overallStats = useMemo(() => {
     const totalProducts = supplierHealthData.reduce((sum, s) => sum + s.stats.totalProducts, 0);
-    const totalCritical = supplierHealthData.reduce((sum, s) => sum + s.stats.periods.threeMonths.ruptureCount, 0);
-    const totalAlert = supplierHealthData.reduce((sum, s) => sum + s.stats.periods.sixMonths.ruptureCount, 0);
-    const totalAttention = supplierHealthData.reduce((sum, s) => sum + s.stats.periods.nineMonths.ruptureCount, 0);
-    const totalOk = totalProducts - totalCritical - totalAlert - totalAttention;
-    return { totalProducts, totalCritical, totalAlert, totalAttention, totalOk: Math.max(0, totalOk) };
+    const totalCritical = supplierHealthData.reduce((sum, s) => sum + s.stats.periods.underSixMonths.ruptureCount, 0);
+    const totalAttention = supplierHealthData.reduce((sum, s) => sum + s.stats.periods.sixToTwelveMonths.ruptureCount, 0);
+    const totalOk = totalProducts - totalCritical - totalAttention;
+    return { totalProducts, totalCritical, totalAttention, totalOk: Math.max(0, totalOk) };
   }, [supplierHealthData]);
 
   // Handle refresh
@@ -405,8 +392,8 @@ export default function DemandPlanning() {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-64" />
-        <div className="grid grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
+        <div className="grid grid-cols-3 gap-4">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
         <div className="space-y-3">
         {[1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
@@ -507,7 +494,7 @@ export default function DemandPlanning() {
           <CardDescription>Consolidated view by planning horizon</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10">
                 <Package className="h-5 w-5 text-primary" />
@@ -523,16 +510,7 @@ export default function DemandPlanning() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-destructive">{overallStats.totalCritical}</p>
-                <p className="text-xs text-muted-foreground">critical (3m)</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-orange-500/10">
-                <AlertTriangle className="h-5 w-5 text-orange-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-orange-500">{overallStats.totalAlert}</p>
-                <p className="text-xs text-muted-foreground">alert (6m)</p>
+                <p className="text-xs text-muted-foreground">ruptura &lt;6m</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -541,7 +519,7 @@ export default function DemandPlanning() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-yellow-500">{overallStats.totalAttention}</p>
-                <p className="text-xs text-muted-foreground">attention (9m)</p>
+                <p className="text-xs text-muted-foreground">ruptura 6-12m</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -556,7 +534,7 @@ export default function DemandPlanning() {
           </div>
           <HealthBar
             critical={overallStats.totalCritical}
-            warning={overallStats.totalAlert + overallStats.totalAttention}
+            warning={overallStats.totalAttention}
             healthy={overallStats.totalOk}
             className="mt-4"
           />

@@ -15,10 +15,8 @@ export interface SupplierHealthRowData {
   stats: {
     totalProducts: number;
     periods: {
-      threeMonths: PeriodStats;
-      sixMonths: PeriodStats;
-      nineMonths: PeriodStats;
-      twelveMonths: PeriodStats;
+      underSixMonths: PeriodStats;
+      sixToTwelveMonths: PeriodStats;
     };
     overallStatus: 'critical' | 'alert' | 'attention' | 'ok';
   };
@@ -92,10 +90,8 @@ export function SupplierHealthRow({ data }: SupplierHealthRowProps) {
 
         {/* Period Indicators */}
         <div className="flex gap-2 flex-1 justify-center">
-          <PeriodIndicator label="3m" stats={stats.periods.threeMonths} />
-          <PeriodIndicator label="6m" stats={stats.periods.sixMonths} />
-          <PeriodIndicator label="9m" stats={stats.periods.nineMonths} />
-          <PeriodIndicator label="12m" stats={stats.periods.twelveMonths} />
+          <PeriodIndicator label="<6m" stats={stats.periods.underSixMonths} />
+          <PeriodIndicator label="6-12m" stats={stats.periods.sixToTwelveMonths} />
         </div>
 
         {/* Pending Orders */}
