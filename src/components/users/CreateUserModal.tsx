@@ -67,12 +67,14 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [selectedRoles, setSelectedRoles] = useState<AppRole[]>([]);
 
   const resetForm = () => {
     setFullName('');
     setEmail('');
     setPassword('');
+    setConfirmPassword('');
     setSelectedRoles([]);
   };
 
@@ -92,6 +94,15 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
       toast({
         title: 'Password too short',
         description: 'Password must have at least 6 characters.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast({
+        title: 'Passwords do not match',
+        description: 'Please make sure both passwords are the same.',
         variant: 'destructive',
       });
       return;
@@ -186,6 +197,17 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Minimum 6 characters"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="confirmPassword">Confirm password *</Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Repeat the password"
             />
           </div>
 

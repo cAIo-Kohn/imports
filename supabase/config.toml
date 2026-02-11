@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.get-role-users]
 verify_jwt = false
+
+[functions.update-user-password]
+verify_jwt = false
