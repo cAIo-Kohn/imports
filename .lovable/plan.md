@@ -1,28 +1,47 @@
 
-## Replace Logo with MOR Image Across the App
+
+## Add Password Change for Users (Admin)
 
 ### What Changes
-Replace the Package icon currently used as logo in the login page, sidebar header, and favicon with the uploaded MOR logo image. Apply Apple-style rounded corners (`rounded-[22%]`).
+Add the ability for admins to change a user's password from the Edit User modal. Both the Create User and Edit User forms will require double password confirmation to prevent typos.
 
 ### Steps
 
-**1. Copy the uploaded image to the project**
-- Copy `user-uploads://Design_sem_nome_8.png` to `src/assets/mor-logo.png` (for React components)
-- Copy to `public/mor-logo.png` (for favicon in index.html)
+**1. Create a new edge function `update-user-password`**
+- New file: `supabase/functions/update-user-password/index.ts`
+- Verifies the caller is an admin (same pattern as `create-user`)
+- Uses `supabaseAdmin.auth.admin.updateUserById()` to change the password
+- Accepts `{ userId, password }` in the request body
 
-**2. Update `src/pages/Auth.tsx`**
-- Import the logo: `import morLogo from "@/assets/mor-logo.png"`
-- Replace the `<Package>` icon block (lines 81-84) with an `<img>` tag using the logo, sized ~56px (`h-14 w-14`), with `rounded-[22%]` for Apple-style corners
+**2. Update `src/components/users/CreateUserModal.tsx`**
+- Add a "Confirm password" field below the existing password field
+- Validate that both passwords match before submitting
+- Show an error toast if passwords don't match
 
-**3. Update `src/components/layout/AppSidebar.tsx`**
-- Import the logo: `import morLogo from "@/assets/mor-logo.png"`
-- Replace `<Package className="h-8 w-8 ...">` (line 46) with an `<img>` tag sized 32px (`h-8 w-8`), with `rounded-[22%]`
+**3. Update `src/components/users/EditUserRoleModal.tsx`**
+- Add an optional "New Password" section with two fields (new password + confirm)
+- If left empty, password is not changed (only roles are updated as before)
+- If filled, call the new `update-user-password` edge function after updating roles
+- Validate minimum 6 characters and that both fields match
 
-**4. Update `index.html`**
-- Change the favicon `<link>` to reference `/mor-logo.png`
+### Technical Details
 
-### Sizing
-- **Sidebar**: 32x32px (h-8 w-8) -- matches current Package icon size
-- **Login page**: 56x56px (h-14 w-14) -- matches current icon container size
-- **Favicon**: browser default (from public/)
-- All with `rounded-[22%]` for Apple-style superellipse corners
+**Edge function (`update-user-password/index.ts`):**
+- CORS headers, admin auth check (same pattern as existing functions)
+- Uses `supabaseAdmin.auth.admin.updateUserById(userId, { password })` from the Supabase Admin API
+- Validates password length server-side (min 6 chars)
+
+**CreateUserModal changes:**
+- Add `confirmPassword` state
+- Add confirm password input field after the password field
+- Add validation: `password !== confirmPassword` shows error toast
+- Reset `confirmPassword` in `resetForm()`
+
+**EditUserRoleModal changes:**
+- Add `newPassword` and `confirmPassword` state variables
+- Add collapsible "Change Password" section with two input fields
+- In `handleSubmit`: if `newPassword` is filled, validate match and length, then call the edge function
+- Reset password fields when modal opens/closes
+
+**Config update (`supabase/config.toml`):**
+- Add `[functions.update-user-password]` with `verify_jwt = false` (validated in code)
