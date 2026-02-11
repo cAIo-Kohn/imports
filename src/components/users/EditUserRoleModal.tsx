@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Shield, ShoppingCart, TrendingUp, Eye, CheckCircle, Megaphone } from 'lucide-react';
+import { Shield, ShoppingCart, TrendingUp, Eye, CheckCircle, Megaphone, KeyRound } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { AppRole } from '@/hooks/useUserRole';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -14,6 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { Separator } from '@/components/ui/separator';
 
 interface UserWithRoles {
   id: string;
@@ -73,10 +75,14 @@ export function EditUserRoleModal({ open, onOpenChange, user, onSuccess }: EditU
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<AppRole[]>([]);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   useEffect(() => {
     if (user) {
       setSelectedRoles(user.roles);
+      setNewPassword('');
+      setConfirmPassword('');
     }
   }, [user]);
 
@@ -93,6 +99,25 @@ export function EditUserRoleModal({ open, onOpenChange, user, onSuccess }: EditU
         variant: 'destructive',
       });
       return;
+    }
+
+    if (newPassword) {
+      if (newPassword.length < 6) {
+        toast({
+          title: 'Password too short',
+          description: 'Password must have at least 6 characters.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        toast({
+          title: 'Passwords do not match',
+          description: 'Please make sure both passwords are the same.',
+          variant: 'destructive',
+        });
+        return;
+      }
     }
 
     setLoading(true);
@@ -118,9 +143,21 @@ export function EditUserRoleModal({ open, onOpenChange, user, onSuccess }: EditU
 
       if (insertError) throw insertError;
 
+      // Update password if provided
+      if (newPassword) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const response = await supabase.functions.invoke('update-user-password', {
+          body: { userId: user.user_id, password: newPassword },
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        });
+        if (response.error) throw response.error;
+        const respData = response.data;
+        if (respData?.error) throw new Error(respData.error);
+      }
+
       toast({
         title: 'Permissions updated',
-        description: `Permissions for ${user.full_name || user.email} were updated.`,
+        description: `Permissions for ${user.full_name || user.email} were updated.${newPassword ? ' Password changed.' : ''}`,
       });
 
       onSuccess();
@@ -184,6 +221,29 @@ export function EditUserRoleModal({ open, onOpenChange, user, onSuccess }: EditU
             </div>
           </div>
 
+          <Separator />
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-muted-foreground" />
+              <Label>Change Password</Label>
+              <span className="text-xs text-muted-foreground">(optional)</span>
+            </div>
+            <div className="space-y-2">
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="New password (min 6 characters)"
+              />
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+              />
+            </div>
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
