@@ -17,7 +17,7 @@ import DemandPlanning from "./pages/DemandPlanning";
 import SupplierPlanning from "./pages/SupplierPlanning";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import PurchaseOrderDetails from "./pages/PurchaseOrderDetails";
-import TraderDashboard from "./pages/TraderDashboard";
+
 import Users from "./pages/Users";
 import Development from "./pages/Development";
 import NewProducts from "./pages/NewProducts";
@@ -58,7 +58,7 @@ function RoleProtectedRoute({
   redirectTo?: string;
 }) {
   const { user, loading } = useAuth();
-  const { roles, isLoading: rolesLoading, isOnlyTrader } = useUserRole();
+  const { roles, isLoading: rolesLoading } = useUserRole();
 
   if (loading || rolesLoading) {
     return <LoadingSpinner />;
@@ -72,9 +72,7 @@ function RoleProtectedRoute({
   const hasAccess = roles.some(role => allowedRoles.includes(role));
   
   if (!hasAccess) {
-    // Se for apenas trader, redireciona para /trader
-    const finalRedirect = isOnlyTrader ? '/trader' : redirectTo;
-    return <Navigate to={finalRedirect} replace />;
+    return <Navigate to={redirectTo} replace />;
   }
 
   return <DashboardLayout>{children}</DashboardLayout>;
@@ -173,12 +171,6 @@ const AppRoutes = () => (
       </RoleProtectedRoute>
     } />
     
-    {/* Rota do trader - acessível por trader e admin */}
-    <Route path="/trader" element={
-      <RoleProtectedRoute allowedRoles={['admin', 'trader']}>
-        <TraderDashboard />
-      </RoleProtectedRoute>
-    } />
     
     {/* Rota de usuários - apenas admin */}
     <Route path="/users" element={

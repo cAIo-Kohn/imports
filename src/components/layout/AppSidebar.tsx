@@ -1,4 +1,4 @@
-import { Package, Factory, Building2, FolderTree, LayoutDashboard, LogOut, Settings, TrendingUp, ShoppingCart, UserCheck, Users, Lightbulb, Sparkles } from 'lucide-react';
+import { Package, Factory, Building2, FolderTree, LayoutDashboard, LogOut, Settings, TrendingUp, ShoppingCart, Users, Lightbulb, Sparkles } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -107,14 +107,6 @@ export function AppSidebar() {
                     <NavLink to="/">
                       <LayoutDashboard className="h-4 w-4" />
                       <span>Dashboard</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={location.pathname === '/trader'}>
-                    <NavLink to="/trader">
-                      <UserCheck className="h-4 w-4" />
-                      <span>Trader Dashboard</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
