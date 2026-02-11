@@ -24,7 +24,7 @@ function formatDateHeader(dateStr: string): string {
 export function ChatTimeline({ cardId, cardTitle }: ChatTimelineProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [quotedMessage, setQuotedMessage] = useState<ChatMessageData | null>(null);
 
   // Fetch all messages for the card (oldest first for WhatsApp-style)
@@ -89,8 +89,9 @@ export function ChatTimeline({ cardId, cardTitle }: ChatTimelineProps) {
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const viewport = scrollContainerRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight;
     }
   }, [messages.length]);
 
@@ -132,7 +133,7 @@ export function ChatTimeline({ cardId, cardTitle }: ChatTimelineProps) {
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* Messages Area - scrolls independently */}
-      <ScrollArea className="flex-1" ref={scrollRef}>
+      <ScrollArea className="flex-1" ref={scrollContainerRef}>
         <div className="p-4 space-y-4">
           {sortedDates.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
@@ -180,8 +181,9 @@ export function ChatTimeline({ cardId, cardTitle }: ChatTimelineProps) {
         onMessageSent={() => {
           // Scroll to bottom after sending
           setTimeout(() => {
-            if (scrollRef.current) {
-              scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            const viewport = scrollContainerRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+            if (viewport) {
+              viewport.scrollTop = viewport.scrollHeight;
             }
           }, 100);
         }}
