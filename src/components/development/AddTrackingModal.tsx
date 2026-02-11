@@ -113,7 +113,7 @@ export function AddTrackingModal({
         task.card_id,
         'sample_tracking_added',
         user.id,
-        'Tracking added - awaiting buyer to confirm arrival',
+        'Tracking added - awaiting comex to confirm arrival',
         'trader',
         'buyer',
         task.id

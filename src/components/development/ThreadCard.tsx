@@ -58,10 +58,10 @@ interface ThreadCardProps {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  buyer: 'Buyer',
+  buyer: 'Comex',
   marketing: 'Marketing',
   quality: 'Quality',
-  trader: 'Trader',
+  trader: 'ARC',
   admin: 'Admin',
   viewer: 'Viewer',
 };

@@ -25,9 +25,9 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 const ROLE_LABELS: Record<string, string> = {
-  buyer: '🛒 Buyer',
+  buyer: '🛒 Comex',
   quality: '✅ Quality',
-  trader: '🌏 Trader',
+  trader: '🌏 ARC',
   marketing: '📢 Marketing',
   admin: '⚙️ Admin',
 };

@@ -100,7 +100,7 @@ export function AppSidebar() {
         {/* Trader - show for trader and admin */}
         {(isTrader || isAdmin) && (
           <SidebarGroup>
-            <SidebarGroupLabel>Trader</SidebarGroupLabel>
+            <SidebarGroupLabel>ARC</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>

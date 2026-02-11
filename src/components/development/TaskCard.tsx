@@ -17,8 +17,8 @@ interface TaskCardProps {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  buyer: 'Buyer',
-  trader: 'Trader',
+  buyer: 'Comex',
+  trader: 'ARC',
   quality: 'Quality',
   marketing: 'Marketing',
 };

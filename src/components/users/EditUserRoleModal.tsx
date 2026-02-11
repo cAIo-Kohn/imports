@@ -41,7 +41,7 @@ const roleOptions: { value: AppRole; label: string; description: string; icon: t
   },
   {
     value: 'buyer',
-    label: 'Buyer',
+    label: 'Comex',
     description: 'Products, suppliers, planning and orders',
     icon: ShoppingCart,
   },
@@ -59,8 +59,8 @@ const roleOptions: { value: AppRole; label: string; description: string; icon: t
   },
   {
     value: 'trader',
-    label: 'Trader',
-    description: 'Trader dashboard and order editing',
+    label: 'ARC',
+    description: 'ARC dashboard and order editing',
     icon: TrendingUp,
   },
   {

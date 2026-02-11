@@ -361,13 +361,13 @@ export function TraderHeaderApprovals({
             <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
               <div className="flex items-center gap-2 text-sm font-medium text-blue-700 dark:text-blue-300">
                 <Users className="h-4 w-4" />
-                Buyer fez {pendingCounterProposals.length} contra-proposta(s)
+                Comex fez {pendingCounterProposals.length} contra-proposta(s)
               </div>
               <div className="mt-2 space-y-1">
                 {pendingCounterProposals.map(cp => (
                   <div key={cp.id} className="text-sm text-blue-600 dark:text-blue-400">
                     <span className="font-medium">{cp.field_name === 'etd' ? 'ETD' : cp.field_name}:</span>{' '}
-                    Buyer sugere{' '}
+                    Comex sugere{' '}
                     <span className="font-semibold">
                       {cp.field_name === 'etd' 
                         ? format(new Date(cp.new_value + 'T12:00:00'), "dd/MM/yyyy", { locale: ptBR })

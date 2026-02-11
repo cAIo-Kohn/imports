@@ -11,10 +11,10 @@ interface RoleColor {
 
 const DEFAULT_COLORS: Record<string, { color_hex: string; label: string }> = {
   admin: { color_hex: '#8B5CF6', label: 'Admin' },
-  buyer: { color_hex: '#3B82F6', label: 'Buyer' },
+  buyer: { color_hex: '#3B82F6', label: 'Comex' },
   quality: { color_hex: '#14B8A6', label: 'Quality' },
   marketing: { color_hex: '#EC4899', label: 'Marketing' },
-  trader: { color_hex: '#10B981', label: 'Trader' },
+  trader: { color_hex: '#10B981', label: 'ARC' },
   viewer: { color_hex: '#6B7280', label: 'Viewer' },
 };
 

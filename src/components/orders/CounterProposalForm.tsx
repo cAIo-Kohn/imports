@@ -63,7 +63,7 @@ export function CounterProposalForm({
   return (
     <div className="mt-3 p-4 border rounded-lg bg-background space-y-3">
       <div className="text-sm text-muted-foreground">
-        Valor atual do trader: <span className="font-medium text-foreground">{formatCurrentValue()}</span>
+        Valor atual do ARC: <span className="font-medium text-foreground">{formatCurrentValue()}</span>
       </div>
       
       <div className="space-y-2">
@@ -133,7 +133,7 @@ export function CounterProposalForm({
           ) : (
             <Send className="h-4 w-4 mr-1" />
           )}
-          Enviar ao Trader
+          Enviar ao ARC
         </Button>
       </div>
     </div>

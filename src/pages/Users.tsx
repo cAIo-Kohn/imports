@@ -42,10 +42,10 @@ interface UserWithRoles {
 
 const roleConfig: Record<AppRole, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof Shield }> = {
   admin: { label: 'Admin', variant: 'destructive', icon: Shield },
-  buyer: { label: 'Buyer', variant: 'default', icon: ShoppingCart },
+  buyer: { label: 'Comex', variant: 'default', icon: ShoppingCart },
   quality: { label: 'Quality', variant: 'secondary', icon: CheckCircle },
   marketing: { label: 'Marketing', variant: 'secondary', icon: Megaphone },
-  trader: { label: 'Trader', variant: 'secondary', icon: TrendingUp },
+  trader: { label: 'ARC', variant: 'secondary', icon: TrendingUp },
   viewer: { label: 'Viewer', variant: 'outline', icon: Eye },
 };
 
