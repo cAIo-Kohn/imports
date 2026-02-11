@@ -1,23 +1,28 @@
 
-
-## Allow Traders to See the Main Dashboard
+## Replace Logo with MOR Image Across the App
 
 ### What Changes
-Currently, users with only the "trader" role are automatically redirected from `/` to `/trader` (Trader Dashboard) and never see the main Dashboard with pending cards, new products workflow, and the purchase orders pipeline. This change will let traders access the same Dashboard as everyone else.
+Replace the Package icon currently used as logo in the login page, sidebar header, and favicon with the uploaded MOR logo image. Apply Apple-style rounded corners (`rounded-[22%]`).
 
-### Changes Required
+### Steps
 
-**File: `src/App.tsx`**
-- Remove the automatic redirect in `HomeRedirect` that sends `isOnlyTrader` users to `/trader`
-- Traders will now land on the main Dashboard at `/` like all other roles
+**1. Copy the uploaded image to the project**
+- Copy `user-uploads://Design_sem_nome_8.png` to `src/assets/mor-logo.png` (for React components)
+- Copy to `public/mor-logo.png` (for favicon in index.html)
 
-**File: `src/pages/Dashboard.tsx`**
-- Remove the `!isOnlyTrader` guard on the "Purchase Orders Pipeline" section (line 671), so traders can also see orders in the pipeline
-- The other Dashboard sections (pending cards, new products workflow) already render based on department logic and will naturally show trader-relevant content
+**2. Update `src/pages/Auth.tsx`**
+- Import the logo: `import morLogo from "@/assets/mor-logo.png"`
+- Replace the `<Package>` icon block (lines 81-84) with an `<img>` tag using the logo, sized ~56px (`h-14 w-14`), with `rounded-[22%]` for Apple-style corners
 
-**File: `src/components/layout/AppSidebar.tsx`**
-- Add the Dashboard link to the Trader sidebar section so traders can navigate back to it
-- Keep the Trader Dashboard link as well, giving traders access to both views
+**3. Update `src/components/layout/AppSidebar.tsx`**
+- Import the logo: `import morLogo from "@/assets/mor-logo.png"`
+- Replace `<Package className="h-8 w-8 ...">` (line 46) with an `<img>` tag sized 32px (`h-8 w-8`), with `rounded-[22%]`
 
-### Result
-Traders will see the full Dashboard on login, including their pending development cards, purchase orders pipeline, and can still navigate to the dedicated Trader Dashboard for order approvals via the sidebar.
+**4. Update `index.html`**
+- Change the favicon `<link>` to reference `/mor-logo.png`
+
+### Sizing
+- **Sidebar**: 32x32px (h-8 w-8) -- matches current Package icon size
+- **Login page**: 56x56px (h-14 w-14) -- matches current icon container size
+- **Favicon**: browser default (from public/)
+- All with `rounded-[22%]` for Apple-style superellipse corners
