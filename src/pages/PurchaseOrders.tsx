@@ -39,7 +39,7 @@ interface PurchaseOrder {
 
 const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon?: typeof Clock }> = {
   draft: { label: 'Draft', variant: 'secondary' },
-  pending_trader_review: { label: 'Awaiting Trader', variant: 'outline', icon: Clock },
+  pending_trader_review: { label: 'Awaiting ARC', variant: 'outline', icon: Clock },
   pending_buyer_approval: { label: 'Pending Changes', variant: 'outline', icon: AlertTriangle },
   confirmed: { label: 'Confirmed', variant: 'default', icon: CheckCircle },
   shipped: { label: 'Shipped', variant: 'outline', icon: Truck },
@@ -193,7 +193,7 @@ export default function PurchaseOrders() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Awaiting Trader</CardTitle>
+            <CardTitle className="text-sm font-medium">Awaiting ARC</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -247,7 +247,7 @@ export default function PurchaseOrders() {
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="pending_trader_review">Awaiting Trader</SelectItem>
+                <SelectItem value="pending_trader_review">Awaiting ARC</SelectItem>
                 <SelectItem value="pending_buyer_approval">Pending Changes</SelectItem>
                 <SelectItem value="confirmed">Confirmed</SelectItem>
                 <SelectItem value="shipped">Shipped</SelectItem>

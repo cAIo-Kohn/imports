@@ -33,8 +33,8 @@ interface RequestCommercialDataModalProps {
 }
 
 const ROLES = [
-  { value: 'trader', label: 'Trader (Team)' },
-  { value: 'buyer', label: 'Buyer (Team)' },
+  { value: 'trader', label: 'ARC (Team)' },
+  { value: 'buyer', label: 'Comex (Team)' },
   { value: 'quality', label: 'Quality (Team)' },
   { value: 'marketing', label: 'Marketing (Team)' },
 ];

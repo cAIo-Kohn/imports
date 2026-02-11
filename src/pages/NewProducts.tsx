@@ -193,7 +193,7 @@ export default function NewProducts() {
       <WorkflowStepSection
         title="Step 3: Ready for Order"
         subtitle="Products ready to be added to purchase orders"
-        responsibleRole="Buyer"
+        responsibleRole="Comex"
         items={step3}
         onOpenCard={handleOpenCard}
         colorScheme="blue"

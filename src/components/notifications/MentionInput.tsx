@@ -22,8 +22,8 @@ interface MentionOption {
 
 // Available teams/roles
 const TEAMS: MentionOption[] = [
-  { id: 'team:buyer', type: 'team', name: 'Buyer Team', subtitle: 'All buyers' },
-  { id: 'team:trader', type: 'team', name: 'Trader Team', subtitle: 'All traders' },
+  { id: 'team:buyer', type: 'team', name: 'Comex Team', subtitle: 'All comex members' },
+  { id: 'team:trader', type: 'team', name: 'ARC Team', subtitle: 'All ARC members' },
   { id: 'team:quality', type: 'team', name: 'Quality Team', subtitle: 'Quality department' },
   { id: 'team:marketing', type: 'team', name: 'Marketing Team', subtitle: 'Marketing department' },
   { id: 'team:admin', type: 'team', name: 'Admin Team', subtitle: 'Administrators' },

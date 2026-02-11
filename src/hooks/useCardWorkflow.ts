@@ -50,8 +50,8 @@ export function getRoleLabel(role: AssigneeRole): string {
   if (!role) return '';
   
   const labels: Record<Exclude<AssigneeRole, null>, string> = {
-    buyer: 'Buyer Team',
-    trader: 'Trader',
+    buyer: 'Comex Team',
+    trader: 'ARC',
     quality: 'Quality Team',
     admin: 'Admin',
     marketing: 'Marketing',

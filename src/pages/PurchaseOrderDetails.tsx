@@ -37,7 +37,7 @@ import {
 
 const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   draft: { label: 'Rascunho', variant: 'secondary' },
-  pending_trader_review: { label: 'Aguard. Trader', variant: 'outline' },
+  pending_trader_review: { label: 'Aguard. ARC', variant: 'outline' },
   pending_buyer_approval: { label: 'Mudanças Pendentes', variant: 'outline' },
   confirmed: { label: 'Confirmado', variant: 'default' },
   shipped: { label: 'Embarcado', variant: 'outline' },
@@ -290,7 +290,7 @@ export default function PurchaseOrderDetails() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="draft">Rascunho</SelectItem>
-                <SelectItem value="pending_trader_review">Aguard. Trader</SelectItem>
+                <SelectItem value="pending_trader_review">Aguard. ARC</SelectItem>
                 <SelectItem value="pending_buyer_approval">Mudanças Pendentes</SelectItem>
                 <SelectItem value="confirmed">Confirmado</SelectItem>
                 <SelectItem value="shipped">Embarcado</SelectItem>

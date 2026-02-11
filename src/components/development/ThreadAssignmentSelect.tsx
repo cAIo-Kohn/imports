@@ -38,10 +38,10 @@ interface ThreadAssignmentSelectProps {
 }
 
 const ROLES: { value: AppRole; label: string }[] = [
-  { value: 'buyer', label: 'Buyer' },
+  { value: 'buyer', label: 'Comex' },
   { value: 'marketing', label: 'Marketing' },
   { value: 'quality', label: 'Quality' },
-  { value: 'trader', label: 'Trader' },
+  { value: 'trader', label: 'ARC' },
   { value: 'admin', label: 'Admin' },
 ];
 

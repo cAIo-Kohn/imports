@@ -18,10 +18,10 @@ import { useNewProductsData, APPROVAL_CONFIG, type ApprovalType, type NewProduct
 
 // Role labels for display
 const ROLE_LABELS: Record<string, { emoji: string; name: string }> = {
-  buyer: { emoji: '🛒', name: 'Buyer' },
+  buyer: { emoji: '🛒', name: 'Comex' },
   quality: { emoji: '✅', name: 'Quality' },
   marketing: { emoji: '📢', name: 'Marketing' },
-  trader: { emoji: '🌏', name: 'Trader' },
+  trader: { emoji: '🌏', name: 'ARC' },
 };
 
 export default function Dashboard() {
@@ -383,7 +383,7 @@ export default function Dashboard() {
 
   const PO_PIPELINE_STAGES = [
     { key: 'draft', label: 'Draft', icon: FileText, color: 'text-muted-foreground' },
-    { key: 'pending_trader_review', label: 'Awaiting Trader', icon: Clock, color: 'text-orange-500' },
+    { key: 'pending_trader_review', label: 'Awaiting ARC', icon: Clock, color: 'text-orange-500' },
     { key: 'pending_buyer_approval', label: 'Pending Changes', icon: AlertTriangle, color: 'text-yellow-500' },
     { key: 'confirmed', label: 'Confirmed', icon: CheckCircle, color: 'text-green-500' },
     { key: 'shipped', label: 'Shipped', icon: Truck, color: 'text-blue-500' },

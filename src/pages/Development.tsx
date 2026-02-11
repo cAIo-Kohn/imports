@@ -800,10 +800,10 @@ export default function Development() {
               <SelectContent>
                 <SelectItem value="all">All Departments</SelectItem>
                 <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="buyer">Buyer</SelectItem>
+                <SelectItem value="buyer">Comex</SelectItem>
                 <SelectItem value="quality">Quality</SelectItem>
                 <SelectItem value="marketing">Marketing</SelectItem>
-                <SelectItem value="trader">Trader</SelectItem>
+                <SelectItem value="trader">ARC</SelectItem>
               </SelectContent>
             </Select>
 
@@ -838,9 +838,9 @@ export default function Development() {
         /* Dashboard by Creator's Department */
         <div className="flex-1 min-w-0 overflow-auto p-4 md:p-6">
           <div className="space-y-4">
-            {/* Buyer Section */}
+            {/* Comex Section */}
             <DepartmentSection
-              title="Buyer"
+              title="Comex"
               role="buyer"
               items={itemsByDepartment.buyer}
               colorClass="border-blue-300 bg-blue-50/30"
@@ -864,9 +864,9 @@ export default function Development() {
               canManage={canManage}
             />
 
-            {/* Trader Section */}
+            {/* ARC Section */}
             <DepartmentSection
-              title="Trader"
+              title="ARC"
               role="trader"
               items={itemsByDepartment.trader}
               colorClass="border-amber-300 bg-amber-50/30"
