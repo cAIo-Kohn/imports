@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Package, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import morLogo from '@/assets/mor-logo.png';
 import { z } from 'zod';
 
 const loginSchema = z.object({
@@ -79,9 +80,7 @@ export default function Auth() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-3 rounded-xl bg-primary/10">
-              <Package className="h-10 w-10 text-primary" />
-            </div>
+            <img src={morLogo} alt="MOR Imports" className="h-14 w-14 rounded-[22%]" />
           </div>
           <CardTitle className="text-2xl">MOR Imports</CardTitle>
           <CardDescription>Import Products Management</CardDescription>

@@ -1,4 +1,5 @@
 import { Package, Factory, Building2, FolderTree, LayoutDashboard, LogOut, Settings, TrendingUp, ShoppingCart, Users, Lightbulb, Sparkles } from 'lucide-react';
+import morLogo from '@/assets/mor-logo.png';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -43,7 +44,7 @@ export function AppSidebar() {
       <SidebarHeader className="border-b border-sidebar-border px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Package className="h-8 w-8 text-sidebar-primary" />
+            <img src={morLogo} alt="MOR Imports" className="h-8 w-8 rounded-[22%]" />
             <div>
               <h1 className="text-lg font-bold text-sidebar-foreground">MOR Imports</h1>
               <p className="text-xs text-sidebar-foreground/60">Import Management</p>
