@@ -1,4 +1,4 @@
-import { Package, Factory, Building2, FolderTree, LayoutDashboard, LogOut, Settings, TrendingUp, ShoppingCart, Users, Lightbulb, Sparkles } from 'lucide-react';
+import { Package, Factory, Building2, FolderTree, LayoutDashboard, LogOut, Settings, TrendingUp, ShoppingCart, Users, Lightbulb, Sparkles, ExternalLink } from 'lucide-react';
 import morLogo from '@/assets/mor-logo.png';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
@@ -161,6 +161,23 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
+
+        {/* Tools - visible for all */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Tools</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <a href="https://fob-china-builder.lovable.app" target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                    <span>FOB Master Planner</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-4">
