@@ -542,7 +542,7 @@ export default function Dashboard() {
       </div>
 
       {/* New Products Workflow Section - only for non-traders with pending items */}
-      {userDepartment !== 'trader' && totalPendingNewProducts > 0 && (
+      {totalPendingNewProducts > 0 && (
         <div className="rounded-lg border bg-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold flex items-center gap-2">
