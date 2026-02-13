@@ -1,39 +1,23 @@
 
-## Make ARC (Trader) Dashboard & Navigation Identical to Other Roles
+
+## Always Show "New Products Workflow" and "Purchase Orders" Dashboard Sections
 
 ### Problem
-Currently, ARC users see a stripped-down sidebar (only Dashboard and New Items & Samples under an "ARC" group), cannot access Purchase Orders list, and the Dashboard hides the "New Products Workflow" section from them.
+The "New Products Workflow" and "Purchase Orders" sections on the Dashboard are only rendered when they have data (`totalPendingNewProducts > 0` and `purchaseOrders.length > 0`). When there are no items, the sections disappear entirely, making users think they were removed.
 
-### Changes
+### Solution
+Always render both sections regardless of data count. When empty, show a friendly empty state with a link to navigate to the full page -- matching the pattern already used by "Your Team's Pending Cards".
 
-**1. Sidebar (`src/components/layout/AppSidebar.tsx`)**
-- Remove the `!isOnlyTrader` condition that hides the Main Menu and Planning groups from traders
-- Remove the separate "ARC" sidebar group entirely (it duplicates Dashboard and Development links)
-- Remove the `!isOnlyTrader` condition from the Settings group
-- Result: All users see the exact same sidebar menu
+### Changes (single file: `src/pages/Dashboard.tsx`)
 
-**2. Routes (`src/App.tsx`)**
-- Add `'trader'` to the `allowedRoles` for `/purchase-orders` (line 164) so ARC can access the PO list
-- Add `'trader'` to the `allowedRoles` for all other routes that currently exclude it: `/new-products`, `/products`, `/products/:id`, `/units`, `/suppliers`, `/suppliers/:id`, `/categories`, `/settings`, `/demand-planning`, `/demand-planning/:id`
-- This makes all routes accessible to all authenticated roles
+**1. New Products Workflow (line 545)**
+- Remove the `totalPendingNewProducts > 0 &&` condition so the section always renders
+- Add an empty state inside when `totalPendingNewProducts === 0` showing "No pending workflow items" with a "See all" link to `/new-products`
 
-**3. Dashboard (`src/pages/Dashboard.tsx`)**
-- Remove the `userDepartment !== 'trader'` condition (line 545) that hides the "New Products Workflow" section
-- The section will still correctly show nothing for traders since they have no Step 1/2/3 tasks assigned, but it won't be forcefully hidden
+**2. Purchase Orders Pipeline (line 671)**
+- Remove the `purchaseOrders.length > 0 &&` condition so the section always renders
+- The pipeline columns already show "No orders" per stage, so it will display properly even when empty
 
-### Technical Details
+### Result
+All three dashboard sections (Pending Cards, New Products Workflow, Purchase Orders) will always be visible to every role, providing a consistent layout.
 
-**Sidebar simplification:**
-- Delete lines 100-125 (the entire "ARC" `SidebarGroup`)
-- Change `{!isOnlyTrader && (` to always render (remove the condition) for Main Menu, Planning, and Settings groups
-
-**Route changes (App.tsx):**
-All `allowedRoles` arrays that currently have `['admin', 'buyer', 'quality', 'marketing', 'viewer']` will become `['admin', 'buyer', 'quality', 'marketing', 'viewer', 'trader']`
-
-**Dashboard change:**
-Line 545: `{userDepartment !== 'trader' && totalPendingNewProducts > 0 && (` becomes `{totalPendingNewProducts > 0 && (`
-
-### What stays the same
-- Users page remains admin-only
-- RLS policies unchanged (traders can still only edit Chinese supplier orders)
-- Internal role logic (`isBuyer`, `isTrader`, etc.) unchanged
