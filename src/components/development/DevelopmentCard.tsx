@@ -1,7 +1,7 @@
 import { memo, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
-import { Calendar, Package, Layers, ListTodo, Box, Leaf, Trash2 } from 'lucide-react';
+import { Calendar, Package, Layers, ListTodo, Box, Trash2 } from 'lucide-react';
 import { DevelopmentItem, DevelopmentItemPriority, DevelopmentCardType, DevelopmentProductCategory } from '@/pages/Development';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -39,7 +39,7 @@ const CARD_TYPE_BADGE_CONFIG: Record<DevelopmentCardType, { label: string; icon:
 };
 
 // Raw material badge (overrides item badge when product_category is raw_material)
-const RAW_MATERIAL_BADGE = { label: 'Raw', icon: <Leaf className="h-3 w-3" />, className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+const RAW_MATERIAL_BADGE = { label: 'Raw', icon: null, className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
 
 function DevelopmentCardComponent({
   item,
