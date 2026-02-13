@@ -1,27 +1,39 @@
 
+## Make ARC (Trader) Dashboard & Navigation Identical to Other Roles
 
-## Adicionar Link Externo "FOB Master Planner" na Sidebar
+### Problem
+Currently, ARC users see a stripped-down sidebar (only Dashboard and New Items & Samples under an "ARC" group), cannot access Purchase Orders list, and the Dashboard hides the "New Products Workflow" section from them.
 
-### O que muda
-Adiciona um novo grupo na sidebar chamado "Tools" (ou similar) com um link externo para o projeto **FOB Master Planner** em `https://fob-china-builder.lovable.app`. O link abre em uma nova aba do navegador.
+### Changes
 
-### Detalhes
+**1. Sidebar (`src/components/layout/AppSidebar.tsx`)**
+- Remove the `!isOnlyTrader` condition that hides the Main Menu and Planning groups from traders
+- Remove the separate "ARC" sidebar group entirely (it duplicates Dashboard and Development links)
+- Remove the `!isOnlyTrader` condition from the Settings group
+- Result: All users see the exact same sidebar menu
 
-**Arquivo: `src/components/layout/AppSidebar.tsx`**
+**2. Routes (`src/App.tsx`)**
+- Add `'trader'` to the `allowedRoles` for `/purchase-orders` (line 164) so ARC can access the PO list
+- Add `'trader'` to the `allowedRoles` for all other routes that currently exclude it: `/new-products`, `/products`, `/products/:id`, `/units`, `/suppliers`, `/suppliers/:id`, `/categories`, `/settings`, `/demand-planning`, `/demand-planning/:id`
+- This makes all routes accessible to all authenticated roles
 
-1. Importar o icone `ExternalLink` do lucide-react (para indicar visualmente que e um link externo)
-2. Adicionar uma nova `SidebarGroup` chamada **"Tools"** entre a secao Settings e o footer (visivel para todos exceto pure traders, ou para todos -- a definir)
-3. O item usa uma tag `<a>` com `href="https://fob-china-builder.lovable.app"`, `target="_blank"` e `rel="noopener noreferrer"` em vez de `<NavLink>`, ja que e um link externo
-4. Icone: `ExternalLink` (ou `Calculator` / `ClipboardList` se preferir algo mais tematico)
-5. Label: "FOB Master Planner"
+**3. Dashboard (`src/pages/Dashboard.tsx`)**
+- Remove the `userDepartment !== 'trader'` condition (line 545) that hides the "New Products Workflow" section
+- The section will still correctly show nothing for traders since they have no Step 1/2/3 tasks assigned, but it won't be forcefully hidden
 
-### Visibilidade
-O link ficara visivel para todos os usuarios (nao apenas admins), seguindo o mesmo padrao da secao "Main Menu". Se quiser restringir, basta informar.
+### Technical Details
 
-### Resultado visual
-```
-Tools
-  🔗 FOB Master Planner ↗
-```
+**Sidebar simplification:**
+- Delete lines 100-125 (the entire "ARC" `SidebarGroup`)
+- Change `{!isOnlyTrader && (` to always render (remove the condition) for Main Menu, Planning, and Settings groups
 
-O icone `ExternalLink` ao lado indica que abre em nova aba.
+**Route changes (App.tsx):**
+All `allowedRoles` arrays that currently have `['admin', 'buyer', 'quality', 'marketing', 'viewer']` will become `['admin', 'buyer', 'quality', 'marketing', 'viewer', 'trader']`
+
+**Dashboard change:**
+Line 545: `{userDepartment !== 'trader' && totalPendingNewProducts > 0 && (` becomes `{totalPendingNewProducts > 0 && (`
+
+### What stays the same
+- Users page remains admin-only
+- RLS policies unchanged (traders can still only edit Chinese supplier orders)
+- Internal role logic (`isBuyer`, `isTrader`, etc.) unchanged
