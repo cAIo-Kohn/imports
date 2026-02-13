@@ -55,74 +55,41 @@ export function AppSidebar() {
       </SidebarHeader>
       
       <SidebarContent>
-        {/* Main Menu - hide for pure traders */}
-        {!isOnlyTrader && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Main Menu</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {menuItems.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={location.pathname === item.url}>
-                      <NavLink to={item.url}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* Planning - hide for pure traders */}
-        {!isOnlyTrader && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Planning</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {planningItems.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={location.pathname === item.url}>
-                      <NavLink to={item.url}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
-        {/* Trader - show for trader and admin */}
-        {(isTrader || isAdmin) && (
-          <SidebarGroup>
-            <SidebarGroupLabel>ARC</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={location.pathname === '/'}>
-                    <NavLink to="/">
-                      <LayoutDashboard className="h-4 w-4" />
-                      <span>Dashboard</span>
+        <SidebarGroup>
+          <SidebarGroupLabel>Main Menu</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {menuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={location.pathname === item.url}>
+                    <NavLink to={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={location.pathname === '/development'}>
-                    <NavLink to="/development">
-                      <Lightbulb className="h-4 w-4" />
-                      <span>New Items & Samples</span>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Planning</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {planningItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={location.pathname === item.url}>
+                    <NavLink to={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
         {/* Registry - admin only */}
         {isAdmin && (
@@ -143,24 +110,21 @@ export function AppSidebar() {
           </SidebarGroup>
         )}
 
-        {/* Settings - hide for pure traders */}
-        {!isOnlyTrader && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Settings</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={location.pathname === '/settings'}>
-                    <NavLink to="/settings">
-                      <Settings className="h-4 w-4" />
-                      <span>Settings</span>
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+        <SidebarGroup>
+          <SidebarGroupLabel>Settings</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={location.pathname === '/settings'}>
+                  <NavLink to="/settings">
+                    <Settings className="h-4 w-4" />
+                    <span>Settings</span>
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
         {/* Tools - visible for all */}
         <SidebarGroup>
