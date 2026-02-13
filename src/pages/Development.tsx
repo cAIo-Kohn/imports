@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useDeferredValue, useEffect, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -216,9 +216,10 @@ export default function Development() {
   // Fetch development items with caching
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['development-items', user?.id],
-    staleTime: 30 * 1000, // Data is fresh for 30 seconds
+    staleTime: 60 * 1000, // Data is fresh for 60 seconds
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
     refetchOnWindowFocus: false, // Don't refetch on tab switch
+    placeholderData: keepPreviousData, // Keep previous data visible during refetch
     queryFn: async () => {
       const { data, error } = await supabase
         .from('development_items')
@@ -511,8 +512,15 @@ export default function Development() {
         });
       }
     },
+    onMutate: () => {
+      isMutatingRef.current = true;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['development-items'] });
+    },
+    onSettled: () => {
+      // Reset after a delay to allow realtime event to be skipped
+      setTimeout(() => { isMutatingRef.current = false; }, 1000);
     },
     onError: () => {
       toast({
@@ -627,11 +635,17 @@ export default function Development() {
 
   const selectedItem = items.find(item => item.id === selectedItemId);
 
+  // Track local mutations to skip redundant realtime invalidations
+  const isMutatingRef = useRef(false);
+
   // Real-time subscription for development items
   const invalidateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const handleInvalidate = () => {
+      // Skip if a local mutation just fired (it already invalidated)
+      if (isMutatingRef.current) return;
+      
       // Debounce: wait 300ms before refetching to batch rapid changes
       if (invalidateTimeoutRef.current) {
         clearTimeout(invalidateTimeoutRef.current);
