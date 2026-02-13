@@ -1,23 +1,47 @@
 
 
-## Always Show "New Products Workflow" and "Purchase Orders" Dashboard Sections
+## Fix Card Disappearing During Interactions
 
-### Problem
-The "New Products Workflow" and "Purchase Orders" sections on the Dashboard are only rendered when they have data (`totalPendingNewProducts > 0` and `purchaseOrders.length > 0`). When there are no items, the sections disappear entirely, making users think they were removed.
+### Root Cause Analysis
 
-### Solution
-Always render both sections regardless of data count. When empty, show a friendly empty state with a link to navigate to the full page -- matching the pattern already used by "Your Team's Pending Cards".
+The card disappearing is caused by a combination of three issues:
 
-### Changes (single file: `src/pages/Dashboard.tsx`)
+1. **No data preservation during refetch**: The main development items query does NOT use `placeholderData: keepPreviousData`. This means when a refetch is triggered (after any action), React Query briefly returns an empty/loading state, causing all cards to flash or disappear momentarily.
 
-**1. New Products Workflow (line 545)**
-- Remove the `totalPendingNewProducts > 0 &&` condition so the section always renders
-- Add an empty state inside when `totalPendingNewProducts === 0` showing "No pending workflow items" with a "See all" link to `/new-products`
+2. **Double query invalidation**: When a user performs an action (e.g., updating workflow, adding a sample), the mutation's `onSuccess` calls `invalidateQueries`. Then the Supabase realtime subscription ALSO fires for the same change, triggering another invalidation 300ms later. This creates two back-to-back refetches.
 
-**2. Purchase Orders Pipeline (line 671)**
-- Remove the `purchaseOrders.length > 0 &&` condition so the section always renders
-- The pipeline columns already show "No orders" per stage, so it will display properly even when empty
+3. **Heavy query with 10+ parallel sub-queries**: The main query fetches items plus sample counts, product counts, activity timestamps, user views, profiles, questions, answers, threads, all activities, and mentions. Each refetch is slow, amplifying the "empty state" window.
 
-### Result
-All three dashboard sections (Pending Cards, New Products Workflow, Purchase Orders) will always be visible to every role, providing a consistent layout.
+### Solution (single file: `src/pages/Development.tsx`)
+
+**Change 1: Add `placeholderData: keepPreviousData` to the main query**
+- Import `keepPreviousData` from `@tanstack/react-query`
+- Add `placeholderData: keepPreviousData` to the `useQuery` options
+- This ensures the UI keeps showing the previous data while a refetch is in progress, preventing the "disappearing cards" flash
+
+**Change 2: Skip realtime invalidation for own mutations**
+- Track when a local mutation is in progress using a ref (`isMutatingRef`)
+- Set the ref to `true` before mutation, reset after `onSuccess`/`onSettled`
+- In the realtime handler, skip invalidation if `isMutatingRef.current` is true (since the mutation's own `onSuccess` already handles it)
+- This eliminates redundant double-refetches
+
+**Change 3: Increase staleTime slightly**
+- Change `staleTime` from 30s to 60s to reduce background refetches during active use
+
+### Technical Details
+
+```text
+Before:
+  User action -> Mutation -> onSuccess invalidates -> Refetch starts (UI clears)
+                          -> Realtime fires -> Another invalidate -> Another refetch
+  Total: 2 refetches, UI empty during both
+
+After:
+  User action -> Mutation -> onSuccess invalidates -> Refetch starts (UI keeps previous data)
+                          -> Realtime fires -> Skipped (mutation in progress)
+  Total: 1 refetch, UI always shows data
+```
+
+### Files Modified
+- `src/pages/Development.tsx` (the only file that needs changes)
 
