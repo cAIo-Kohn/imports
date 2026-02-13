@@ -541,17 +541,18 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* New Products Workflow Section - only for non-traders with pending items */}
-      {totalPendingNewProducts > 0 && (
-        <div className="rounded-lg border bg-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Package className="h-5 w-5 text-primary" />
-              New Products Workflow
+      {/* New Products Workflow Section */}
+      <div className="rounded-lg border bg-card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Package className="h-5 w-5 text-primary" />
+            New Products Workflow
+            {totalPendingNewProducts > 0 && (
               <span className="text-sm font-medium bg-primary/10 text-primary px-3 py-1 rounded-full">
                 {totalPendingNewProducts}
               </span>
-            </h2>
+            )}
+          </h2>
             <Link to="/new-products" className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
               See all <ArrowRight className="h-3 w-3" />
             </Link>
@@ -664,20 +665,30 @@ export default function Dashboard() {
             )}
           </div>
 
+          {totalPendingNewProducts === 0 && (
+            <div className="text-center py-8 text-muted-foreground">
+              <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No pending workflow items</p>
+              <Link to="/new-products" className="text-xs text-primary hover:underline mt-1 inline-block">
+                Go to New Products →
+              </Link>
+            </div>
+          )}
+
         </div>
-      )}
 
       {/* Purchase Orders Pipeline Section */}
-      {purchaseOrders.length > 0 && (
-        <div className="rounded-lg border bg-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5 text-primary" />
-              Purchase Orders
+      <div className="rounded-lg border bg-card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <ShoppingCart className="h-5 w-5 text-primary" />
+            Purchase Orders
+            {purchaseOrders.length > 0 && (
               <span className="text-sm font-medium bg-primary/10 text-primary px-3 py-1 rounded-full">
                 {purchaseOrders.length}
               </span>
-            </h2>
+            )}
+          </h2>
             <Link to="/purchase-orders" className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
               See all <ArrowRight className="h-3 w-3" />
             </Link>
@@ -719,8 +730,7 @@ export default function Dashboard() {
               );
             })}
           </div>
-        </div>
-      )}
+      </div>
 
       {/* Item Detail Drawer */}
       <ItemDetailDrawer
