@@ -96,34 +96,6 @@ export function useNewProductFlow(cardId?: string) {
     },
   });
 
-  // Check if all Step 1 approvals are complete and advance to Step 2
-  const checkAndAdvanceFlow = async (targetCardId: string) => {
-    const { data: allApprovals, error } = await supabase
-      .from('new_product_approvals')
-      .select('status')
-      .eq('card_id', targetCardId);
-
-    if (error || !allApprovals) return;
-
-    const allApproved = allApprovals.every(a => a.status === 'approved');
-    if (allApproved && allApprovals.length === 3) {
-      await supabase
-        .from('development_items')
-        .update({ new_product_flow_status: 'step2_code_registration' })
-        .eq('id', targetCardId);
-
-      if (user?.id) {
-        await supabase.from('development_card_activity').insert({
-          card_id: targetCardId,
-          user_id: user.id,
-          activity_type: 'message',
-          content: '✅ All research approvals complete - moved to code registration',
-          metadata: { flow_action: 'advance_step2' },
-        });
-      }
-    }
-  };
-
   // Advance to next step manually (for Step 2 -> Step 3 and Step 3 -> Complete)
   const advanceStepMutation = useMutation({
     mutationFn: async ({ targetCardId, nextStatus }: { targetCardId: string; nextStatus: FlowStatus }) => {
@@ -167,7 +139,6 @@ export function useNewProductFlow(cardId?: string) {
     startFlowPending: startFlowMutation.isPending,
     advanceStep: advanceStepMutation.mutate,
     advanceStepPending: advanceStepMutation.isPending,
-    checkAndAdvanceFlow,
   };
 }
 
@@ -179,103 +150,96 @@ export function useNewProductsData() {
     queryKey: ['new-products'],
     staleTime: 60 * 1000, // 60 seconds — new products page doesn't need instant refresh
     queryFn: async () => {
-      // Fetch eligible products (approved samples, not yet in flow)
-      const { data: eligibleSamples, error: eligibleError } = await supabase
-        .from('development_item_samples')
-        .select(`
-          id,
-          decided_at,
-          development_items!inner (
+      // Phase 1: Fetch eligible samples and all flow items in parallel
+      const [eligibleRes, flowItemsRes] = await Promise.all([
+        // Eligible products (approved samples, not yet in flow)
+        supabase
+          .from('development_item_samples')
+          .select(`
             id,
-            title,
-            card_type,
-            image_url,
-            supplier_id,
-            product_code,
-            new_product_flow_status
-          )
-        `)
-        .eq('decision', 'approved')
-        .is('development_items.deleted_at', null)
-        .is('development_items.new_product_flow_status', null)
-        .order('decided_at', { ascending: false });
+            decided_at,
+            development_items!inner (
+              id, title, card_type, image_url, supplier_id, product_code, new_product_flow_status
+            )
+          `)
+          .eq('decision', 'approved')
+          .is('development_items.deleted_at', null)
+          .is('development_items.new_product_flow_status', null)
+          .order('decided_at', { ascending: false }),
 
-      if (eligibleError) throw eligibleError;
+        // All flow items in a single query (consolidates 4 separate queries)
+        supabase
+          .from('development_items')
+          .select('id, title, description, card_type, image_url, supplier_id, product_code, new_product_flow_status, fob_price_usd, moq, qty_per_master_inner, container_type, qty_per_container, registered_product_id')
+          .in('new_product_flow_status', ['step1_research', 'step2_code_registration', 'step3_ready_for_order', 'completed'])
+          .is('deleted_at', null),
+      ]);
 
-      // Fetch products in Step 1
-      const { data: step1Items, error: step1Error } = await supabase
-        .from('development_items')
-        .select('id, title, card_type, image_url, supplier_id, product_code, new_product_flow_status')
-        .eq('new_product_flow_status', 'step1_research')
-        .is('deleted_at', null);
+      if (eligibleRes.error) throw eligibleRes.error;
+      if (flowItemsRes.error) throw flowItemsRes.error;
 
-      if (step1Error) throw step1Error;
+      // Partition flow items by status client-side
+      const step1Items = (flowItemsRes.data || []).filter(i => i.new_product_flow_status === 'step1_research');
+      const step2Items = (flowItemsRes.data || []).filter(i => i.new_product_flow_status === 'step2_code_registration');
+      const step3Items = (flowItemsRes.data || []).filter(i => i.new_product_flow_status === 'step3_ready_for_order');
+      const completedItems = (flowItemsRes.data || []).filter(i => i.new_product_flow_status === 'completed');
 
-      // Fetch products in Step 2 (include commercial fields for pre-fill)
-      const { data: step2Items, error: step2Error } = await supabase
-        .from('development_items')
-        .select('id, title, description, card_type, image_url, supplier_id, product_code, new_product_flow_status, fob_price_usd, moq, qty_per_master_inner, container_type, qty_per_container')
-        .eq('new_product_flow_status', 'step2_code_registration')
-        .is('deleted_at', null);
+      // Phase 2: Conditional enrichment queries in parallel
+      const step2Ids = step2Items.map(item => item.id);
+      const step1Ids = step1Items.map(item => item.id);
+      const registeredProductIds = step3Items
+        .filter(item => item.registered_product_id)
+        .map(item => item.registered_product_id!);
 
-      if (step2Error) throw step2Error;
+      const [customsRes, approvalsRes, orderItemsRes] = await Promise.all([
+        // Customs metadata for step2 cards
+        step2Ids.length > 0
+          ? supabase
+              .from('development_card_activity')
+              .select('card_id, metadata')
+              .in('card_id', step2Ids)
+              .not('metadata', 'is', null)
+          : Promise.resolve({ data: [] as any[], error: null }),
 
-      // Fetch customs activity metadata for step2 cards to extract NCM and product description
-      const step2Ids = step2Items?.map(item => item.id) || [];
-      let step2CustomsData: Record<string, { ncm_code?: string; product_catalog_description?: string }> = {};
-      if (step2Ids.length > 0) {
-        const { data: customsActivities } = await supabase
-          .from('development_card_activity')
-          .select('card_id, metadata')
-          .in('card_id', step2Ids)
-          .not('metadata', 'is', null);
+        // Approvals for step1 cards
+        step1Ids.length > 0
+          ? supabase
+              .from('new_product_approvals')
+              .select('*')
+              .in('card_id', step1Ids)
+          : Promise.resolve({ data: [] as any[], error: null }),
 
-        if (customsActivities) {
-          for (const activity of customsActivities) {
-            const meta = activity.metadata as any;
-            if (meta?.ncm_code || meta?.product_catalog_description) {
-              step2CustomsData[activity.card_id] = {
-                ncm_code: meta.ncm_code || step2CustomsData[activity.card_id]?.ncm_code,
-                product_catalog_description: meta.product_catalog_description || step2CustomsData[activity.card_id]?.product_catalog_description,
-              };
-            }
-          }
+        // Order detection for step3 cards
+        registeredProductIds.length > 0
+          ? supabase
+              .from('purchase_order_items')
+              .select('product_id')
+              .in('product_id', registeredProductIds)
+          : Promise.resolve({ data: [] as any[], error: null }),
+      ]);
+
+      // Process customs data for step2
+      const step2CustomsData: Record<string, { ncm_code?: string; product_catalog_description?: string }> = {};
+      for (const activity of customsRes.data || []) {
+        const meta = activity.metadata as any;
+        if (meta?.ncm_code || meta?.product_catalog_description) {
+          step2CustomsData[activity.card_id] = {
+            ncm_code: meta.ncm_code || step2CustomsData[activity.card_id]?.ncm_code,
+            product_catalog_description: meta.product_catalog_description || step2CustomsData[activity.card_id]?.product_catalog_description,
+          };
         }
       }
 
-      // Enrich step2 items with customs data
-      const enrichedStep2 = (step2Items || []).map(item => ({
+      const enrichedStep2 = step2Items.map(item => ({
         ...item,
         _customs_ncm: step2CustomsData[item.id]?.ncm_code || null,
         _customs_description: step2CustomsData[item.id]?.product_catalog_description || null,
       }));
 
-      // Fetch products in Step 3
-      const { data: step3Items, error: step3Error } = await supabase
-        .from('development_items')
-        .select('id, title, card_type, image_url, supplier_id, product_code, new_product_flow_status, registered_product_id')
-        .eq('new_product_flow_status', 'step3_ready_for_order')
-        .is('deleted_at', null);
-
-      if (step3Error) throw step3Error;
-
-      // Auto-detect first order for Step 3 cards with registered_product_id
-      const step3WithProduct = (step3Items || []).filter(item => item.registered_product_id);
-      const registeredProductIds = step3WithProduct.map(item => item.registered_product_id!);
-      let orderedProductIds = new Set<string>();
-      if (registeredProductIds.length > 0) {
-        const { data: orderItems } = await supabase
-          .from('purchase_order_items')
-          .select('product_id')
-          .in('product_id', registeredProductIds);
-        if (orderItems) {
-          orderedProductIds = new Set(orderItems.map(oi => oi.product_id));
-        }
-      }
-
-      // Separate step3 into still-waiting and auto-completed (detection only, no mutation in queryFn)
+      // Process auto-complete detection for step3
+      const orderedProductIds = new Set((orderItemsRes.data || []).map(oi => oi.product_id));
       const autoCompletedCardIds: string[] = [];
-      const remainingStep3 = (step3Items || []).filter(item => {
+      const remainingStep3 = step3Items.filter(item => {
         if (item.registered_product_id && orderedProductIds.has(item.registered_product_id)) {
           autoCompletedCardIds.push(item.id);
           return false;
@@ -283,32 +247,12 @@ export function useNewProductsData() {
         return true;
       });
 
-      // Fetch completed items
-      const { data: completedItems, error: completedError } = await supabase
-        .from('development_items')
-        .select('id, title, card_type, image_url, supplier_id, product_code, new_product_flow_status')
-        .eq('new_product_flow_status', 'completed')
-        .is('deleted_at', null);
-
-      if (completedError) throw completedError;
-
-      // Fetch all approvals for Step 1 items
-      const step1Ids = step1Items?.map(item => item.id) || [];
-      let approvals: NewProductApproval[] = [];
-      if (step1Ids.length > 0) {
-        const { data: approvalsData, error: approvalsError } = await supabase
-          .from('new_product_approvals')
-          .select('*')
-          .in('card_id', step1Ids);
-        
-        if (!approvalsError && approvalsData) {
-          approvals = approvalsData as NewProductApproval[];
-        }
-      }
+      // Process approvals
+      const approvals = (approvalsRes.data || []) as NewProductApproval[];
 
       // Deduplicate eligible products by card_id
       const eligibleMap = new Map();
-      eligibleSamples?.forEach(sample => {
+      (eligibleRes.data || []).forEach(sample => {
         const item = sample.development_items as any;
         if (!eligibleMap.has(item.id)) {
           eligibleMap.set(item.id, {
@@ -320,10 +264,10 @@ export function useNewProductsData() {
 
       return {
         eligible: Array.from(eligibleMap.values()),
-        step1: step1Items || [],
+        step1: step1Items,
         step2: enrichedStep2,
         step3: remainingStep3,
-        completed: completedItems || [],
+        completed: completedItems,
         approvals,
         _autoCompletedCardIds: autoCompletedCardIds,
       };

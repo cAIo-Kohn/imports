@@ -3,7 +3,6 @@ import { ArrowRight, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useNewProductFlow } from '@/hooks/useNewProductFlow';
 
 interface EligibleProductCardProps {
   item: {
@@ -15,14 +14,15 @@ interface EligibleProductCardProps {
     sample_approved_at: string;
   };
   onOpenCard: (cardId: string) => void;
+  onStartFlow: (cardId: string) => void;
+  startFlowPending: boolean;
 }
 
-export function EligibleProductCard({ item, onOpenCard }: EligibleProductCardProps) {
-  const { startFlow, startFlowPending } = useNewProductFlow();
+export function EligibleProductCard({ item, onOpenCard, onStartFlow, startFlowPending }: EligibleProductCardProps) {
 
   const handleStartFlow = (e: React.MouseEvent) => {
     e.stopPropagation();
-    startFlow(item.id);
+    onStartFlow(item.id);
   };
 
   return (

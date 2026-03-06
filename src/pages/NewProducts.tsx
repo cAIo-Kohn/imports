@@ -17,7 +17,7 @@ export default function NewProducts() {
   const [completedOpen, setCompletedOpen] = useState(false);
   
   const { data, isLoading, error } = useNewProductsData();
-  const { advanceStep } = useNewProductFlow();
+  const { startFlow, startFlowPending, advanceStep } = useNewProductFlow();
 
   const handleOpenCard = (cardId: string) => {
     setSelectedItemId(cardId);
@@ -144,6 +144,8 @@ export default function NewProducts() {
                 key={item.id}
                 item={item}
                 onOpenCard={handleOpenCard}
+                onStartFlow={startFlow}
+                startFlowPending={startFlowPending}
               />
             ))}
           </div>

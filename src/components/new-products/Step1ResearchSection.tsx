@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Package, Clock, CheckCircle2, XCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -95,12 +95,17 @@ export function Step1ResearchSection({ items, approvals, onOpenCard }: Step1Rese
     approval: NewProductApproval | undefined;
   } | null>(null);
 
-  if (items.length === 0) return null;
+  // Pre-index approvals: type → cardId → approval (O(1) lookup instead of O(N) find)
+  const approvalIndex = useMemo(() => {
+    const index = new Map<string, Map<string, NewProductApproval>>();
+    for (const a of approvals) {
+      if (!index.has(a.approval_type)) index.set(a.approval_type, new Map());
+      index.get(a.approval_type)!.set(a.card_id, a);
+    }
+    return index;
+  }, [approvals]);
 
-  // Group approvals by type
-  const getApprovalsForType = (type: ApprovalType) => {
-    return approvals.filter(a => a.approval_type === type);
-  };
+  if (items.length === 0) return null;
 
   const handleOpenResearchDrawer = (item: Step1Item, type: ApprovalType, approval: NewProductApproval | undefined) => {
     setDrawerState({
@@ -131,8 +136,8 @@ export function Step1ResearchSection({ items, approvals, onOpenCard }: Step1Rese
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {APPROVAL_TYPES.map(type => {
             const config = APPROVAL_CONFIG[type];
-            const typeApprovals = getApprovalsForType(type);
-            
+            const typeIndex = approvalIndex.get(type);
+
             return (
               <div
                 key={type}
@@ -155,7 +160,7 @@ export function Step1ResearchSection({ items, approvals, onOpenCard }: Step1Rese
 
                 <div className="space-y-2">
                   {items.map(item => {
-                    const approval = typeApprovals.find(a => a.card_id === item.id);
+                    const approval = typeIndex?.get(item.id);
                     return (
                       <ProductMiniCard
                         key={item.id}

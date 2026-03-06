@@ -1,3 +1,4 @@
+import React from 'react';
 import { Package } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +28,7 @@ const COLOR_SCHEMES = {
   emerald: 'border-emerald-200 bg-emerald-50/30 dark:bg-emerald-950/20',
 };
 
-export function WorkflowStepSection({
+export const WorkflowStepSection = React.memo(function WorkflowStepSection({
   title,
   subtitle,
   responsibleRole,
@@ -91,4 +92,4 @@ export function WorkflowStepSection({
       </div>
     </div>
   );
-}
+});
