@@ -29,6 +29,8 @@ export function useRoleColors() {
       if (error) throw error;
       return data as RoleColor[];
     },
+    staleTime: 60 * 60 * 1000, // 1 hour — role colors change very rarely
+    gcTime: 2 * 60 * 60 * 1000,
   });
 
   const getColorForRole = (role: string | null | undefined): { color: string; label: string } => {

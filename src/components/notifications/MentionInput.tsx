@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from 'react';
+import { useState, useRef, useEffect, useMemo, KeyboardEvent, ChangeEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -60,9 +60,11 @@ export function MentionInput({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
 
-  // Fetch all profiles for mention suggestions
+  // Fetch all profiles for mention suggestions — cache for 5 minutes
   const { data: profiles = [] } = useQuery({
     queryKey: ['profiles-for-mentions'],
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('profiles')
@@ -73,33 +75,35 @@ export function MentionInput({
     },
   });
 
-  // Convert profiles to mention options
-  const userOptions: MentionOption[] = profiles
-    .filter(p => p.user_id !== user?.id)
-    .map(p => ({
-      id: p.user_id,
-      type: 'user' as const,
-      name: p.full_name || 'Unknown',
-      subtitle: p.email || undefined,
-    }));
+  // Convert profiles to mention options — memoized to avoid recreation on every render
+  const userOptions = useMemo<MentionOption[]>(() =>
+    profiles
+      .filter(p => p.user_id !== user?.id)
+      .map(p => ({
+        id: p.user_id,
+        type: 'user' as const,
+        name: p.full_name || 'Unknown',
+        subtitle: p.email || undefined,
+      })),
+    [profiles, user?.id]
+  );
 
-  // Filter options based on search
-  const filteredOptions: MentionOption[] = (() => {
+  // Filter options based on search — memoized to avoid recalculation on every keystroke
+  const filteredOptions = useMemo<MentionOption[]>(() => {
     const searchLower = mentionSearch.toLowerCase();
-    
-    const filteredTeams = TEAMS.filter(t => 
+
+    const filteredTeams = TEAMS.filter(t =>
       !mentionSearch || t.name.toLowerCase().includes(searchLower)
     );
-    
+
     const filteredUsers = userOptions.filter(u =>
-      !mentionSearch || 
+      !mentionSearch ||
       u.name.toLowerCase().includes(searchLower) ||
       u.subtitle?.toLowerCase().includes(searchLower)
     );
-    
-    // Show teams first, then users, limit total
+
     return [...filteredTeams, ...filteredUsers].slice(0, 8);
-  })();
+  }, [mentionSearch, userOptions]);
 
   // Handle text input changes - preserve mention formats when editing
   const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {

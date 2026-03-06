@@ -74,6 +74,38 @@ export function usePendingActionNotifications() {
     }
   }, []);
 
+  // Cache card titles to avoid querying the same card repeatedly
+  const cardTitleCacheRef = useRef<Record<string, string>>({});
+
+  // Debounce notification to batch rapid activity inserts
+  const pendingNotificationRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingNotificationDataRef = useRef<{ title: string; body: string } | null>(null);
+
+  const getCardTitle = useCallback(async (cardId: string): Promise<string> => {
+    if (cardTitleCacheRef.current[cardId]) return cardTitleCacheRef.current[cardId];
+    const { data: card } = await supabase
+      .from('development_items')
+      .select('title')
+      .eq('id', cardId)
+      .single();
+    const title = card?.title || 'a card';
+    cardTitleCacheRef.current[cardId] = title;
+    return title;
+  }, []);
+
+  const scheduleNotification = useCallback((title: string, body: string) => {
+    pendingNotificationDataRef.current = { title, body };
+    if (pendingNotificationRef.current) clearTimeout(pendingNotificationRef.current);
+    pendingNotificationRef.current = setTimeout(() => {
+      const data = pendingNotificationDataRef.current;
+      if (data) {
+        playNotificationSound();
+        showBrowserNotification(data.title, data.body);
+        pendingNotificationDataRef.current = null;
+      }
+    }, 1500);
+  }, [playNotificationSound, showBrowserNotification]);
+
   // Subscribe to realtime changes for pending actions
   useEffect(() => {
     if (!user?.id) return;
@@ -98,23 +130,12 @@ export function usePendingActionNotifications() {
             content: string | null;
           };
 
-          // Only notify if:
-          // 1. The activity was created by someone else
-          // 2. It has a pending_for_team that matches our team
           if (
             newActivity.user_id !== user.id &&
             newActivity.pending_for_team === userTeam
           ) {
-            // Get card title for better notification
-            const { data: card } = await supabase
-              .from('development_items')
-              .select('title')
-              .eq('id', newActivity.card_id)
-              .single();
+            const cardTitle = await getCardTitle(newActivity.card_id);
 
-            const cardTitle = card?.title || 'a card';
-            
-            // Determine notification message based on activity type
             let notificationTitle = 'New pending action';
             let notificationBody = `You have a new pending action on "${cardTitle}"`;
 
@@ -129,9 +150,7 @@ export function usePendingActionNotifications() {
               notificationBody = `You received an answer on "${cardTitle}"`;
             }
 
-            // Play sound and show notification
-            playNotificationSound();
-            showBrowserNotification(notificationTitle, notificationBody);
+            scheduleNotification(notificationTitle, notificationBody);
           }
         }
       )
@@ -153,21 +172,13 @@ export function usePendingActionNotifications() {
             thread_title: string | null;
           };
 
-          // Notify if pending_for_team was updated to our team
           if (
             oldActivity.pending_for_team !== userTeam &&
             newActivity.pending_for_team === userTeam
           ) {
-            const { data: card } = await supabase
-              .from('development_items')
-              .select('title')
-              .eq('id', newActivity.card_id)
-              .single();
+            const cardTitle = await getCardTitle(newActivity.card_id);
 
-            const cardTitle = card?.title || 'a card';
-            
-            playNotificationSound();
-            showBrowserNotification(
+            scheduleNotification(
               'Pending action updated',
               `You have a new pending action on "${cardTitle}"`
             );
@@ -177,9 +188,10 @@ export function usePendingActionNotifications() {
       .subscribe();
 
     return () => {
+      if (pendingNotificationRef.current) clearTimeout(pendingNotificationRef.current);
       supabase.removeChannel(channel);
     };
-  }, [user?.id, userTeam, playNotificationSound, showBrowserNotification]);
+  }, [user?.id, userTeam, getCardTitle, scheduleNotification]);
 
   // Manual request permission function
   const requestPermission = useCallback(async () => {

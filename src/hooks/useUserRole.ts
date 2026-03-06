@@ -11,16 +11,18 @@ export function useUserRole() {
     queryKey: ['user-roles', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-      
+
       const { data, error } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', user.id);
-      
+
       if (error) throw error;
       return data.map(r => r.role as AppRole);
     },
     enabled: !!user?.id,
+    staleTime: 60 * 60 * 1000, // 1 hour — roles change very rarely
+    gcTime: 2 * 60 * 60 * 1000, // 2 hours
   });
 
   const hasRole = (role: AppRole): boolean => {

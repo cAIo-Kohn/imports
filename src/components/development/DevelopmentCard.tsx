@@ -41,6 +41,14 @@ const CARD_TYPE_BADGE_CONFIG: Record<DevelopmentCardType, { label: string; icon:
 // Raw material badge (overrides item badge when product_category is raw_material)
 const RAW_MATERIAL_BADGE = { label: 'Raw', icon: null, className: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
 
+// Convert hex to rgba — extracted to module level to avoid recreation on every render
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function DevelopmentCardComponent({
   item,
   onClick,
@@ -84,28 +92,15 @@ function DevelopmentCardComponent({
 
   // Determine the highlight class - deleted cards are faded
   const highlightClass = isDeleted ? 'opacity-60 border-destructive' : '';
-  
+
   // Get priority border style
   const priorityStyle = PRIORITY_BORDER_STYLES[item.priority];
-  
-  // Convert hex to rgba for subtle background
-  const hexToRgba = (hex: string, alpha: number) => {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  };
-  
+
   // Determine which badge to show based on card type and product category
-  const getBadgeConfig = () => {
-    if (cardType === 'task') return CARD_TYPE_BADGE_CONFIG.task;
-    if (cardType === 'item_group') return CARD_TYPE_BADGE_CONFIG.item_group;
-    // For individual items, check if it's raw material
-    if (item.product_category === 'raw_material') return RAW_MATERIAL_BADGE;
-    return CARD_TYPE_BADGE_CONFIG.item; // Default to "Product"
-  };
-  
-  const badgeConfig = getBadgeConfig();
+  const badgeConfig = cardType === 'task' ? CARD_TYPE_BADGE_CONFIG.task
+    : cardType === 'item_group' ? CARD_TYPE_BADGE_CONFIG.item_group
+    : item.product_category === 'raw_material' ? RAW_MATERIAL_BADGE
+    : CARD_TYPE_BADGE_CONFIG.item;
 
   return (
     <div
@@ -280,7 +275,15 @@ export const DevelopmentCard = memo(DevelopmentCardComponent, (prev, next) => {
     prev.item.last_viewed_at === next.item.last_viewed_at &&
     prev.item.pending_action_type === next.item.pending_action_type &&
     prev.item.pending_action_snoozed_until === next.item.pending_action_snoozed_until &&
+    prev.item.pending_action_due_at === next.item.pending_action_due_at &&
     prev.item.unread_count === next.item.unread_count &&
+    prev.item.current_assignee_role === next.item.current_assignee_role &&
+    prev.item.workflow_status === next.item.workflow_status &&
+    prev.item.samples_count === next.item.samples_count &&
+    prev.item.products_count === next.item.products_count &&
+    prev.item.is_solved === next.item.is_solved &&
+    prev.item.deleted_at === next.item.deleted_at &&
+    prev.item.supplier?.id === next.item.supplier?.id &&
     prev.canDrag === next.canDrag
   );
 });

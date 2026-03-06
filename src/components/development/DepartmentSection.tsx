@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { DevelopmentItem } from '@/pages/Development';
 import { DevelopmentCard } from './DevelopmentCard';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -47,16 +47,15 @@ export const DepartmentSection = React.memo(function DepartmentSection({
   const label = ROLE_LABELS[role] || title;
 
   // Sort items: urgent first, then by priority order, then by created_at (oldest first)
-  const PRIORITY_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
-  const sortedItems = [...items].sort((a, b) => {
-    // First sort by priority
-    const priorityA = PRIORITY_ORDER[a.priority] ?? 4;
-    const priorityB = PRIORITY_ORDER[b.priority] ?? 4;
-    if (priorityA !== priorityB) return priorityA - priorityB;
-    
-    // Then by created_at (oldest first = ascending)
-    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-  });
+  const sortedItems = useMemo(() => {
+    const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
+    return [...items].sort((a, b) => {
+      const priorityA = PRIORITY_ORDER[a.priority] ?? 4;
+      const priorityB = PRIORITY_ORDER[b.priority] ?? 4;
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+  }, [items]);
 
   if (sortedItems.length === 0) return null;
 

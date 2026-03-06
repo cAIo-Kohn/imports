@@ -53,6 +53,7 @@ interface ItemDetailDrawerProps {
 function SampleCountBadge({ cardId }: { cardId: string }) {
   const { data: samples = [] } = useQuery({
     queryKey: ['development-item-samples', cardId],
+    staleTime: 30 * 1000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('development_item_samples')
@@ -79,6 +80,7 @@ function SampleCountBadge({ cardId }: { cardId: string }) {
 function CommercialCountBadge({ cardId }: { cardId: string }) {
   const { data: count = 0 } = useQuery({
     queryKey: ['commercial-count', cardId],
+    staleTime: 30 * 1000,
     queryFn: async () => {
       // Count completed commercial_review tasks (approved ones)
       const { data, error } = await supabase
@@ -148,9 +150,10 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
   const canDelete = canManage;
   const canRestore = isAdmin;
 
-  // Fetch creator profile
+  // Fetch creator profile — cache for 5 minutes since profiles rarely change
   const { data: creatorProfile } = useQuery({
     queryKey: ['profile', item?.created_by],
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       if (!item?.created_by) return null;
       const { data, error } = await supabase
@@ -778,13 +781,15 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
           isDeleting={deleteMutation.isPending}
         />
 
-        {/* Request Commercial Data Modal */}
-        <RequestCommercialDataModal
-          open={showRequestCommercialModal}
-          onOpenChange={setShowRequestCommercialModal}
-          cardId={item.id}
-          cardTitle={item.title}
-        />
+        {/* Request Commercial Data Modal — only mount when open */}
+        {showRequestCommercialModal && (
+          <RequestCommercialDataModal
+            open={showRequestCommercialModal}
+            onOpenChange={setShowRequestCommercialModal}
+            cardId={item.id}
+            cardTitle={item.title}
+          />
+        )}
 
         {/* Fill Commercial Data Modal */}
         {selectedTask && (
@@ -799,13 +804,15 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
           />
         )}
 
-        {/* Request Sample Modal */}
-        <RequestSampleModal
-          open={showRequestSampleModal}
-          onOpenChange={setShowRequestSampleModal}
-          cardId={item.id}
-          cardTitle={item.title}
-        />
+        {/* Request Sample Modal — only mount when open */}
+        {showRequestSampleModal && (
+          <RequestSampleModal
+            open={showRequestSampleModal}
+            onOpenChange={setShowRequestSampleModal}
+            cardId={item.id}
+            cardTitle={item.title}
+          />
+        )}
 
         {/* Add Tracking Modal */}
         {selectedTask && (

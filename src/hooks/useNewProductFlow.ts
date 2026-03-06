@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -172,8 +173,11 @@ export function useNewProductFlow(cardId?: string) {
 
 // Hook to fetch all products in the new product flow
 export function useNewProductsData() {
-  return useQuery({
+  const queryClient = useQueryClient();
+
+  const result = useQuery({
     queryKey: ['new-products'],
+    staleTime: 60 * 1000, // 60 seconds — new products page doesn't need instant refresh
     queryFn: async () => {
       // Fetch eligible products (approved samples, not yet in flow)
       const { data: eligibleSamples, error: eligibleError } = await supabase
@@ -269,7 +273,7 @@ export function useNewProductsData() {
         }
       }
 
-      // Separate step3 into still-waiting and auto-completed
+      // Separate step3 into still-waiting and auto-completed (detection only, no mutation in queryFn)
       const autoCompletedCardIds: string[] = [];
       const remainingStep3 = (step3Items || []).filter(item => {
         if (item.registered_product_id && orderedProductIds.has(item.registered_product_id)) {
@@ -278,14 +282,6 @@ export function useNewProductsData() {
         }
         return true;
       });
-
-      // Auto-advance cards that have been ordered
-      if (autoCompletedCardIds.length > 0) {
-        await supabase
-          .from('development_items')
-          .update({ new_product_flow_status: 'completed' })
-          .in('id', autoCompletedCardIds);
-      }
 
       // Fetch completed items
       const { data: completedItems, error: completedError } = await supabase
@@ -329,7 +325,30 @@ export function useNewProductsData() {
         step3: remainingStep3,
         completed: completedItems || [],
         approvals,
+        _autoCompletedCardIds: autoCompletedCardIds,
       };
     },
   });
+
+  // Auto-advance cards detected as ordered — runs as side-effect, not inside queryFn
+  const autoCompleteProcessedRef = useRef<Set<string>>(new Set());
+  const autoCompletedIds = result.data?._autoCompletedCardIds || [];
+
+  useEffect(() => {
+    const newIds = autoCompletedIds.filter(id => !autoCompleteProcessedRef.current.has(id));
+    if (newIds.length === 0) return;
+
+    // Mark as processed immediately to prevent re-runs
+    newIds.forEach(id => autoCompleteProcessedRef.current.add(id));
+
+    supabase
+      .from('development_items')
+      .update({ new_product_flow_status: 'completed' })
+      .in('id', newIds)
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ['new-products'] });
+      });
+  }, [autoCompletedIds, queryClient]);
+
+  return result;
 }
